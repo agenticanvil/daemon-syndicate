@@ -20,7 +20,10 @@ pnpm-debug.log*
 
 # Test and verification artifacts
 coverage/
-verification-*.png
+tmp/
+
+# Local reference art
+concept-art/
 
 # OS and editor files
 .DS_Store
