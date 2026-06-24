@@ -16,9 +16,12 @@ import {
   TILE_SIZE,
 } from "./constants";
 import { generateLevel, isWalkable, randomSpawnPoint, tileToWorld, type LevelData } from "./level";
+import type { PerfRecorder } from "./perf";
 import type { GameScene } from "./scene";
 import type { Ui } from "./ui";
 import type { DamageText, Enemy, Pickup, PlayerResources, Projectile, ResourceKind } from "./types";
+
+const PLAYER_MODEL_FORWARD_OFFSET = Math.PI;
 
 export class Game {
   private readonly clock = new THREE.Clock();
@@ -43,12 +46,15 @@ export class Game {
   private novaTimer = 0;
   private spawnTimer = 0;
   private invulnTimer = 0;
+  private hasPointerPosition = false;
+  private playerMoving = false;
   private levelNumber = 1;
   private currentLevel: LevelData;
 
   constructor(
     private readonly world: GameScene,
     private readonly ui: Ui,
+    private readonly perf: PerfRecorder,
   ) {
     this.currentLevel = generateLevel(this.levelNumber);
     this.world.renderLevel(this.currentLevel);
@@ -63,7 +69,7 @@ export class Game {
     window.addEventListener("contextmenu", (event) => event.preventDefault());
     window.addEventListener("keydown", this.handleKeyDown);
     window.addEventListener("keyup", (event) => this.keys.delete(event.code));
-    this.ui.startButton.addEventListener("click", () => this.reset());
+    this.ui.startButton.addEventListener("click", () => this.startNewRun());
     this.ui.resumeButton.addEventListener("click", () => this.setPaused(false));
   }
 
@@ -71,9 +77,20 @@ export class Game {
     this.animate();
   }
 
+  startNewRun(): void {
+    this.reset();
+  }
+
   private readonly updatePointerWorld = (event: PointerEvent): void => {
+    this.hasPointerPosition = true;
     this.pointer.x = (event.clientX / window.innerWidth) * 2 - 1;
     this.pointer.y = -(event.clientY / window.innerHeight) * 2 + 1;
+    this.updatePointerWorldFromCamera();
+  };
+
+  private updatePointerWorldFromCamera(): void {
+    if (!this.hasPointerPosition) return;
+
     this.raycaster.setFromCamera(this.pointer, this.world.camera);
     const hit = this.raycaster.intersectObject(this.world.floor, false)[0];
     if (hit) {
@@ -130,6 +147,7 @@ export class Game {
       damage: 34,
       radius: 0.28,
     });
+    this.world.playerRig.triggerFire();
     this.resources.ammo -= 1;
     this.primaryTimer = PRIMARY_COOLDOWN;
   }
@@ -200,17 +218,25 @@ export class Game {
       (this.keys.has("KeyS") ? 1 : 0) - (this.keys.has("KeyW") ? 1 : 0),
     );
 
-    if (input.lengthSq() > 0) {
+    this.playerMoving = input.lengthSq() > 0;
+
+    if (this.playerMoving) {
       input.normalize();
       this.movePlayer(input, dt);
     }
 
+    this.checkGateTransition();
+  }
+
+  private updatePlayerAim(): void {
     const aim = this.pointerWorld.clone().sub(this.world.player.position).setY(0);
     if (aim.lengthSq() > 0.01) {
-      this.world.player.rotation.y = Math.atan2(aim.x, aim.z);
+      this.world.player.rotation.y = this.getPlayerAimYaw(aim);
     }
+  }
 
-    this.checkGateTransition();
+  private getPlayerAimYaw(aim: THREE.Vector3): number {
+    return Math.atan2(aim.x, aim.z) + PLAYER_MODEL_FORWARD_OFFSET;
   }
 
   private updateCamera(): void {
@@ -502,30 +528,71 @@ export class Game {
     }
   }
 
+  private perfFrameArgs(dt: number): Record<string, number | string | boolean> {
+    return {
+      dtMs: Math.round(dt * 100000) / 100,
+      started: this.started,
+      paused: this.paused,
+      gameOver: this.gameOver,
+      enemies: this.enemies.length,
+      projectiles: this.projectiles.length,
+      pickups: this.pickups.length,
+      damageTexts: this.damageTexts.length,
+      novaMeshes: this.novaMeshes.length,
+      level: this.levelNumber,
+      wave: this.wave,
+      kills: this.kills,
+      renderCalls: this.world.renderer.info.render.calls,
+      triangles: this.world.renderer.info.render.triangles,
+      geometries: this.world.renderer.info.memory.geometries,
+      textures: this.world.renderer.info.memory.textures,
+    };
+  }
+
   private readonly animate = (): void => {
     requestAnimationFrame(this.animate);
     const dt = Math.min(this.clock.getDelta(), 0.033);
 
-    if (this.started && !this.gameOver && !this.paused) {
-      this.primaryTimer = Math.max(this.primaryTimer - dt, 0);
-      this.novaTimer = Math.max(this.novaTimer - dt, 0);
-      this.invulnTimer = Math.max(this.invulnTimer - dt, 0);
-      this.world.playerBody.material.color.lerp(
-        new THREE.Color(this.resources.health <= 30 ? 0xff7474 : 0x9bf0df),
-        dt * 10,
-      );
+    this.perf.frame(this.perfFrameArgs(dt), () => {
+      if (this.started && !this.gameOver && !this.paused) {
+        this.perf.span("timers", () => {
+          this.primaryTimer = Math.max(this.primaryTimer - dt, 0);
+          this.novaTimer = Math.max(this.novaTimer - dt, 0);
+          this.invulnTimer = Math.max(this.invulnTimer - dt, 0);
+          this.world.playerBody.material.color.lerp(
+            new THREE.Color(this.resources.health <= 30 ? 0xff7474 : 0x9bf0df),
+            dt * 10,
+          );
+        });
 
-      this.regenerate(dt);
-      this.applyMovement(dt);
-      this.updateSpawning(dt);
-      this.updateProjectiles(dt);
-      this.updateEnemies(dt);
-      this.updatePickups(dt);
-      this.updateEffects(dt);
-      this.updateHud();
-    }
+        this.perf.span("regenerate", () => this.regenerate(dt));
+        this.perf.span("movement", () => this.applyMovement(dt));
+        this.perf.span("camera", () => this.updateCamera());
+        this.perf.span("pointer.world", () => this.updatePointerWorldFromCamera());
+        this.perf.span("player.aim", () => this.updatePlayerAim());
+        this.perf.span("player.rig", () =>
+          this.world.playerRig.update(
+            {
+              moving: this.playerMoving,
+              moveSpeed: PLAYER_SPEED,
+              damaged: this.invulnTimer > 0,
+              lowHealth: this.resources.health <= 30,
+            },
+            dt,
+          ),
+        );
+        this.perf.span("spawning", () => this.updateSpawning(dt));
+        this.perf.span("projectiles", () => this.updateProjectiles(dt));
+        this.perf.span("enemies", () => this.updateEnemies(dt));
+        this.perf.span("pickups", () => this.updatePickups(dt));
+        this.perf.span("effects/dom", () => this.updateEffects(dt));
+        this.perf.span("hud/dom", () => this.updateHud());
+      }
 
-    this.updateCamera();
-    this.world.renderer.render(this.world.scene, this.world.camera);
+      if (!this.started || this.gameOver || this.paused) {
+        this.perf.span("camera", () => this.updateCamera());
+      }
+      this.perf.span("three.render.cpu", () => this.world.renderer.render(this.world.scene, this.world.camera));
+    });
   };
 }

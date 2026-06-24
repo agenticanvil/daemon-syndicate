@@ -1,6 +1,7 @@
 import * as THREE from "three";
 import { ARENA_SIZE, LEVEL_HEIGHT, LEVEL_WIDTH, TILE_SIZE } from "./constants";
 import { key, neighbors, tileToWorld, type LevelData } from "./level";
+import { loadPlayerRig, type PlayerRig } from "./playerAsset";
 
 export type GameScene = {
   renderer: THREE.WebGLRenderer;
@@ -8,7 +9,8 @@ export type GameScene = {
   camera: THREE.OrthographicCamera;
   floor: THREE.Mesh;
   player: THREE.Group;
-  playerBody: THREE.Mesh<THREE.CapsuleGeometry, THREE.MeshStandardMaterial>;
+  playerRig: PlayerRig;
+  playerBody: THREE.Mesh<THREE.BufferGeometry, THREE.MeshStandardMaterial>;
   reticle: THREE.Mesh;
   renderLevel: (level: LevelData) => void;
   materials: {
@@ -69,21 +71,9 @@ export function createGameScene(app: HTMLDivElement): GameScene {
   floor.rotation.x = -Math.PI / 2;
   scene.add(floor);
 
-  const player = new THREE.Group();
-  const playerBody = new THREE.Mesh(
-    new THREE.CapsuleGeometry(0.42, 0.72, 6, 10),
-    new THREE.MeshStandardMaterial({ color: 0x9bf0df, roughness: 0.34, metalness: 0.45 }),
-  );
-  playerBody.castShadow = true;
-  playerBody.position.y = 0.9;
-  player.add(playerBody);
-
-  const weapon = new THREE.Mesh(
-    new THREE.BoxGeometry(0.18, 0.18, 1.05),
-    new THREE.MeshStandardMaterial({ color: 0x1b2226, roughness: 0.42, metalness: 0.65 }),
-  );
-  weapon.position.set(0.42, 0.95, -0.45);
-  player.add(weapon);
+  const playerRig = loadPlayerRig(loader, renderer.capabilities.getMaxAnisotropy());
+  const player = playerRig.root;
+  const playerBody = playerRig.body;
   scene.add(player);
 
   const reticle = new THREE.Mesh(
@@ -206,7 +196,7 @@ export function createGameScene(app: HTMLDivElement): GameScene {
 
   resize();
 
-  return { renderer, scene, camera, floor, player, playerBody, reticle, renderLevel, materials, resize };
+  return { renderer, scene, camera, floor, player, playerRig, playerBody, reticle, renderLevel, materials, resize };
 }
 
 function addLighting(scene: THREE.Scene): void {

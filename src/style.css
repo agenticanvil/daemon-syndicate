@@ -337,6 +337,196 @@ canvas {
   display: none;
 }
 
+.asset-renderer {
+  color: #e8f7ff;
+  background:
+    radial-gradient(circle at 24% 18%, rgba(101, 215, 255, 0.12), transparent 24rem),
+    linear-gradient(135deg, #05080a 0%, #101412 52%, #050709 100%);
+}
+
+.asset-renderer-shell {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(260px, 300px);
+}
+
+.asset-renderer-stage {
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+}
+
+.asset-renderer-canvas {
+  position: absolute;
+  inset: 0;
+}
+
+.asset-renderer-canvas canvas {
+  width: 100%;
+  height: 100%;
+  cursor: grab;
+}
+
+.asset-renderer-canvas canvas:active {
+  cursor: grabbing;
+}
+
+.asset-renderer-readout {
+  position: absolute;
+  left: 16px;
+  bottom: 16px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  pointer-events: none;
+}
+
+.asset-renderer-readout div,
+.asset-renderer-metrics div {
+  min-width: 92px;
+  border: 1px solid rgba(142, 255, 236, 0.18);
+  border-radius: 6px;
+  background: rgba(4, 10, 12, 0.62);
+  padding: 6px 8px;
+  backdrop-filter: blur(10px);
+}
+
+.asset-renderer-readout span,
+.asset-renderer-metrics span,
+.asset-renderer-panel label > span,
+.control-group > span {
+  display: block;
+  color: #8ca8ad;
+  font-size: 0.62rem;
+  text-transform: uppercase;
+}
+
+.asset-renderer-readout strong,
+.asset-renderer-metrics strong {
+  display: block;
+  margin-top: 3px;
+  color: #f4fbff;
+  font-size: 0.82rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.asset-renderer-panel {
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+  overflow-y: auto;
+  border-left: 1px solid rgba(142, 255, 236, 0.16);
+  background: rgba(4, 10, 12, 0.78);
+  padding: 12px;
+  backdrop-filter: blur(14px);
+}
+
+.asset-renderer-title p {
+  margin: 0 0 3px;
+  color: #9bf0df;
+  font-size: 0.6rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.asset-renderer-title h1 {
+  margin: 0;
+  color: #f4fbff;
+  font-size: 1.15rem;
+  line-height: 1;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.asset-renderer-panel label,
+.control-group {
+  display: grid;
+  gap: 5px;
+}
+
+.asset-renderer-panel select,
+.asset-renderer-panel input[type="range"] {
+  width: 100%;
+}
+
+.asset-renderer-panel select {
+  min-height: 32px;
+  border: 1px solid rgba(142, 255, 236, 0.28);
+  border-radius: 6px;
+  background: rgba(1, 4, 6, 0.78);
+  color: #f4fbff;
+  padding: 5px 8px;
+  font: inherit;
+  font-size: 0.82rem;
+  line-height: 1.2;
+}
+
+.segmented-controls {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.camera-distance-controls {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.segmented-controls button,
+.asset-renderer-link {
+  min-height: 32px;
+  border: 1px solid rgba(142, 255, 236, 0.22);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.04);
+  color: #d7f5ff;
+  font: inherit;
+  font-size: 0.78rem;
+  font-weight: 700;
+  line-height: 1.2;
+  cursor: pointer;
+}
+
+.segmented-controls button.selected {
+  border-color: rgba(155, 240, 223, 0.72);
+  background: #9bf0df;
+  color: #06100f;
+}
+
+.segmented-controls button:disabled {
+  cursor: default;
+  opacity: 0.42;
+}
+
+.toggle-row {
+  grid-template-columns: 1fr auto;
+  align-items: center;
+}
+
+.toggle-row input {
+  width: 17px;
+  height: 17px;
+  accent-color: #9bf0df;
+}
+
+.asset-renderer-panel input[type="range"] {
+  accent-color: #9bf0df;
+}
+
+.asset-renderer-metrics {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.asset-renderer-link {
+  display: grid;
+  place-items: center;
+  margin-top: auto;
+  text-decoration: none;
+}
+
 @media (max-width: 760px) {
   .topbar {
     display: block;
@@ -373,5 +563,20 @@ canvas {
 
   .pause-panel dl {
     grid-template-columns: 1fr;
+  }
+
+  .asset-renderer-shell {
+    grid-template-columns: 1fr;
+    grid-template-rows: minmax(0, 1fr) auto;
+  }
+
+  .asset-renderer-panel {
+    max-height: 45vh;
+    border-top: 1px solid rgba(142, 255, 236, 0.16);
+    border-left: 0;
+  }
+
+  .asset-renderer-title h1 {
+    font-size: 1rem;
   }
 }
