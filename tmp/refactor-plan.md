@@ -7,6 +7,7 @@ This plan continues from the current architecture after the latest refactor pass
 - Enemy and ability behavior are definition-driven through `src/enemyDefinitions.ts` and `src/weaponDefinitions.ts`.
 - Projectiles and pickups now have separate domain state and Three.js view handles.
 - Enemies, projectiles, and pickups now all keep domain state separate from runtime Three.js views.
+- Focused Vitest coverage now protects pathfinding, movement, weapon definitions, and enemy definitions.
 
 ## Completed: Split Enemy Domain State From Views
 
@@ -18,54 +19,26 @@ Verification:
 - Browser smoke test used `/?autostart=1&seed=enemy-domain-smoke`, fired primary and nova at visible enemies, reached 3 kills, and confirmed pickup drops visually.
 - Screenshot saved to `tmp/enemy-domain-smoke.png`.
 
-## Next: Add Focused Logic Tests
+## Completed: Add Focused Logic Tests
 
-Goal: protect the new pure/domain logic from regressions before larger gameplay changes.
+The project now has Vitest configured through `npm test`, with focused pure/domain tests for:
 
-Current issue:
+- `pathfinding.test.ts`: walkable path, unreachable target, and same-tile behavior.
+- `movement.test.ts`: full movement, axis fallback, and blocked movement.
+- `weaponDefinitions.test.ts`: ability cost/cooldown metadata, primary projectile drafts, and nova layer/radius filtering.
+- `enemyDefinitions.test.ts`: current lean/elite scaling, positive spawn weights, and deterministic weighted selection with injected RNG.
 
-- The project has no test runner.
-- Refactors are verified through TypeScript build and browser smoke tests only.
+Testability improvement completed:
 
-Recommended setup:
-
-- Add `vitest` for pure logic tests.
-- Keep tests out of renderer-heavy paths at first.
-- Do not introduce browser/component testing yet unless gameplay UI starts changing.
-
-Suggested tests:
-
-1. `pathfinding.test.ts`
-   - Finds a path between two walkable tiles.
-   - Returns `undefined` when target is unreachable.
-   - Returns `[]` when start equals target.
-
-2. `movement.test.ts`
-   - `moveOnWalkableLevel` moves fully on walkable tiles.
-   - Falls back to axis movement when the full move is blocked.
-   - Refuses movement when both axes are blocked.
-
-3. `weaponDefinitions.test.ts`
-   - Ability readiness uses resource + cooldown.
-   - Primary projectile draft has expected damage/radius/life/collision layer.
-   - Nova damages only enemies in the same collision layer and radius.
-
-4. `enemyDefinitions.test.ts`
-   - Lean/elite scaling preserves current health and speed formulas.
-   - Spawn weights remain positive.
-   - Weighted enemy selection can be made deterministic if an injected RNG is added.
-
-Testability improvement to consider:
-
-- Inject RNG into enemy selection and drop selection instead of calling `Math.random()` directly.
+- `chooseEnemyDefinition` accepts an optional RNG function while preserving `Math.random` as the default.
 
 Verification:
 
-- `npm run build`
-- `npm test`
-- Existing smoke test.
+- `npm test` passes with 4 files and 12 tests.
+- `npm run build` passes.
+- Browser smoke test used `/?autostart=1&seed=phase-2-tests-smoke`, fired primary and nova, and saved `tmp/phase-2-tests-smoke.png`.
 
-## Phase 3: Introduce Runtime Event Hooks
+## Next: Introduce Runtime Event Hooks
 
 Goal: reduce direct cross-system calls as gameplay expands.
 

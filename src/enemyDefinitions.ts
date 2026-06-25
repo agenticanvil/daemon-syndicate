@@ -54,9 +54,9 @@ export const ENEMY_DEFINITIONS: EnemyDefinition[] = [
   },
 ];
 
-export function chooseEnemyDefinition(wave: number): EnemyDefinition {
+export function chooseEnemyDefinition(wave: number, rng: () => number = Math.random): EnemyDefinition {
   const totalWeight = ENEMY_DEFINITIONS.reduce((sum, definition) => sum + definition.spawnWeight(wave), 0);
-  let roll = Math.random() * totalWeight;
+  let roll = rng() * totalWeight;
 
   for (const definition of ENEMY_DEFINITIONS) {
     roll -= definition.spawnWeight(wave);
