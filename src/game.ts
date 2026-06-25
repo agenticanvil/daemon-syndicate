@@ -1,5 +1,9 @@
 import * as THREE from "three";
+import { ELITE_ENEMY_SETTINGS } from "./assets/enemies/eliteEnemy/eliteEnemyAsset";
 import { LEAN_HUNTER_SETTINGS } from "./assets/enemies/leanHunterAsset";
+import { AMMO_PICKUP_SETTINGS } from "./assets/pickups/ammoPickup/ammoPickupAsset";
+import { ENERGY_PICKUP_SETTINGS } from "./assets/pickups/energyPickup/energyPickupAsset";
+import { HEALTH_PICKUP_SETTINGS } from "./assets/pickups/healthPickup/healthPickupAsset";
 import { distance2D, overlaps2D, withinRadius2D, type CollisionBody2D, type CollisionLayer } from "./collision";
 import {
   AMMO_DROP_AMOUNT,
@@ -13,10 +17,20 @@ import {
   PLAYER_RADIUS,
   PLAYER_SPEED,
   PRIMARY_COOLDOWN,
-  SPAWN_INTERVAL,
   TILE_SIZE,
 } from "./constants";
-import { exitGateToWorld, generateLevel, isWalkable, randomSpawnPoint, tileToWorld, type LevelData } from "./level";
+import {
+  exitGateToWorld,
+  fromKey,
+  generateLevel,
+  isWalkable,
+  key,
+  neighbors,
+  tileToWorld,
+  worldToTile,
+  type LevelData,
+  type TileCoord,
+} from "./level";
 import type { PerfRecorder } from "./perf";
 import type { GameScene } from "./scene";
 import type { Ui } from "./ui";
@@ -27,6 +41,11 @@ const MOVEMENT_EPSILON = 0.0001;
 const ENEMY_ATTACK_PROXIMITY = 0.42;
 const ENEMY_STOP_PROXIMITY = 0.18;
 const ENEMY_DEATH_DURATION = 0.5;
+const MIN_ENEMY_SPAWN_DISTANCE = TILE_SIZE * 5;
+const ENEMY_PATHFINDING_RADIUS = TILE_SIZE * 13;
+const ENEMY_DIRECT_APPROACH_RADIUS = TILE_SIZE * 3;
+const ENEMY_PATH_REFRESH_INTERVAL = 0.24;
+const ENEMY_WAYPOINT_REACHED_DISTANCE = 0.35;
 
 export class Game {
   private readonly clock = new THREE.Clock();
@@ -55,7 +74,6 @@ export class Game {
   private wave = 1;
   private primaryTimer = 0;
   private novaTimer = 0;
-  private spawnTimer = 0;
   private invulnTimer = 0;
   private hasPointerPosition = false;
   private playerMoving = false;
@@ -194,14 +212,10 @@ export class Game {
     this.novaTimer = NOVA_COOLDOWN;
   }
 
-  private spawnEnemy(): void {
-    const spawn = randomSpawnPoint(this.currentLevel);
+  private spawnEnemy(spawn: THREE.Vector3): void {
     const elite = Math.random() < Math.min(0.08 + this.wave * 0.015, 0.26);
     const rig = elite ? undefined : this.world.createLeanHunterRig();
-    const mesh = rig?.root ?? new THREE.Mesh(new THREE.DodecahedronGeometry(0.68, 0), this.world.materials.eliteEnemy);
-    if (mesh instanceof THREE.Mesh) {
-      mesh.castShadow = true;
-    }
+    const mesh = rig?.root ?? this.world.createEliteEnemyAsset().root;
     mesh.position.set(spawn.x, elite ? 0.72 : 0, spawn.z);
     this.world.scene.add(mesh);
 
@@ -209,11 +223,29 @@ export class Game {
       mesh,
       updateRig: rig ? (animation, dt) => rig.update({ animation }, dt) : undefined,
       collisionLayer: this.currentCollisionLayer(),
-      hp: elite ? 118 + this.wave * 8 : LEAN_HUNTER_SETTINGS.health + this.wave * 5,
+      hp: elite ? ELITE_ENEMY_SETTINGS.health + this.wave * 8 : LEAN_HUNTER_SETTINGS.health + this.wave * 5,
       speed: elite ? 2.2 + this.wave * 0.05 : 2.8 + this.wave * 0.07,
-      radius: elite ? 0.68 : LEAN_HUNTER_SETTINGS.collision.radius,
+      radius: elite ? ELITE_ENEMY_SETTINGS.collision.radius : LEAN_HUNTER_SETTINGS.collision.radius,
       attackTimer: 0,
+      pathRefreshTimer: Math.random() * ENEMY_PATH_REFRESH_INTERVAL,
     });
+  }
+
+  private spawnLevelEnemies(): void {
+    const candidates = this.currentLevel.spawnPoints
+      .map(tileToWorld)
+      .filter((position) => distance2D(position, this.world.player.position) >= MIN_ENEMY_SPAWN_DISTANCE);
+    const targetCount = Math.min(this.levelEnemyCount(), candidates.length);
+
+    for (let i = 0; i < targetCount; i += 1) {
+      const index = Math.floor(Math.random() * candidates.length);
+      const [spawn] = candidates.splice(index, 1);
+      this.spawnEnemy(spawn);
+    }
+  }
+
+  private levelEnemyCount(): number {
+    return Math.min(10 + this.levelNumber * 3, 32);
   }
 
   private damageEnemy(enemy: Enemy, amount: number, showText: boolean): void {
@@ -353,18 +385,13 @@ export class Game {
         continue;
       }
 
-      const toPlayer = this.world.player.position.clone().sub(enemy.mesh.position).setY(0);
       const distance = distance2D(enemy.mesh.position, this.world.player.position);
       const attackDistance = PLAYER_RADIUS + enemy.radius + ENEMY_ATTACK_PROXIMITY;
-      const pursuitDirection = toPlayer.lengthSq() > MOVEMENT_EPSILON ? toPlayer.normalize() : toPlayer;
+      const pursuitDirection = this.getEnemyPursuitDirection(enemy, distance, enemy.speed * dt, dt);
       let moved = false;
 
       if (distance > PLAYER_RADIUS + enemy.radius + ENEMY_STOP_PROXIMITY) {
-        const next = enemy.mesh.position.clone().addScaledVector(pursuitDirection, enemy.speed * dt);
-        if (isWalkable(this.currentLevel, next)) {
-          enemy.mesh.position.copy(next);
-          moved = true;
-        }
+        moved = this.moveEnemy(enemy, pursuitDirection, enemy.speed * dt);
       }
 
       if (pursuitDirection.lengthSq() > MOVEMENT_EPSILON) {
@@ -400,9 +427,138 @@ export class Game {
         this.disposeObject3D(enemy.mesh, Boolean(enemy.updateRig));
         this.enemies.splice(i, 1);
         this.kills += 1;
-        this.wave = 1 + Math.floor(this.kills / 12);
       }
     }
+  }
+
+  private getEnemyPursuitDirection(
+    enemy: Enemy,
+    playerDistance: number,
+    moveDistance: number,
+    dt: number,
+  ): THREE.Vector3 {
+    const direct = this.world.player.position.clone().sub(enemy.mesh.position).setY(0);
+    if (direct.lengthSq() <= MOVEMENT_EPSILON) return direct;
+    direct.normalize();
+
+    if (playerDistance > ENEMY_PATHFINDING_RADIUS) {
+      enemy.path = undefined;
+      enemy.pathTarget = undefined;
+      return direct;
+    }
+
+    if (playerDistance <= ENEMY_DIRECT_APPROACH_RADIUS && this.canEnemyMove(enemy, direct, moveDistance)) {
+      enemy.path = undefined;
+      enemy.pathTarget = undefined;
+      return direct;
+    }
+
+    const playerTile = worldToTile(this.world.player.position);
+    const playerKey = key(playerTile);
+    enemy.pathRefreshTimer = (enemy.pathRefreshTimer ?? 0) - dt;
+    if (!enemy.path || enemy.pathTarget !== playerKey || enemy.pathRefreshTimer <= 0) {
+      enemy.path = this.findEnemyPath(enemy, playerTile);
+      enemy.pathTarget = playerKey;
+      enemy.pathRefreshTimer = ENEMY_PATH_REFRESH_INTERVAL + Math.random() * 0.08;
+    }
+
+    const pathDirection = this.getEnemyPathDirection(enemy);
+    return pathDirection ?? direct;
+  }
+
+  private getEnemyPathDirection(enemy: Enemy): THREE.Vector3 | undefined {
+    const path = enemy.path;
+    if (!path || path.length === 0) return undefined;
+
+    while (path.length > 0) {
+      const waypoint = tileToWorld(fromKey(path[0]));
+      const offset = waypoint.sub(enemy.mesh.position).setY(0);
+      if (offset.length() > ENEMY_WAYPOINT_REACHED_DISTANCE) {
+        return offset.normalize();
+      }
+      path.shift();
+    }
+
+    return undefined;
+  }
+
+  private moveEnemy(enemy: Enemy, direction: THREE.Vector3, distance: number): boolean {
+    if (direction.lengthSq() <= MOVEMENT_EPSILON) return false;
+
+    const current = enemy.mesh.position.clone();
+    const full = current.clone().addScaledVector(direction, distance);
+    if (isWalkable(this.currentLevel, full)) {
+      enemy.mesh.position.copy(full);
+      return true;
+    }
+
+    let moved = false;
+    const xOnly = current.clone();
+    xOnly.x += direction.x * distance;
+    if (isWalkable(this.currentLevel, xOnly)) {
+      enemy.mesh.position.copy(xOnly);
+      moved = true;
+    }
+
+    const zOnly = enemy.mesh.position.clone();
+    zOnly.z += direction.z * distance;
+    if (isWalkable(this.currentLevel, zOnly)) {
+      enemy.mesh.position.copy(zOnly);
+      moved = true;
+    }
+
+    return moved;
+  }
+
+  private canEnemyMove(enemy: Enemy, direction: THREE.Vector3, distance: number): boolean {
+    if (direction.lengthSq() <= MOVEMENT_EPSILON) return false;
+
+    const current = enemy.mesh.position;
+    const full = current.clone().addScaledVector(direction, distance);
+    if (isWalkable(this.currentLevel, full)) return true;
+
+    const xOnly = current.clone();
+    xOnly.x += direction.x * distance;
+    if (isWalkable(this.currentLevel, xOnly)) return true;
+
+    const zOnly = current.clone();
+    zOnly.z += direction.z * distance;
+    return isWalkable(this.currentLevel, zOnly);
+  }
+
+  private findEnemyPath(enemy: Enemy, target: TileCoord): string[] | undefined {
+    const start = worldToTile(enemy.mesh.position);
+    const startKey = key(start);
+    const targetKey = key(target);
+
+    if (startKey === targetKey) return [];
+    if (!this.currentLevel.walkable.has(startKey) || !this.currentLevel.walkable.has(targetKey)) return undefined;
+
+    const queue: string[] = [startKey];
+    const cameFrom = new Map<string, string | undefined>([[startKey, undefined]]);
+
+    for (let cursor = 0; cursor < queue.length; cursor += 1) {
+      const currentKey = queue[cursor];
+      if (currentKey === targetKey) break;
+
+      for (const neighbor of neighbors(fromKey(currentKey))) {
+        const neighborKey = key(neighbor);
+        if (!this.currentLevel.walkable.has(neighborKey) || cameFrom.has(neighborKey)) continue;
+        cameFrom.set(neighborKey, currentKey);
+        queue.push(neighborKey);
+      }
+    }
+
+    if (!cameFrom.has(targetKey)) return undefined;
+
+    const path: string[] = [];
+    let current: string | undefined = targetKey;
+    while (current && current !== startKey) {
+      path.push(current);
+      current = cameFrom.get(current);
+    }
+    path.reverse();
+    return path;
   }
 
   private maybeDropPickup(position: THREE.Vector3): void {
@@ -410,24 +566,20 @@ export class Game {
     if (roll > 0.72) return;
     const kind: ResourceKind = roll < 0.14 ? "health" : roll < 0.48 ? "ammo" : "energy";
     const amount = kind === "health" ? HEALTH_DROP_AMOUNT : kind === "ammo" ? AMMO_DROP_AMOUNT : ENERGY_DROP_AMOUNT;
-    const material =
-      kind === "health"
-        ? this.world.materials.healthPickup
-        : kind === "ammo"
-          ? this.world.materials.ammoPickup
-          : this.world.materials.energyPickup;
-    const geometry =
-      kind === "ammo"
-        ? new THREE.BoxGeometry(0.55, 0.32, 0.55)
-        : kind === "energy"
-          ? new THREE.OctahedronGeometry(0.42)
-          : new THREE.SphereGeometry(0.36, 12, 8);
-    const mesh = new THREE.Mesh(geometry, material);
+    const settings =
+      kind === "health" ? HEALTH_PICKUP_SETTINGS : kind === "ammo" ? AMMO_PICKUP_SETTINGS : ENERGY_PICKUP_SETTINGS;
+    const mesh = this.world.createPickupAsset(kind).root;
     mesh.position.copy(position);
     mesh.position.y = 0.45;
-    mesh.castShadow = true;
     this.world.scene.add(mesh);
-    this.pickups.push({ mesh, kind, collisionLayer: this.currentCollisionLayer(), amount, radius: 0.62, life: 18 });
+    this.pickups.push({
+      mesh,
+      kind,
+      collisionLayer: this.currentCollisionLayer(),
+      amount,
+      radius: settings.collision.radius,
+      life: 18,
+    });
   }
 
   private updatePickups(dt: number): void {
@@ -513,17 +665,6 @@ export class Game {
     }
   }
 
-  private updateSpawning(dt: number): void {
-    this.spawnTimer -= dt;
-    if (this.spawnTimer <= 0 && this.enemies.length < 16 + this.wave * 3) {
-      const amount = Math.min(1 + Math.floor(this.wave / 4), 4);
-      for (let i = 0; i < amount; i += 1) {
-        this.spawnEnemy();
-      }
-      this.spawnTimer = Math.max(SPAWN_INTERVAL - this.wave * 0.045, 0.48);
-    }
-  }
-
   private regenerate(dt: number): void {
     this.resources.energy = Math.min(
       this.maxResources.energy,
@@ -564,7 +705,7 @@ export class Game {
     this.resources = { ...PLAYER_MAX };
     this.kills = 0;
     this.wave = 1;
-    this.spawnTimer = 0.2;
+    this.spawnLevelEnemies();
     this.primaryTimer = 0;
     this.novaTimer = 0;
     this.invulnTimer = 0;
@@ -572,6 +713,7 @@ export class Game {
     this.paused = false;
     this.world.playerBody.material.color.set(0x9bf0df);
     this.ui.hideOverlay();
+    this.ui.setHudVisible(true);
     this.ui.setPaused(false);
     this.started = true;
     this.updateHud();
@@ -586,7 +728,7 @@ export class Game {
     this.world.player.position.copy(tileToWorld(this.currentLevel.start));
     this.updatePlayerCollisionLayer();
     this.resetReticle();
-    this.spawnTimer = 0.35;
+    this.spawnLevelEnemies();
     this.primaryTimer = 0;
     this.novaTimer = Math.min(this.novaTimer, 0.4);
     this.updateHud();
@@ -713,7 +855,6 @@ export class Game {
             dt,
           ),
         );
-        this.perf.span("spawning", () => this.updateSpawning(dt));
         this.perf.span("projectiles", () => this.updateProjectiles(dt));
         this.perf.span("enemies", () => this.updateEnemies(dt));
         this.perf.span("pickups", () => this.updatePickups(dt));

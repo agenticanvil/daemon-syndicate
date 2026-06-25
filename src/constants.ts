@@ -7,7 +7,6 @@ export const ENEMY_RADIUS = 0.48;
 export const PLAYER_SPEED = 7.5;
 export const PRIMARY_COOLDOWN = 0.16;
 export const NOVA_COOLDOWN = 2.2;
-export const SPAWN_INTERVAL = 1.35;
 export const AMMO_DROP_AMOUNT = 22;
 export const ENERGY_DROP_AMOUNT = 32;
 export const HEALTH_DROP_AMOUNT = 24;

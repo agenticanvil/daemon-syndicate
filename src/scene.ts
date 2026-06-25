@@ -1,8 +1,13 @@
 import * as THREE from "three";
 import { ARENA_SIZE, LEVEL_HEIGHT, LEVEL_WIDTH, TILE_SIZE } from "./constants";
+import { createEliteEnemyAsset, type EliteEnemyAsset } from "./assets/enemies/eliteEnemy/eliteEnemyAsset";
 import { loadLeanHunterRig, type LeanHunterRig } from "./assets/enemies/leanHunterAsset";
+import { createAmmoPickupAsset, type AmmoPickupAsset } from "./assets/pickups/ammoPickup/ammoPickupAsset";
+import { createEnergyPickupAsset, type EnergyPickupAsset } from "./assets/pickups/energyPickup/energyPickupAsset";
+import { createHealthPickupAsset, type HealthPickupAsset } from "./assets/pickups/healthPickup/healthPickupAsset";
 import { exitGateToWorld, key, neighbors, tileToWorld, type LevelData } from "./level";
 import { loadPlayerRig, type PlayerRig } from "./playerAsset";
+import type { ResourceKind } from "./types";
 
 export type GameScene = {
   renderer: THREE.WebGLRenderer;
@@ -15,14 +20,12 @@ export type GameScene = {
   reticle: THREE.Mesh;
   renderLevel: (level: LevelData) => void;
   createLeanHunterRig: () => LeanHunterRig;
+  createEliteEnemyAsset: () => EliteEnemyAsset;
+  createPickupAsset: (kind: ResourceKind) => AmmoPickupAsset | EnergyPickupAsset | HealthPickupAsset;
   materials: {
     enemy: THREE.MeshStandardMaterial;
-    eliteEnemy: THREE.MeshStandardMaterial;
     projectile: THREE.MeshBasicMaterial;
     nova: THREE.MeshBasicMaterial;
-    healthPickup: THREE.MeshStandardMaterial;
-    ammoPickup: THREE.MeshStandardMaterial;
-    energyPickup: THREE.MeshStandardMaterial;
     gate: THREE.MeshStandardMaterial;
   };
   resize: () => void;
@@ -99,12 +102,6 @@ export function createGameScene(app: HTMLDivElement): GameScene {
       roughness: 0.48,
       metalness: 0.25,
     }),
-    eliteEnemy: new THREE.MeshStandardMaterial({
-      color: 0xff5f5f,
-      emissive: 0x3a0707,
-      roughness: 0.42,
-      metalness: 0.32,
-    }),
     projectile: new THREE.MeshBasicMaterial({ color: 0x9bf0df }),
     nova: new THREE.MeshBasicMaterial({
       color: 0x67ddff,
@@ -112,9 +109,6 @@ export function createGameScene(app: HTMLDivElement): GameScene {
       opacity: 0.36,
       depthWrite: false,
     }),
-    healthPickup: new THREE.MeshStandardMaterial({ color: 0xff5668, emissive: 0x290406 }),
-    ammoPickup: new THREE.MeshStandardMaterial({ color: 0xffc857, emissive: 0x2a1801 }),
-    energyPickup: new THREE.MeshStandardMaterial({ color: 0x65d7ff, emissive: 0x052439 }),
     gate: new THREE.MeshStandardMaterial({
       color: 0x9bf0df,
       emissive: 0x0f5f58,
@@ -203,6 +197,12 @@ export function createGameScene(app: HTMLDivElement): GameScene {
     return loadLeanHunterRig(loader, anisotropy);
   }
 
+  function createPickupAsset(kind: ResourceKind): AmmoPickupAsset | EnergyPickupAsset | HealthPickupAsset {
+    if (kind === "ammo") return createAmmoPickupAsset();
+    if (kind === "energy") return createEnergyPickupAsset();
+    return createHealthPickupAsset();
+  }
+
   return {
     renderer,
     scene,
@@ -214,6 +214,8 @@ export function createGameScene(app: HTMLDivElement): GameScene {
     reticle,
     renderLevel,
     createLeanHunterRig,
+    createEliteEnemyAsset,
+    createPickupAsset,
     materials,
     resize,
   };
