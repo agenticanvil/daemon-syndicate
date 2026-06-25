@@ -1,9 +1,27 @@
 import * as THREE from "three";
+import {
+  LEAN_HUNTER_SETTINGS,
+  loadLeanHunterRig,
+  type LeanHunterAnimationId,
+  type LeanHunterAnimationState,
+  type LeanHunterRig,
+} from "./assets/enemies/leanHunterAsset";
+import playerSettings from "./assets/player/player.settings.json";
 import { loadPlayerRig, type PlayerAnimationState } from "./playerAsset";
 
-type AssetId = "player";
+type AssetId = "player" | "lean-hunter";
 type AngleId = "head-on" | "side" | "behind" | "isometric";
-type AnimationStateId = "idle" | "walk" | "fire" | "damaged" | "low-health";
+type PlayerAnimationStateId = "idle" | "walk" | "fire" | "damaged" | "low-health";
+type AnimationStateId = PlayerAnimationStateId | LeanHunterAnimationId;
+type RenderModeId = "shaded" | "wireframe";
+
+type EditableAssetSettings = {
+  collision: {
+    radius: number;
+    height: number;
+  };
+  health: number;
+};
 
 type AssetRendererState = {
   asset: AssetId;
@@ -12,6 +30,9 @@ type AssetRendererState = {
   cameraDistance: number;
   speed: number;
   playing: boolean;
+  renderMode: RenderModeId;
+  collisionVisible: boolean;
+  assetSettings: Record<AssetId, EditableAssetSettings>;
 };
 
 type CameraPose = {
@@ -19,11 +40,63 @@ type CameraPose = {
   position: [number, number, number];
 };
 
-const ASSETS: Array<{ id: AssetId; label: string }> = [{ id: "player", label: "Player" }];
+type AssetMetrics = {
+  renderCalls: number;
+  triangles: number;
+};
+
+type AssetDefinition = {
+  label: string;
+  targetY: number;
+  collision: {
+    radius: number;
+    height: number;
+  };
+  animations: Array<{ id: AnimationStateId; label: string }>;
+};
+
+const ASSET_DEFINITIONS = {
+  player: {
+    label: "Player",
+    targetY: 1.05,
+    collision: playerSettings.collision,
+    animations: [
+      { id: "idle", label: "Idle" },
+      { id: "walk", label: "Walk" },
+      { id: "fire", label: "Fire" },
+      { id: "damaged", label: "Damaged" },
+      { id: "low-health", label: "Low Health" },
+    ],
+  },
+  "lean-hunter": {
+    label: "Lean Hunter",
+    targetY: 0.42,
+    collision: LEAN_HUNTER_SETTINGS.collision,
+    animations: [
+      { id: "idle", label: "Idle" },
+      { id: "walk", label: "Walk" },
+      { id: "melee", label: "Melee" },
+      { id: "death", label: "Death" },
+    ],
+  },
+} satisfies Record<AssetId, AssetDefinition>;
+
+const ASSETS: Array<{ id: AssetId; label: string }> = [
+  { id: "player", label: ASSET_DEFINITIONS.player.label },
+  { id: "lean-hunter", label: ASSET_DEFINITIONS["lean-hunter"].label },
+];
 const STANDARD_CAMERA_DISTANCE = 1;
 const CAMERA_DISTANCE_STEP = 0.15;
 const CAMERA_DISTANCE_MIN = 0.65;
 const CAMERA_DISTANCE_MAX = 1.6;
+const COLLISION_RADIUS_MIN = 0.1;
+const COLLISION_RADIUS_MAX = 1.4;
+const HEALTH_MIN = 1;
+const HEALTH_MAX = 999;
+const ASSET_SETTINGS_ENDPOINTS = {
+  player: "/__dev/asset-settings/player",
+  "lean-hunter": "/__dev/asset-settings/lean-hunter",
+} satisfies Record<AssetId, string>;
 
 const CAMERA_POSES: Record<AngleId, CameraPose> = {
   "head-on": { label: "Head On", position: [0, 1.65, -5.2] },
@@ -32,12 +105,9 @@ const CAMERA_POSES: Record<AngleId, CameraPose> = {
   isometric: { label: "Isometric", position: [4.2, 4.2, -4.2] },
 };
 
-const ANIMATION_STATES: Array<{ id: AnimationStateId; label: string }> = [
-  { id: "idle", label: "Idle" },
-  { id: "walk", label: "Walk" },
-  { id: "fire", label: "Fire" },
-  { id: "damaged", label: "Damaged" },
-  { id: "low-health", label: "Low Health" },
+const RENDER_MODES: Array<{ id: RenderModeId; label: string }> = [
+  { id: "shaded", label: "Shaded" },
+  { id: "wireframe", label: "Wireframe" },
 ];
 
 export function startAssetRenderer(app: HTMLDivElement): void {
@@ -55,11 +125,13 @@ export function startAssetRenderer(app: HTMLDivElement): void {
   const cameraResetButton = app.querySelector<HTMLButtonElement>("#cameraResetButton")!;
   const cameraAwayButton = app.querySelector<HTMLButtonElement>("#cameraAwayButton")!;
   const cameraDistanceValue = app.querySelector<HTMLElement>("#cameraDistanceValue")!;
+  const collisionToggle = app.querySelector<HTMLInputElement>("#collisionToggle")!;
+  const assetCollisionRadiusInput = app.querySelector<HTMLInputElement>("#assetCollisionRadiusInput")!;
+  const assetHealthInput = app.querySelector<HTMLInputElement>("#assetHealthInput")!;
+  const assetSettingsSaveButton = app.querySelector<HTMLButtonElement>("#assetSettingsSaveButton")!;
+  const assetSettingsStatus = app.querySelector<HTMLElement>("#assetSettingsStatus")!;
   const renderCalls = app.querySelector<HTMLElement>("#renderCalls")!;
   const triangleCount = app.querySelector<HTMLElement>("#triangleCount")!;
-  const cameraLabel = app.querySelector<HTMLElement>("#cameraLabel")!;
-  const assetName = app.querySelector<HTMLElement>("#assetName")!;
-  const stateName = app.querySelector<HTMLElement>("#stateName")!;
 
   const renderer = new THREE.WebGLRenderer({
     antialias: true,
@@ -77,13 +149,18 @@ export function startAssetRenderer(app: HTMLDivElement): void {
   scene.fog = new THREE.Fog(0x05080a, 12, 24);
 
   const camera = new THREE.PerspectiveCamera(38, 1, 0.1, 100);
-  const target = new THREE.Vector3(0, 1.05, 0);
+  const target = new THREE.Vector3(0, ASSET_DEFINITIONS[state.asset].targetY, 0);
   const loader = new THREE.TextureLoader();
-  const rig = loadPlayerRig(loader, renderer.capabilities.getMaxAnisotropy());
-  scene.add(rig.root);
+  const rigs = {
+    player: loadPlayerRig(loader, renderer.capabilities.getMaxAnisotropy()),
+    "lean-hunter": loadLeanHunterRig(loader, renderer.capabilities.getMaxAnisotropy()),
+  };
+  scene.add(rigs.player.root, rigs["lean-hunter"].root);
 
   const floor = createInspectionFloor();
   scene.add(floor);
+  const collisionVolume = createCollisionVolume();
+  scene.add(collisionVolume.root);
   addInspectionLights(scene);
   addAxisMarkers(scene);
 
@@ -95,8 +172,21 @@ export function startAssetRenderer(app: HTMLDivElement): void {
   let customOrbitRadius = 5.2;
   let usingCustomOrbit = false;
 
+  function activeRig(): typeof rigs.player | LeanHunterRig {
+    return rigs[state.asset];
+  }
+
+  function applyActiveAsset(): void {
+    target.y = ASSET_DEFINITIONS[state.asset].targetY;
+    rigs.player.root.visible = state.asset === "player";
+    rigs["lean-hunter"].root.visible = state.asset === "lean-hunter";
+    applyCollisionVolume();
+  }
+
   function applyStateToControls(): void {
+    const settings = activeAssetSettings();
     assetSelect.value = state.asset;
+    syncAnimationOptions(animationSelect, state);
     animationSelect.value = state.animation;
     playToggle.checked = state.playing;
     speedInput.value = state.speed.toString();
@@ -105,16 +195,18 @@ export function startAssetRenderer(app: HTMLDivElement): void {
     cameraCloserButton.disabled = state.cameraDistance <= CAMERA_DISTANCE_MIN;
     cameraResetButton.disabled = state.cameraDistance === STANDARD_CAMERA_DISTANCE && !usingCustomOrbit;
     cameraAwayButton.disabled = state.cameraDistance >= CAMERA_DISTANCE_MAX;
+    collisionToggle.checked = state.collisionVisible;
+    assetCollisionRadiusInput.value = settings.collision.radius.toFixed(2);
+    assetHealthInput.value = settings.health.toString();
+    assetSettingsSaveButton.disabled = false;
 
     for (const button of app.querySelectorAll<HTMLButtonElement>("[data-angle]")) {
       button.classList.toggle("selected", button.dataset.angle === state.angle && !usingCustomOrbit);
     }
+    for (const button of app.querySelectorAll<HTMLButtonElement>("[data-render-mode]")) {
+      button.classList.toggle("selected", button.dataset.renderMode === state.renderMode);
+    }
 
-    assetName.textContent = ASSETS.find((asset) => asset.id === state.asset)?.label ?? state.asset;
-    stateName.textContent = ANIMATION_STATES.find((entry) => entry.id === state.animation)?.label ?? state.animation;
-    cameraLabel.textContent = `${usingCustomOrbit ? "Custom" : CAMERA_POSES[state.angle].label} ${state.cameraDistance.toFixed(
-      2,
-    )}x`;
   }
 
   function syncUrl(): void {
@@ -126,6 +218,10 @@ export function startAssetRenderer(app: HTMLDivElement): void {
     if (state.cameraDistance !== STANDARD_CAMERA_DISTANCE) {
       params.set("distance", state.cameraDistance.toFixed(2));
     }
+    if (state.renderMode !== "shaded") {
+      params.set("mode", state.renderMode);
+    }
+    if (!state.collisionVisible) params.set("hideCollision", "1");
     if (!state.playing) params.set("paused", "1");
     window.history.replaceState(null, "", `${window.location.pathname}?${params.toString()}`);
   }
@@ -154,6 +250,77 @@ export function startAssetRenderer(app: HTMLDivElement): void {
     syncUrl();
   }
 
+  function setRenderMode(renderMode: RenderModeId): void {
+    state.renderMode = renderMode;
+    applyRenderMode();
+    applyStateToControls();
+    syncUrl();
+  }
+
+  function activeAssetSettings(): EditableAssetSettings {
+    return state.assetSettings[state.asset];
+  }
+
+  function setAssetCollisionRadius(radius: number): void {
+    activeAssetSettings().collision.radius = clamp(radius, COLLISION_RADIUS_MIN, COLLISION_RADIUS_MAX);
+    applyCollisionVolume();
+    applyStateToControls();
+    setAssetSettingsStatus("Unsaved changes");
+  }
+
+  function setAssetHealth(health: number): void {
+    activeAssetSettings().health = Math.round(clamp(health, HEALTH_MIN, HEALTH_MAX));
+    applyStateToControls();
+    setAssetSettingsStatus("Unsaved changes");
+  }
+
+  function setCollisionVisible(visible: boolean): void {
+    state.collisionVisible = visible;
+    applyCollisionVolume();
+    applyStateToControls();
+    syncUrl();
+  }
+
+  function applyCollisionVolume(): void {
+    const settings = activeAssetSettings();
+    updateCollisionVolume(collisionVolume, settings.collision.radius, settings.collision.height);
+    collisionVolume.root.visible = state.collisionVisible;
+  }
+
+  function setAssetSettingsStatus(text: string): void {
+    assetSettingsStatus.textContent = text;
+  }
+
+  async function saveActiveAssetSettings(): Promise<void> {
+    assetSettingsSaveButton.disabled = true;
+    setAssetSettingsStatus("Saving...");
+
+    try {
+      const response = await fetch(ASSET_SETTINGS_ENDPOINTS[state.asset], {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(activeAssetSettings()),
+      });
+      if (!response.ok) {
+        if (response.status === 404) {
+          throw new Error("Asset settings endpoint missing. Restart the Vite dev server.");
+        }
+        throw new Error(await response.text());
+      }
+      setAssetSettingsStatus("Saved");
+    } catch (error) {
+      console.error(error);
+      setAssetSettingsStatus(error instanceof Error ? error.message : "Save failed");
+    } finally {
+      assetSettingsSaveButton.disabled = false;
+    }
+  }
+
+  function applyRenderMode(): void {
+    setWireframe(rigs.player.root, state.renderMode === "wireframe");
+    setWireframe(rigs["lean-hunter"].root, state.renderMode === "wireframe");
+  }
+
   function updateCamera(): void {
     const cameraPosition = new THREE.Vector3();
     if (usingCustomOrbit) {
@@ -177,7 +344,7 @@ export function startAssetRenderer(app: HTMLDivElement): void {
     camera.updateProjectionMatrix();
   }
 
-  function animationState(dt: number): PlayerAnimationState {
+  function playerAnimationState(dt: number): PlayerAnimationState {
     const moving = state.animation === "walk";
     const damaged = state.animation === "damaged";
     const lowHealth = state.animation === "low-health";
@@ -185,7 +352,7 @@ export function startAssetRenderer(app: HTMLDivElement): void {
     if (state.animation === "fire" && state.playing) {
       firePulseTimer -= dt;
       if (firePulseTimer <= 0) {
-        rig.triggerFire();
+        rigs.player.triggerFire();
         firePulseTimer = 0.72;
       }
     }
@@ -198,6 +365,12 @@ export function startAssetRenderer(app: HTMLDivElement): void {
     };
   }
 
+  function leanHunterAnimationState(): LeanHunterAnimationState {
+    return {
+      animation: isLeanHunterAnimationId(state.animation) ? state.animation : "idle",
+    };
+  }
+
   function animate(): void {
     if (disposed) return;
     requestAnimationFrame(animate);
@@ -205,14 +378,23 @@ export function startAssetRenderer(app: HTMLDivElement): void {
     const rawDt = Math.min(clock.getDelta(), 0.033);
     const dt = state.playing ? rawDt * state.speed : 0;
     updateCamera();
-    rig.update(animationState(dt), dt);
+    if (state.asset === "player") {
+      rigs.player.update(playerAnimationState(dt), dt);
+    } else {
+      rigs["lean-hunter"].update(leanHunterAnimationState(), dt);
+    }
     renderer.render(scene, camera);
-    renderCalls.textContent = renderer.info.render.calls.toString();
-    triangleCount.textContent = renderer.info.render.triangles.toLocaleString();
+    const assetMetrics = measureAsset(activeRig().root);
+    renderCalls.textContent = assetMetrics.renderCalls.toString();
+    triangleCount.textContent = assetMetrics.triangles.toLocaleString();
   }
 
   for (const button of app.querySelectorAll<HTMLButtonElement>("[data-angle]")) {
     button.addEventListener("click", () => setAngle(toAngleId(button.dataset.angle)));
+  }
+
+  for (const button of app.querySelectorAll<HTMLButtonElement>("[data-render-mode]")) {
+    button.addEventListener("click", () => setRenderMode(toRenderModeId(button.dataset.renderMode)));
   }
 
   cameraCloserButton.addEventListener("click", () => moveCameraDistance(-CAMERA_DISTANCE_STEP));
@@ -221,14 +403,18 @@ export function startAssetRenderer(app: HTMLDivElement): void {
 
   assetSelect.addEventListener("change", () => {
     state.asset = toAssetId(assetSelect.value);
+    state.animation = ensureAnimationForAsset(state.asset, state.animation);
+    firePulseTimer = 0;
+    setAssetSettingsStatus("Loaded from code");
+    applyActiveAsset();
     applyStateToControls();
     syncUrl();
   });
 
   animationSelect.addEventListener("change", () => {
-    state.animation = toAnimationStateId(animationSelect.value);
+    state.animation = toAnimationStateId(state.asset, animationSelect.value);
     firePulseTimer = 0;
-    if (state.animation === "fire") rig.triggerFire();
+    if (state.asset === "player" && state.animation === "fire") rigs.player.triggerFire();
     applyStateToControls();
     syncUrl();
   });
@@ -243,6 +429,22 @@ export function startAssetRenderer(app: HTMLDivElement): void {
     state.speed = clamp(Number(speedInput.value), 0.1, 2.5);
     applyStateToControls();
     syncUrl();
+  });
+
+  collisionToggle.addEventListener("change", () => {
+    setCollisionVisible(collisionToggle.checked);
+  });
+
+  assetCollisionRadiusInput.addEventListener("input", () => {
+    setAssetCollisionRadius(Number(assetCollisionRadiusInput.value));
+  });
+
+  assetHealthInput.addEventListener("input", () => {
+    setAssetHealth(Number(assetHealthInput.value));
+  });
+
+  assetSettingsSaveButton.addEventListener("click", () => {
+    void saveActiveAssetSettings();
   });
 
   renderer.domElement.addEventListener("pointerdown", (event) => {
@@ -273,9 +475,12 @@ export function startAssetRenderer(app: HTMLDivElement): void {
     renderer.dispose();
   });
 
+  applyActiveAsset();
+  applyCollisionVolume();
   applyStateToControls();
+  applyRenderMode();
   resize();
-  if (state.animation === "fire") rig.triggerFire();
+  if (state.asset === "player" && state.animation === "fire") rigs.player.triggerFire();
   animate();
 }
 
@@ -291,9 +496,14 @@ function createAssetRendererMarkup(state: AssetRendererState): string {
     (asset) => `<option value="${asset.id}" ${asset.id === state.asset ? "selected" : ""}>${asset.label}</option>`,
   ).join("");
 
-  const stateOptions = ANIMATION_STATES.map(
+  const stateOptions = animationOptions(state.asset).map(
     (entry) =>
       `<option value="${entry.id}" ${entry.id === state.animation ? "selected" : ""}>${entry.label}</option>`,
+  ).join("");
+
+  const renderModeButtons = RENDER_MODES.map(
+    (mode) =>
+      `<button type="button" data-render-mode="${mode.id}" class="${mode.id === state.renderMode ? "selected" : ""}">${mode.label}</button>`,
   ).join("");
 
   return `
@@ -301,49 +511,82 @@ function createAssetRendererMarkup(state: AssetRendererState): string {
       <section class="asset-renderer-stage" aria-label="Asset preview">
         <div id="assetRendererCanvas" class="asset-renderer-canvas"></div>
         <div class="asset-renderer-readout">
-          <div><span>Asset</span><strong id="assetName"></strong></div>
-          <div><span>State</span><strong id="stateName"></strong></div>
-          <div><span>Camera</span><strong id="cameraLabel"></strong></div>
+          <div><span>Render Calls</span><strong id="renderCalls">0</strong></div>
+          <div><span>Triangles</span><strong id="triangleCount">0</strong></div>
         </div>
       </section>
       <aside class="asset-renderer-panel" aria-label="Asset renderer controls">
         <div class="asset-renderer-title">
-          <p>Dev Tool</p>
-          <h1>Asset Renderer</h1>
+          <h1>Asset Editor</h1>
         </div>
         <label>
           <span>Asset</span>
           <select id="assetSelect">${assetOptions}</select>
         </label>
-        <div class="control-group">
-          <span>Angle</span>
-          <div class="segmented-controls">${angleButtons}</div>
-        </div>
-        <div class="control-group">
-          <span>Camera Distance <strong id="cameraDistanceValue">${state.cameraDistance.toFixed(2)}x</strong></span>
-          <div class="segmented-controls camera-distance-controls">
-            <button id="cameraCloserButton" type="button">Closer</button>
-            <button id="cameraResetButton" type="button">Reset</button>
-            <button id="cameraAwayButton" type="button">Away</button>
+        <section class="asset-renderer-section" aria-label="Render settings">
+          <h2>Render Settings</h2>
+          <div class="control-group">
+            <span>Angle</span>
+            <div class="segmented-controls">${angleButtons}</div>
           </div>
-        </div>
-        <label>
-          <span>Animation</span>
-          <select id="animationSelect">${stateOptions}</select>
-        </label>
-        <label class="toggle-row">
-          <span>Playback</span>
-          <input id="playToggle" type="checkbox" ${state.playing ? "checked" : ""} />
-        </label>
-        <label>
-          <span>Speed <strong id="speedValue">${state.speed.toFixed(1)}x</strong></span>
-          <input id="speedInput" type="range" min="0.1" max="2.5" step="0.1" value="${state.speed}" />
-        </label>
-        <div class="asset-renderer-metrics">
-          <div><span>Render Calls</span><strong id="renderCalls">0</strong></div>
-          <div><span>Triangles</span><strong id="triangleCount">0</strong></div>
-        </div>
-        <a href="/" class="asset-renderer-link">Back to Game</a>
+          <div class="control-group">
+            <span>Camera Distance <strong id="cameraDistanceValue">${state.cameraDistance.toFixed(2)}x</strong></span>
+            <div class="segmented-controls camera-distance-controls">
+              <button id="cameraCloserButton" type="button">Closer</button>
+              <button id="cameraResetButton" type="button">Reset</button>
+              <button id="cameraAwayButton" type="button">Away</button>
+            </div>
+          </div>
+          <label>
+            <span>Animation</span>
+            <select id="animationSelect">${stateOptions}</select>
+          </label>
+          <div class="control-group">
+            <span>Render Mode</span>
+            <div class="segmented-controls">${renderModeButtons}</div>
+          </div>
+          <label class="toggle-row">
+            <span>Show Collision Volume</span>
+            <input id="collisionToggle" type="checkbox" ${state.collisionVisible ? "checked" : ""} />
+          </label>
+          <label class="toggle-row">
+            <span>Playback</span>
+            <input id="playToggle" type="checkbox" ${state.playing ? "checked" : ""} />
+          </label>
+          <label>
+            <span>Speed <strong id="speedValue">${state.speed.toFixed(1)}x</strong></span>
+            <input id="speedInput" type="range" min="0.1" max="2.5" step="0.1" value="${state.speed}" />
+          </label>
+        </section>
+        <section class="asset-renderer-section" aria-label="Asset settings">
+          <h2>Asset Settings</h2>
+          <label>
+            <span>Collision Radius</span>
+            <input
+              id="assetCollisionRadiusInput"
+              type="number"
+              min="${COLLISION_RADIUS_MIN}"
+              max="${COLLISION_RADIUS_MAX}"
+              step="0.01"
+              value="${state.assetSettings[state.asset].collision.radius.toFixed(2)}"
+            />
+          </label>
+          <label>
+            <span>Health</span>
+            <input
+              id="assetHealthInput"
+              type="number"
+              min="${HEALTH_MIN}"
+              max="${HEALTH_MAX}"
+              step="1"
+              value="${state.assetSettings[state.asset].health}"
+            />
+          </label>
+          <div class="asset-settings-actions">
+            <button id="assetSettingsSaveButton" type="button">Save Asset Settings</button>
+            <span id="assetSettingsStatus">Loaded from code</span>
+          </div>
+        </section>
       </aside>
     </main>
   `;
@@ -351,14 +594,112 @@ function createAssetRendererMarkup(state: AssetRendererState): string {
 
 function readStateFromUrl(): AssetRendererState {
   const params = new URLSearchParams(window.location.search);
+  const asset = toAssetId(params.get("asset"));
+
   return {
-    asset: toAssetId(params.get("asset")),
+    asset,
     angle: toAngleId(params.get("angle")),
-    animation: toAnimationStateId(params.get("state") ?? params.get("animation")),
+    animation: toAnimationStateId(asset, params.get("state") ?? params.get("animation")),
     cameraDistance: clamp(Number(params.get("distance") ?? STANDARD_CAMERA_DISTANCE), CAMERA_DISTANCE_MIN, CAMERA_DISTANCE_MAX),
     speed: clamp(Number(params.get("speed") ?? "1"), 0.1, 2.5),
     playing: params.get("paused") !== "1",
+    renderMode: toRenderModeId(params.get("mode")),
+    collisionVisible: params.get("hideCollision") !== "1",
+    assetSettings: defaultAssetSettings(),
   };
+}
+
+function defaultAssetSettings(): Record<AssetId, EditableAssetSettings> {
+  return {
+    player: cloneAssetSettings({
+      collision: playerSettings.collision,
+      health: playerSettings.health,
+    }),
+    "lean-hunter": cloneAssetSettings(LEAN_HUNTER_SETTINGS),
+  };
+}
+
+function cloneAssetSettings(settings: EditableAssetSettings): EditableAssetSettings {
+  return {
+    collision: {
+      radius: settings.collision.radius,
+      height: settings.collision.height,
+    },
+    health: settings.health,
+  };
+}
+
+function setWireframe(root: THREE.Object3D, enabled: boolean): void {
+  root.traverse((object) => {
+    if (!(object instanceof THREE.Mesh)) return;
+    setMaterialWireframe(object.material, enabled);
+  });
+}
+
+function setMaterialWireframe(material: THREE.Material | THREE.Material[], enabled: boolean): void {
+  if (Array.isArray(material)) {
+    material.forEach((entry) => setMaterialWireframe(entry, enabled));
+    return;
+  }
+  if (!("wireframe" in material)) return;
+  material.wireframe = enabled;
+  material.needsUpdate = true;
+}
+
+function measureAsset(root: THREE.Object3D): AssetMetrics {
+  const metrics: AssetMetrics = { renderCalls: 0, triangles: 0 };
+
+  root.traverseVisible((object) => {
+    if (!(object instanceof THREE.Mesh)) return;
+    const renderCalls = countMeshRenderCalls(object);
+    if (renderCalls === 0) return;
+
+    metrics.renderCalls += renderCalls;
+    metrics.triangles += countRenderedTriangles(object.geometry, object.material);
+  });
+
+  return metrics;
+}
+
+function countMeshRenderCalls(mesh: THREE.Mesh): number {
+  const material = mesh.material;
+  if (Array.isArray(material)) {
+    if (mesh.geometry.groups.length === 0) {
+      return material.filter((entry) => entry.visible).length;
+    }
+
+    return mesh.geometry.groups.filter((group) => material[group.materialIndex ?? 0]?.visible ?? true).length;
+  }
+
+  return material.visible ? 1 : 0;
+}
+
+function countRenderedTriangles(
+  geometry: THREE.BufferGeometry,
+  material: THREE.Material | THREE.Material[],
+): number {
+  const indexCount = geometry.index?.count ?? geometry.getAttribute("position")?.count ?? 0;
+  const drawStart = Math.min(geometry.drawRange.start, indexCount);
+  const drawEnd =
+    geometry.drawRange.count === Infinity
+      ? indexCount
+      : Math.min(indexCount, geometry.drawRange.start + geometry.drawRange.count);
+
+  if (geometry.groups.length === 0) {
+    return Math.floor(Math.max(0, drawEnd - drawStart) / 3);
+  }
+
+  return geometry.groups.reduce((total, group) => {
+    if (!isGroupMaterialVisible(material, group.materialIndex ?? 0)) return total;
+    const groupStart = Math.max(group.start, drawStart);
+    const groupEnd = Math.min(group.start + group.count, drawEnd);
+    return total + Math.floor(Math.max(0, groupEnd - groupStart) / 3);
+  }, 0);
+}
+
+function isGroupMaterialVisible(material: THREE.Material | THREE.Material[], materialIndex: number): boolean {
+  if (!Array.isArray(material)) return material.visible;
+  return material[materialIndex]?.visible ?? true;
 }
 
 function createInspectionFloor(): THREE.Group {
@@ -378,6 +719,59 @@ function createInspectionFloor(): THREE.Group {
   floor.receiveShadow = true;
   root.add(grid, floor);
   return root;
+}
+
+function createCollisionVolume(): {
+  root: THREE.Group;
+  ring: THREE.Mesh<THREE.RingGeometry, THREE.MeshBasicMaterial>;
+  cylinder: THREE.Mesh<THREE.CylinderGeometry, THREE.MeshBasicMaterial>;
+} {
+  const root = new THREE.Group();
+  root.name = "collision-volume-preview";
+
+  const ring = new THREE.Mesh(
+    new THREE.RingGeometry(0.98, 1, 96),
+    new THREE.MeshBasicMaterial({
+      color: 0xffd166,
+      transparent: true,
+      opacity: 0.95,
+      side: THREE.DoubleSide,
+      depthWrite: false,
+    }),
+  );
+  ring.name = "collision-ground-circle";
+  ring.rotation.x = -Math.PI / 2;
+  ring.position.y = 0.012;
+
+  const cylinder = new THREE.Mesh(
+    new THREE.CylinderGeometry(1, 1, 1, 96, 1, true),
+    new THREE.MeshBasicMaterial({
+      color: 0xffd166,
+      transparent: true,
+      opacity: 0.16,
+      side: THREE.DoubleSide,
+      depthWrite: false,
+    }),
+  );
+  cylinder.name = "collision-cylinder";
+  cylinder.renderOrder = 10;
+  ring.renderOrder = 11;
+
+  root.add(cylinder, ring);
+  return { root, ring, cylinder };
+}
+
+function updateCollisionVolume(
+  volume: {
+    ring: THREE.Mesh<THREE.RingGeometry, THREE.MeshBasicMaterial>;
+    cylinder: THREE.Mesh<THREE.CylinderGeometry, THREE.MeshBasicMaterial>;
+  },
+  radius: number,
+  height: number,
+): void {
+  volume.ring.scale.setScalar(radius);
+  volume.cylinder.scale.set(radius, height, radius);
+  volume.cylinder.position.y = height * 0.5;
 }
 
 function addInspectionLights(scene: THREE.Scene): void {
@@ -416,7 +810,7 @@ function addAxisMarkers(scene: THREE.Scene): void {
 }
 
 function toAssetId(value: string | null | undefined): AssetId {
-  return value === "player" ? value : "player";
+  return value === "player" || value === "lean-hunter" ? value : "player";
 }
 
 function toAngleId(value: string | null | undefined): AngleId {
@@ -425,14 +819,45 @@ function toAngleId(value: string | null | undefined): AngleId {
     : "isometric";
 }
 
-function toAnimationStateId(value: string | null | undefined): AnimationStateId {
-  return value === "idle" ||
+function toAnimationStateId(asset: AssetId, value: string | null | undefined): AnimationStateId {
+  return ensureAnimationForAsset(asset, isAnimationStateId(value) ? value : "idle");
+}
+
+function ensureAnimationForAsset(asset: AssetId, animation: AnimationStateId): AnimationStateId {
+  return animationOptions(asset).some((entry) => entry.id === animation) ? animation : "idle";
+}
+
+function animationOptions(asset: AssetId): Array<{ id: AnimationStateId; label: string }> {
+  return ASSET_DEFINITIONS[asset].animations;
+}
+
+function syncAnimationOptions(select: HTMLSelectElement, state: AssetRendererState): void {
+  const optionsMarkup = animationOptions(state.asset)
+    .map((entry) => `<option value="${entry.id}" ${entry.id === state.animation ? "selected" : ""}>${entry.label}</option>`)
+    .join("");
+  if (select.innerHTML !== optionsMarkup) {
+    select.innerHTML = optionsMarkup;
+  }
+}
+
+function isAnimationStateId(value: string | null | undefined): value is AnimationStateId {
+  return (
+    value === "idle" ||
     value === "walk" ||
     value === "fire" ||
     value === "damaged" ||
-    value === "low-health"
-    ? value
-    : "idle";
+    value === "low-health" ||
+    value === "melee" ||
+    value === "death"
+  );
+}
+
+function isLeanHunterAnimationId(animation: AnimationStateId): animation is LeanHunterAnimationId {
+  return animation === "idle" || animation === "walk" || animation === "melee" || animation === "death";
+}
+
+function toRenderModeId(value: string | null | undefined): RenderModeId {
+  return value === "wireframe" ? value : "shaded";
 }
 
 function clamp(value: number, min: number, max: number): number {

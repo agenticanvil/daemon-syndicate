@@ -1,4 +1,3 @@
-import { startAssetRenderer } from "./assetRenderer";
 import { Game } from "./game";
 import { createPerfRecorder, type PerfRecorder } from "./perf";
 import { createGameScene } from "./scene";
@@ -21,10 +20,20 @@ if (!app) {
   throw new Error("Missing #app root");
 }
 
-if (routePath === "/dev/asset-renderer") {
-  document.title = "Asset Renderer | Daemon Syndicate";
-  startAssetRenderer(app);
-} else {
+void startApp(app, routePath);
+
+async function startApp(app: HTMLDivElement, routePath: string): Promise<void> {
+  if (routePath === "/dev/asset-renderer") {
+    document.title = "Asset Editor | Daemon Syndicate";
+    if (import.meta.env.DEV) {
+      const { startAssetRenderer } = await import("./assetRenderer");
+      startAssetRenderer(app);
+    } else {
+      app.innerHTML = "";
+    }
+    return;
+  }
+
   startGame(app);
 }
 

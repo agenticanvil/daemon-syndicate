@@ -1,9 +1,10 @@
 import * as THREE from "three";
+import { LEAN_HUNTER_SETTINGS } from "./assets/enemies/leanHunterAsset";
+import { distance2D, overlaps2D, withinRadius2D, type CollisionBody2D, type CollisionLayer } from "./collision";
 import {
   AMMO_DROP_AMOUNT,
   ENERGY_DROP_AMOUNT,
   ENERGY_REGEN_PER_SECOND,
-  ENEMY_RADIUS,
   HEALTH_DROP_AMOUNT,
   LEVEL_HEIGHT,
   LEVEL_WIDTH,
@@ -15,13 +16,17 @@ import {
   SPAWN_INTERVAL,
   TILE_SIZE,
 } from "./constants";
-import { generateLevel, isWalkable, randomSpawnPoint, tileToWorld, type LevelData } from "./level";
+import { exitGateToWorld, generateLevel, isWalkable, randomSpawnPoint, tileToWorld, type LevelData } from "./level";
 import type { PerfRecorder } from "./perf";
 import type { GameScene } from "./scene";
 import type { Ui } from "./ui";
 import type { DamageText, Enemy, Pickup, PlayerResources, Projectile, ResourceKind } from "./types";
 
 const PLAYER_MODEL_FORWARD_OFFSET = Math.PI;
+const MOVEMENT_EPSILON = 0.0001;
+const ENEMY_ATTACK_PROXIMITY = 0.42;
+const ENEMY_STOP_PROXIMITY = 0.18;
+const ENEMY_DEATH_DURATION = 0.5;
 
 export class Game {
   private readonly clock = new THREE.Clock();
@@ -35,6 +40,12 @@ export class Game {
   private readonly damageTexts: DamageText[] = [];
   private readonly novaMeshes: THREE.Mesh[] = [];
   private readonly maxResources: PlayerResources = { ...PLAYER_MAX };
+  private readonly movementInput = new THREE.Vector3();
+  private readonly screenRight = new THREE.Vector3();
+  private readonly screenUp = new THREE.Vector3();
+  private readonly aimForward = new THREE.Vector3();
+  private readonly aimRight = new THREE.Vector3();
+  private readonly playerCollisionBody: CollisionBody2D;
 
   private resources: PlayerResources = { ...PLAYER_MAX };
   private started = false;
@@ -56,9 +67,15 @@ export class Game {
     private readonly ui: Ui,
     private readonly perf: PerfRecorder,
   ) {
+    this.playerCollisionBody = {
+      position: this.world.player.position,
+      radius: PLAYER_RADIUS,
+      collisionLayer: 0,
+    };
     this.currentLevel = generateLevel(this.levelNumber);
     this.world.renderLevel(this.currentLevel);
     this.world.player.position.copy(tileToWorld(this.currentLevel.start));
+    this.updatePlayerCollisionLayer();
     this.resetReticle();
   }
 
@@ -143,6 +160,7 @@ export class Game {
     this.projectiles.push({
       mesh,
       velocity: direction.multiplyScalar(18),
+      collisionLayer: this.currentCollisionLayer(),
       life: 1.05,
       damage: 34,
       radius: 0.28,
@@ -164,8 +182,8 @@ export class Game {
     this.novaMeshes.push(mesh);
 
     for (const enemy of this.enemies) {
-      const distance = enemy.mesh.position.distanceTo(this.world.player.position);
-      if (distance <= radius) {
+      if (enemy.deathTimer !== undefined) continue;
+      if (withinRadius2D(enemy, this.playerCollisionBody, radius)) {
         this.damageEnemy(enemy, 58, true);
         const push = enemy.mesh.position.clone().sub(this.world.player.position).setY(0).normalize();
         enemy.mesh.position.addScaledVector(push, 1.2);
@@ -179,24 +197,27 @@ export class Game {
   private spawnEnemy(): void {
     const spawn = randomSpawnPoint(this.currentLevel);
     const elite = Math.random() < Math.min(0.08 + this.wave * 0.015, 0.26);
-    const mesh = new THREE.Mesh(
-      elite ? new THREE.DodecahedronGeometry(0.68, 0) : new THREE.ConeGeometry(0.54, 1.15, 6),
-      elite ? this.world.materials.eliteEnemy : this.world.materials.enemy,
-    );
-    mesh.castShadow = true;
-    mesh.position.set(spawn.x, elite ? 0.72 : 0.58, spawn.z);
+    const rig = elite ? undefined : this.world.createLeanHunterRig();
+    const mesh = rig?.root ?? new THREE.Mesh(new THREE.DodecahedronGeometry(0.68, 0), this.world.materials.eliteEnemy);
+    if (mesh instanceof THREE.Mesh) {
+      mesh.castShadow = true;
+    }
+    mesh.position.set(spawn.x, elite ? 0.72 : 0, spawn.z);
     this.world.scene.add(mesh);
 
     this.enemies.push({
       mesh,
-      hp: elite ? 118 + this.wave * 8 : 70 + this.wave * 5,
+      updateRig: rig ? (animation, dt) => rig.update({ animation }, dt) : undefined,
+      collisionLayer: this.currentCollisionLayer(),
+      hp: elite ? 118 + this.wave * 8 : LEAN_HUNTER_SETTINGS.health + this.wave * 5,
       speed: elite ? 2.2 + this.wave * 0.05 : 2.8 + this.wave * 0.07,
-      radius: elite ? 0.68 : ENEMY_RADIUS,
+      radius: elite ? 0.68 : LEAN_HUNTER_SETTINGS.collision.radius,
       attackTimer: 0,
     });
   }
 
   private damageEnemy(enemy: Enemy, amount: number, showText: boolean): void {
+    if (enemy.deathTimer !== undefined) return;
     enemy.hp -= amount;
     if (showText) {
       this.showDamageText(enemy.mesh.position, Math.round(amount).toString());
@@ -212,11 +233,7 @@ export class Game {
   }
 
   private applyMovement(dt: number): void {
-    const input = new THREE.Vector3(
-      (this.keys.has("KeyD") ? 1 : 0) - (this.keys.has("KeyA") ? 1 : 0),
-      0,
-      (this.keys.has("KeyS") ? 1 : 0) - (this.keys.has("KeyW") ? 1 : 0),
-    );
+    const input = this.getMovementInput();
 
     this.playerMoving = input.lengthSq() > 0;
 
@@ -226,6 +243,55 @@ export class Game {
     }
 
     this.checkGateTransition();
+  }
+
+  private getMovementInput(): THREE.Vector3 {
+    const strafe = (this.keys.has("KeyD") ? 1 : 0) - (this.keys.has("KeyA") ? 1 : 0);
+    const forward = (this.keys.has("KeyW") ? 1 : 0) - (this.keys.has("KeyS") ? 1 : 0);
+    const input = this.movementInput.set(0, 0, 0);
+
+    if (strafe === 0 && forward === 0) return input;
+
+    switch (this.ui.getMovementMode()) {
+      case "screen":
+        return this.getScreenMovementInput(input, strafe, forward);
+      case "mouse":
+        return this.getMouseMovementInput(input, strafe, forward);
+      case "isometric":
+      default:
+        return this.getIsometricMovementInput(input, strafe, forward);
+    }
+  }
+
+  private getIsometricMovementInput(input: THREE.Vector3, strafe: number, forward: number): THREE.Vector3 {
+    return input.set(strafe, 0, -forward);
+  }
+
+  private getScreenMovementInput(input: THREE.Vector3, strafe: number, forward: number): THREE.Vector3 {
+    this.world.camera.updateMatrixWorld();
+    this.screenRight.setFromMatrixColumn(this.world.camera.matrixWorld, 0).setY(0);
+    this.screenUp.setFromMatrixColumn(this.world.camera.matrixWorld, 1).setY(0);
+
+    if (this.screenRight.lengthSq() <= MOVEMENT_EPSILON || this.screenUp.lengthSq() <= MOVEMENT_EPSILON) {
+      return this.getIsometricMovementInput(input, strafe, forward);
+    }
+
+    this.screenRight.normalize();
+    this.screenUp.normalize();
+    return input.addScaledVector(this.screenRight, strafe).addScaledVector(this.screenUp, forward);
+  }
+
+  private getMouseMovementInput(input: THREE.Vector3, strafe: number, forward: number): THREE.Vector3 {
+    this.aimForward.copy(this.pointerWorld).sub(this.world.player.position).setY(0);
+
+    if (this.aimForward.lengthSq() <= MOVEMENT_EPSILON) {
+      const aimYaw = this.world.player.rotation.y - PLAYER_MODEL_FORWARD_OFFSET;
+      this.aimForward.set(Math.sin(aimYaw), 0, Math.cos(aimYaw));
+    }
+
+    this.aimForward.normalize();
+    this.aimRight.set(-this.aimForward.z, 0, this.aimForward.x);
+    return input.addScaledVector(this.aimRight, strafe).addScaledVector(this.aimForward, forward);
   }
 
   private updatePlayerAim(): void {
@@ -268,26 +334,54 @@ export class Game {
   }
 
   private checkGateTransition(): void {
-    const end = tileToWorld(this.currentLevel.end);
-    if (this.world.player.position.distanceTo(end) < 1.15) {
+    const end = exitGateToWorld(this.currentLevel.end, this.currentLevel.exitDirection);
+    if (distance2D(this.world.player.position, end) < 1.15) {
       this.loadNextLevel();
     }
   }
 
   private updateEnemies(dt: number): void {
     for (const enemy of this.enemies) {
+      if (enemy.hp <= 0 && enemy.deathTimer === undefined) {
+        enemy.deathTimer = ENEMY_DEATH_DURATION;
+        enemy.updateRig?.("death", 0);
+      }
+
+      if (enemy.deathTimer !== undefined) {
+        enemy.deathTimer -= dt;
+        enemy.updateRig?.("death", dt);
+        continue;
+      }
+
       const toPlayer = this.world.player.position.clone().sub(enemy.mesh.position).setY(0);
-      const distance = toPlayer.length();
-      if (distance > PLAYER_RADIUS + enemy.radius + 0.18) {
-        const next = enemy.mesh.position.clone().addScaledVector(toPlayer.normalize(), enemy.speed * dt);
+      const distance = distance2D(enemy.mesh.position, this.world.player.position);
+      const attackDistance = PLAYER_RADIUS + enemy.radius + ENEMY_ATTACK_PROXIMITY;
+      const pursuitDirection = toPlayer.lengthSq() > MOVEMENT_EPSILON ? toPlayer.normalize() : toPlayer;
+      let moved = false;
+
+      if (distance > PLAYER_RADIUS + enemy.radius + ENEMY_STOP_PROXIMITY) {
+        const next = enemy.mesh.position.clone().addScaledVector(pursuitDirection, enemy.speed * dt);
         if (isWalkable(this.currentLevel, next)) {
           enemy.mesh.position.copy(next);
+          moved = true;
         }
       }
 
-      enemy.mesh.rotation.y += dt * 2.4;
+      if (pursuitDirection.lengthSq() > MOVEMENT_EPSILON) {
+        enemy.mesh.rotation.y = this.getEnemyFacingYaw(pursuitDirection);
+      } else if (!enemy.updateRig) {
+        enemy.mesh.rotation.y += dt * 2.4;
+      }
+
       enemy.attackTimer -= dt;
-      if (distance < PLAYER_RADIUS + enemy.radius + 0.42 && enemy.attackTimer <= 0 && this.invulnTimer <= 0) {
+      const inAttackRange = withinRadius2D(enemy, this.playerCollisionBody, attackDistance);
+      if (inAttackRange) {
+        enemy.updateRig?.("melee", dt);
+      } else {
+        enemy.updateRig?.(moved ? "walk" : "idle", dt);
+      }
+
+      if (inAttackRange && enemy.attackTimer <= 0 && this.invulnTimer <= 0) {
         this.resources.health = Math.max(0, this.resources.health - 9);
         enemy.attackTimer = 0.72;
         this.invulnTimer = 0.14;
@@ -300,10 +394,10 @@ export class Game {
 
     for (let i = this.enemies.length - 1; i >= 0; i -= 1) {
       const enemy = this.enemies[i];
-      if (enemy.hp <= 0) {
+      if (enemy.deathTimer !== undefined && enemy.deathTimer <= 0) {
         this.maybeDropPickup(enemy.mesh.position);
         this.world.scene.remove(enemy.mesh);
-        enemy.mesh.geometry.dispose();
+        this.disposeObject3D(enemy.mesh, Boolean(enemy.updateRig));
         this.enemies.splice(i, 1);
         this.kills += 1;
         this.wave = 1 + Math.floor(this.kills / 12);
@@ -333,7 +427,7 @@ export class Game {
     mesh.position.y = 0.45;
     mesh.castShadow = true;
     this.world.scene.add(mesh);
-    this.pickups.push({ mesh, kind, amount, radius: 0.62, life: 18 });
+    this.pickups.push({ mesh, kind, collisionLayer: this.currentCollisionLayer(), amount, radius: 0.62, life: 18 });
   }
 
   private updatePickups(dt: number): void {
@@ -342,7 +436,7 @@ export class Game {
       pickup.mesh.rotation.y += dt * 2.6;
       pickup.mesh.position.y = 0.45 + Math.sin(performance.now() * 0.004 + pickup.mesh.id) * 0.08;
 
-      if (pickup.mesh.position.distanceTo(this.world.player.position) <= pickup.radius + PLAYER_RADIUS) {
+      if (overlaps2D(pickup, this.playerCollisionBody)) {
         this.resources[pickup.kind] = Math.min(
           this.maxResources[pickup.kind],
           this.resources[pickup.kind] + pickup.amount,
@@ -367,8 +461,8 @@ export class Game {
       projectile.life -= dt;
 
       for (const enemy of this.enemies) {
-        const distance = projectile.mesh.position.distanceTo(enemy.mesh.position);
-        if (distance < projectile.radius + enemy.radius) {
+        if (enemy.deathTimer !== undefined) continue;
+        if (overlaps2D(projectile, enemy)) {
           this.damageEnemy(enemy, projectile.damage, true);
           projectile.life = 0;
           break;
@@ -465,6 +559,7 @@ export class Game {
     this.currentLevel = generateLevel(this.levelNumber);
     this.world.renderLevel(this.currentLevel);
     this.world.player.position.copy(tileToWorld(this.currentLevel.start));
+    this.updatePlayerCollisionLayer();
     this.resetReticle();
     this.resources = { ...PLAYER_MAX };
     this.kills = 0;
@@ -489,6 +584,7 @@ export class Game {
     this.currentLevel = generateLevel(this.levelNumber);
     this.world.renderLevel(this.currentLevel);
     this.world.player.position.copy(tileToWorld(this.currentLevel.start));
+    this.updatePlayerCollisionLayer();
     this.resetReticle();
     this.spawnTimer = 0.35;
     this.primaryTimer = 0;
@@ -504,7 +600,7 @@ export class Game {
   private clearEntities(): void {
     for (const enemy of this.enemies.splice(0)) {
       this.world.scene.remove(enemy.mesh);
-      enemy.mesh.geometry.dispose();
+      this.disposeObject3D(enemy.mesh, Boolean(enemy.updateRig));
     }
     for (const projectile of this.projectiles.splice(0)) {
       this.world.scene.remove(projectile.mesh);
@@ -526,6 +622,42 @@ export class Game {
         mesh.material.dispose();
       }
     }
+  }
+
+  private currentCollisionLayer(): CollisionLayer {
+    return this.currentLevel.id;
+  }
+
+  private updatePlayerCollisionLayer(): void {
+    this.playerCollisionBody.collisionLayer = this.currentCollisionLayer();
+  }
+
+  private getEnemyFacingYaw(direction: THREE.Vector3): number {
+    return Math.atan2(-direction.x, -direction.z);
+  }
+
+  private disposeObject3D(object: THREE.Object3D, disposeMaterials: boolean): void {
+    object.traverse((child) => {
+      if (!(child instanceof THREE.Mesh)) return;
+      child.geometry.dispose();
+      if (!disposeMaterials) return;
+      if (Array.isArray(child.material)) {
+        child.material.forEach((material) => this.disposeMaterial(material));
+      } else {
+        this.disposeMaterial(child.material);
+      }
+    });
+  }
+
+  private disposeMaterial(material: THREE.Material): void {
+    const textures = new Set<THREE.Texture>();
+    for (const value of Object.values(material)) {
+      if (value instanceof THREE.Texture) {
+        textures.add(value);
+      }
+    }
+    textures.forEach((texture) => texture.dispose());
+    material.dispose();
   }
 
   private perfFrameArgs(dt: number): Record<string, number | string | boolean> {

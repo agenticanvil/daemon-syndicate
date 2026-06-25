@@ -35,8 +35,9 @@ export function generateLevel(id: number): LevelData {
   const path = buildMainPath(start, end, exitDirection, width, height);
   const walkable = new Set<string>();
 
-  for (const tile of path) {
-    carveRoom(walkable, tile, width, height, path.length < 10 ? 1 : 0);
+  carveRoom(walkable, path[0], width, height, 1);
+  for (let i = 1; i < path.length; i += 1) {
+    carveCorridor(walkable, path[i - 1], path[i], width, height);
   }
 
   const branchCount = 3 + Math.min(Math.floor(id / 2), 4);
@@ -72,6 +73,16 @@ export function tileToWorld(tile: TileCoord): THREE.Vector3 {
     0,
     (tile.y - (LEVEL_HEIGHT - 1) / 2) * TILE_SIZE,
   );
+}
+
+export function exitGateToWorld(tile: TileCoord, direction: ExitDirection): THREE.Vector3 {
+  const position = tileToWorld(tile);
+  if (direction === "east") {
+    position.x += TILE_SIZE * 0.5;
+  } else {
+    position.z -= TILE_SIZE * 0.5;
+  }
+  return position;
 }
 
 export function worldToTile(position: THREE.Vector3): TileCoord {
@@ -140,20 +151,52 @@ function carveBranch(walkable: Set<string>, anchor: TileCoord, width: number, he
   const current = { ...anchor };
   const dir = CARDINALS[Math.floor(Math.random() * CARDINALS.length)];
   for (let i = 0; i < length; i += 1) {
+    const previous = { ...current };
     current.x = THREE.MathUtils.clamp(current.x + dir.x, 2, width - 3);
     current.y = THREE.MathUtils.clamp(current.y + dir.y, 2, height - 3);
-    carveRoom(walkable, current, width, height, Math.random() < 0.35 ? 1 : 0);
+    carveCorridor(walkable, previous, current, width, height);
+    if (Math.random() < 0.25) {
+      carveRoom(walkable, current, width, height, 1);
+    }
+  }
+}
+
+function carveCorridor(
+  walkable: Set<string>,
+  from: TileCoord,
+  to: TileCoord,
+  width: number,
+  height: number,
+): void {
+  addWalkable(walkable, to, width, height);
+
+  if (from.x !== to.x) {
+    addWalkable(walkable, { x: from.x, y: from.y + perpendicularOffset(from.y, height) }, width, height);
+    addWalkable(walkable, { x: to.x, y: to.y + perpendicularOffset(to.y, height) }, width, height);
+  }
+
+  if (from.y !== to.y) {
+    addWalkable(walkable, { x: from.x + perpendicularOffset(from.x, width), y: from.y }, width, height);
+    addWalkable(walkable, { x: to.x + perpendicularOffset(to.x, width), y: to.y }, width, height);
   }
 }
 
 function carveRoom(walkable: Set<string>, center: TileCoord, width: number, height: number, radius: number): void {
   for (let y = center.y - radius; y <= center.y + radius; y += 1) {
     for (let x = center.x - radius; x <= center.x + radius; x += 1) {
-      if (x > 0 && x < width - 1 && y > 0 && y < height - 1) {
-        walkable.add(key({ x, y }));
-      }
+      addWalkable(walkable, { x, y }, width, height);
     }
   }
+}
+
+function addWalkable(walkable: Set<string>, tile: TileCoord, width: number, height: number): void {
+  if (tile.x > 0 && tile.x < width - 1 && tile.y > 0 && tile.y < height - 1) {
+    walkable.add(key(tile));
+  }
+}
+
+function perpendicularOffset(value: number, size: number): number {
+  return value < size - 2 ? 1 : -1;
 }
 
 function distance(a: TileCoord, b: TileCoord): number {
