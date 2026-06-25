@@ -1,6 +1,7 @@
 import * as THREE from "three";
 import { ARENA_SIZE, LEVEL_HEIGHT, LEVEL_WIDTH, TILE_SIZE } from "./constants";
-import { key, neighbors, tileToWorld, type LevelData } from "./level";
+import { loadLeanHunterRig, type LeanHunterRig } from "./assets/enemies/leanHunterAsset";
+import { exitGateToWorld, key, neighbors, tileToWorld, type LevelData } from "./level";
 import { loadPlayerRig, type PlayerRig } from "./playerAsset";
 
 export type GameScene = {
@@ -13,6 +14,7 @@ export type GameScene = {
   playerBody: THREE.Mesh<THREE.BufferGeometry, THREE.MeshStandardMaterial>;
   reticle: THREE.Mesh;
   renderLevel: (level: LevelData) => void;
+  createLeanHunterRig: () => LeanHunterRig;
   materials: {
     enemy: THREE.MeshStandardMaterial;
     eliteEnemy: THREE.MeshStandardMaterial;
@@ -51,12 +53,13 @@ export function createGameScene(app: HTMLDivElement): GameScene {
   scene.add(levelRoot);
 
   const loader = new THREE.TextureLoader();
+  const anisotropy = renderer.capabilities.getMaxAnisotropy();
   const floorTexture = loader.load("/assets/facility-floor.png");
   floorTexture.colorSpace = THREE.SRGBColorSpace;
   floorTexture.wrapS = THREE.RepeatWrapping;
   floorTexture.wrapT = THREE.RepeatWrapping;
   floorTexture.repeat.set(1, 1);
-  floorTexture.anisotropy = renderer.capabilities.getMaxAnisotropy();
+  floorTexture.anisotropy = anisotropy;
 
   const floorMaterial = new THREE.MeshStandardMaterial({
     map: floorTexture,
@@ -71,7 +74,7 @@ export function createGameScene(app: HTMLDivElement): GameScene {
   floor.rotation.x = -Math.PI / 2;
   scene.add(floor);
 
-  const playerRig = loadPlayerRig(loader, renderer.capabilities.getMaxAnisotropy());
+  const playerRig = loadPlayerRig(loader, anisotropy);
   const player = playerRig.root;
   const playerBody = playerRig.body;
   scene.add(player);
@@ -196,7 +199,24 @@ export function createGameScene(app: HTMLDivElement): GameScene {
 
   resize();
 
-  return { renderer, scene, camera, floor, player, playerRig, playerBody, reticle, renderLevel, materials, resize };
+  function createLeanHunterRig(): LeanHunterRig {
+    return loadLeanHunterRig(loader, anisotropy);
+  }
+
+  return {
+    renderer,
+    scene,
+    camera,
+    floor,
+    player,
+    playerRig,
+    playerBody,
+    reticle,
+    renderLevel,
+    createLeanHunterRig,
+    materials,
+    resize,
+  };
 }
 
 function addLighting(scene: THREE.Scene): void {
@@ -225,7 +245,7 @@ function addGate(
   active: boolean,
   direction: "north" | "east" = "north",
 ): void {
-  const position = tileToWorld(tile);
+  const position = exitGateToWorld(tile, direction);
   const group = new THREE.Group();
   const material = new THREE.MeshStandardMaterial({
     color,

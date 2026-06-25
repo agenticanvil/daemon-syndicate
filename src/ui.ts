@@ -1,5 +1,7 @@
 import type { PlayerResources } from "./types";
 
+export type MovementControlMode = "isometric" | "screen" | "mouse";
+
 export type HudState = {
   resources: PlayerResources;
   maxResources: PlayerResources;
@@ -18,6 +20,7 @@ export type Ui = {
   showGameOver: (kills: number) => void;
   hideOverlay: () => void;
   setPaused: (paused: boolean) => void;
+  getMovementMode: () => MovementControlMode;
   updateHud: (state: HudState) => void;
 };
 
@@ -57,12 +60,52 @@ export function createUi(app: HTMLDivElement): Ui {
       </div>
     </div>
     <div class="pause-menu hidden" id="pauseMenu" role="dialog" aria-modal="true" aria-labelledby="pauseTitle">
-      <div class="pause-panel">
+      <div class="pause-panel" data-pause-view="main">
         <div class="pause-head">
-          <h2 id="pauseTitle">Paused</h2>
-          <button id="resume">Resume</button>
+          <span aria-hidden="true">///</span>
+          <h2 id="pauseTitle">Mission Paused</h2>
+          <span aria-hidden="true">///</span>
         </div>
-        <section>
+        <nav class="pause-view pause-view-main" aria-label="Pause menu">
+          <button class="pause-option" id="resume">
+            <span class="pause-icon icon-continue" aria-hidden="true"></span>
+            <span>Continue</span>
+          </button>
+          <button class="pause-option" id="settingsButton">
+            <span class="pause-icon icon-settings" aria-hidden="true"></span>
+            <span>Settings</span>
+          </button>
+          <button class="pause-option" id="helpButton">
+            <span class="pause-icon icon-help" aria-hidden="true"></span>
+            <span>Help</span>
+          </button>
+        </nav>
+        <section class="pause-view pause-view-settings" aria-label="Settings">
+          <button class="pause-back" id="settingsBack" type="button">Back</button>
+          <div class="pause-section">
+            <h3>Controls</h3>
+            <div class="setting-row">
+              <div>
+                <span class="setting-label">Movement</span>
+              </div>
+              <div class="movement-options" role="group" aria-label="Movement">
+                <button class="movement-option" type="button" aria-pressed="false" data-movement-mode="isometric">Isometric WASD</button>
+                <button class="movement-option selected" type="button" aria-pressed="true" data-movement-mode="screen">Screen WASD</button>
+                <button class="movement-option" type="button" aria-pressed="false" data-movement-mode="mouse">Mouse WASD</button>
+              </div>
+            </div>
+          </div>
+          <div class="pause-section">
+            <h3>Graphics</h3>
+            <div class="empty-section" aria-hidden="true"></div>
+          </div>
+          <div class="pause-section">
+            <h3>Audio</h3>
+            <div class="empty-section" aria-hidden="true"></div>
+          </div>
+        </section>
+        <section class="pause-view pause-view-help" aria-label="Help">
+          <button class="pause-back" id="helpBack" type="button">Back</button>
           <h3>Help</h3>
           <dl>
             <div><dt>Move</dt><dd>WASD</dd></div>
@@ -80,8 +123,13 @@ export function createUi(app: HTMLDivElement): Ui {
 
   const overlay = document.querySelector<HTMLDivElement>("#overlay")!;
   const pauseMenu = document.querySelector<HTMLDivElement>("#pauseMenu")!;
+  const pausePanel = document.querySelector<HTMLDivElement>(".pause-panel")!;
   const startButton = document.querySelector<HTMLButtonElement>("#start")!;
   const resumeButton = document.querySelector<HTMLButtonElement>("#resume")!;
+  const settingsButton = document.querySelector<HTMLButtonElement>("#settingsButton")!;
+  const helpButton = document.querySelector<HTMLButtonElement>("#helpButton")!;
+  const settingsBack = document.querySelector<HTMLButtonElement>("#settingsBack")!;
+  const helpBack = document.querySelector<HTMLButtonElement>("#helpBack")!;
   const healthValue = document.querySelector<HTMLElement>("#healthValue")!;
   const ammoValue = document.querySelector<HTMLElement>("#ammoValue")!;
   const energyValue = document.querySelector<HTMLElement>("#energyValue")!;
@@ -92,10 +140,34 @@ export function createUi(app: HTMLDivElement): Ui {
   const levelEl = document.querySelector<HTMLElement>("#level")!;
   const primaryAbility = document.querySelector<HTMLElement>("#primaryAbility")!;
   const novaAbility = document.querySelector<HTMLElement>("#novaAbility")!;
+  const movementOptions = Array.from(pausePanel.querySelectorAll<HTMLButtonElement>(".movement-option"));
+  let movementMode: MovementControlMode = "screen";
 
   function setMeter(el: HTMLElement, value: number, max: number): void {
     el.style.width = `${Math.max(0, Math.min(value / max, 1)) * 100}%`;
   }
+
+  function showPauseView(view: "main" | "settings" | "help"): void {
+    pausePanel.dataset.pauseView = view;
+  }
+
+  settingsButton.addEventListener("click", () => showPauseView("settings"));
+  helpButton.addEventListener("click", () => showPauseView("help"));
+  settingsBack.addEventListener("click", () => showPauseView("main"));
+  helpBack.addEventListener("click", () => showPauseView("main"));
+  movementOptions.forEach((option) => {
+    option.addEventListener("click", () => {
+      const nextMode = option.dataset.movementMode;
+      if (nextMode !== "isometric" && nextMode !== "screen" && nextMode !== "mouse") return;
+      movementMode = nextMode;
+
+      movementOptions.forEach((button) => {
+        const selected = button === option;
+        button.classList.toggle("selected", selected);
+        button.setAttribute("aria-pressed", selected.toString());
+      });
+    });
+  });
 
   return {
     startButton,
@@ -120,7 +192,11 @@ export function createUi(app: HTMLDivElement): Ui {
       overlay.classList.add("hidden");
     },
     setPaused(paused: boolean) {
+      if (paused) showPauseView("main");
       pauseMenu.classList.toggle("hidden", !paused);
+    },
+    getMovementMode() {
+      return movementMode;
     },
     updateHud(state: HudState) {
       const { resources, maxResources } = state;
