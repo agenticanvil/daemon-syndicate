@@ -1,5 +1,8 @@
 import * as THREE from "three";
 import type { CollisionLayer } from "./collision";
+import type { EnemyKind } from "./enemyDefinitions";
+
+export type EnemyAnimation = "idle" | "walk" | "melee" | "death";
 
 export type ResourceKind = "health" | "ammo" | "energy";
 
@@ -10,8 +13,10 @@ export type PlayerResources = {
 };
 
 export type Enemy = {
-  mesh: THREE.Object3D;
-  updateRig?: (animation: "idle" | "walk" | "melee" | "death", dt: number) => void;
+  id: number;
+  kind: EnemyKind;
+  position: THREE.Vector3;
+  facingYaw: number;
   collisionLayer: CollisionLayer;
   hp: number;
   speed: number;
@@ -23,8 +28,19 @@ export type Enemy = {
   pathRefreshTimer?: number;
 };
 
+export type EnemyDraft = Omit<Enemy, "id">;
+
+export type EnemyView = {
+  id: number;
+  root: THREE.Object3D;
+  height: number;
+  updateRig?: (animation: EnemyAnimation, dt: number) => void;
+  disposeMaterials: boolean;
+};
+
 export type Projectile = {
-  mesh: THREE.Mesh;
+  id: number;
+  position: THREE.Vector3;
   velocity: THREE.Vector3;
   collisionLayer: CollisionLayer;
   life: number;
@@ -32,13 +48,28 @@ export type Projectile = {
   radius: number;
 };
 
-export type Pickup = {
+export type ProjectileDraft = Omit<Projectile, "id">;
+
+export type ProjectileView = {
+  id: number;
   mesh: THREE.Mesh;
+};
+
+export type Pickup = {
+  id: number;
+  position: THREE.Vector3;
   kind: ResourceKind;
   collisionLayer: CollisionLayer;
   amount: number;
   radius: number;
   life: number;
+};
+
+export type PickupDraft = Omit<Pickup, "id">;
+
+export type PickupView = {
+  id: number;
+  mesh: THREE.Mesh;
 };
 
 export type DamageText = {
