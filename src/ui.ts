@@ -19,6 +19,7 @@ export type Ui = {
   showStart: () => void;
   showGameOver: (kills: number) => void;
   hideOverlay: () => void;
+  setHudVisible: (visible: boolean) => void;
   setPaused: (paused: boolean) => void;
   getMovementMode: () => MovementControlMode;
   updateHud: (state: HudState) => void;
@@ -33,7 +34,7 @@ export function createUi(app: HTMLDivElement): Ui {
         <button id="start">Deploy</button>
       </div>
     </div>
-    <div class="hud">
+    <div class="hud hidden">
       <div class="topbar">
         <div class="resource-stack">
           <div class="resource health">
@@ -122,6 +123,7 @@ export function createUi(app: HTMLDivElement): Ui {
   `;
 
   const overlay = document.querySelector<HTMLDivElement>("#overlay")!;
+  const hud = document.querySelector<HTMLDivElement>(".hud")!;
   const pauseMenu = document.querySelector<HTMLDivElement>("#pauseMenu")!;
   const pausePanel = document.querySelector<HTMLDivElement>(".pause-panel")!;
   const startButton = document.querySelector<HTMLButtonElement>("#start")!;
@@ -176,6 +178,7 @@ export function createUi(app: HTMLDivElement): Ui {
     pauseMenu,
     showStart() {
       overlay.classList.remove("hidden");
+      hud.classList.add("hidden");
       overlay.querySelector("h1")!.textContent = "Daemon Syndicate";
       overlay.querySelector("p")!.textContent =
         "Clear the corporate black-site. Manage health, ammunition, and energy while escalating incursions close in.";
@@ -183,6 +186,7 @@ export function createUi(app: HTMLDivElement): Ui {
     },
     showGameOver(kills: number) {
       overlay.classList.remove("hidden");
+      hud.classList.add("hidden");
       overlay.querySelector("h1")!.textContent = "Signal Lost";
       overlay.querySelector("p")!.textContent =
         `The syndicate contained you after ${kills} confirmed kills. Redeploy to run the arena again.`;
@@ -190,6 +194,9 @@ export function createUi(app: HTMLDivElement): Ui {
     },
     hideOverlay() {
       overlay.classList.add("hidden");
+    },
+    setHudVisible(visible: boolean) {
+      hud.classList.toggle("hidden", !visible);
     },
     setPaused(paused: boolean) {
       if (paused) showPauseView("main");

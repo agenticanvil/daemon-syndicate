@@ -96,11 +96,6 @@ export function isWalkable(level: LevelData, position: THREE.Vector3): boolean {
   return level.walkable.has(key(worldToTile(position)));
 }
 
-export function randomSpawnPoint(level: LevelData): THREE.Vector3 {
-  const source = level.spawnPoints.length > 0 ? level.spawnPoints : [...level.walkable].map(fromKey);
-  return tileToWorld(source[Math.floor(Math.random() * source.length)]);
-}
-
 export function neighbors(tile: TileCoord): TileCoord[] {
   return CARDINALS.map((dir) => ({ x: tile.x + dir.x, y: tile.y + dir.y }));
 }

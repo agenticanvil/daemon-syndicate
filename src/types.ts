@@ -18,6 +18,9 @@ export type Enemy = {
   radius: number;
   attackTimer: number;
   deathTimer?: number;
+  path?: string[];
+  pathTarget?: string;
+  pathRefreshTimer?: number;
 };
 
 export type Projectile = {

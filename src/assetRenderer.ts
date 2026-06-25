@@ -1,15 +1,35 @@
 import * as THREE from "three";
 import {
+  ELITE_ENEMY_SETTINGS,
+  createEliteEnemyAsset,
+  type EliteEnemyAsset,
+} from "./assets/enemies/eliteEnemy/eliteEnemyAsset";
+import {
   LEAN_HUNTER_SETTINGS,
   loadLeanHunterRig,
   type LeanHunterAnimationId,
   type LeanHunterAnimationState,
   type LeanHunterRig,
 } from "./assets/enemies/leanHunterAsset";
+import {
+  AMMO_PICKUP_SETTINGS,
+  createAmmoPickupAsset,
+  type AmmoPickupAsset,
+} from "./assets/pickups/ammoPickup/ammoPickupAsset";
+import {
+  ENERGY_PICKUP_SETTINGS,
+  createEnergyPickupAsset,
+  type EnergyPickupAsset,
+} from "./assets/pickups/energyPickup/energyPickupAsset";
+import {
+  HEALTH_PICKUP_SETTINGS,
+  createHealthPickupAsset,
+  type HealthPickupAsset,
+} from "./assets/pickups/healthPickup/healthPickupAsset";
 import playerSettings from "./assets/player/player.settings.json";
 import { loadPlayerRig, type PlayerAnimationState } from "./playerAsset";
 
-type AssetId = "player" | "lean-hunter";
+type AssetId = "player" | "lean-hunter" | "elite-enemy" | "health-pickup" | "ammo-pickup" | "energy-pickup";
 type AngleId = "head-on" | "side" | "behind" | "isometric";
 type PlayerAnimationStateId = "idle" | "walk" | "fire" | "damaged" | "low-health";
 type AnimationStateId = PlayerAnimationStateId | LeanHunterAnimationId;
@@ -79,11 +99,39 @@ const ASSET_DEFINITIONS = {
       { id: "death", label: "Death" },
     ],
   },
+  "elite-enemy": {
+    label: "Elite Enemy",
+    targetY: 0.72,
+    collision: ELITE_ENEMY_SETTINGS.collision,
+    animations: [{ id: "idle", label: "Idle" }],
+  },
+  "health-pickup": {
+    label: "Health Pickup",
+    targetY: 0.45,
+    collision: HEALTH_PICKUP_SETTINGS.collision,
+    animations: [{ id: "idle", label: "Idle" }],
+  },
+  "ammo-pickup": {
+    label: "Ammo Pickup",
+    targetY: 0.45,
+    collision: AMMO_PICKUP_SETTINGS.collision,
+    animations: [{ id: "idle", label: "Idle" }],
+  },
+  "energy-pickup": {
+    label: "Energy Pickup",
+    targetY: 0.45,
+    collision: ENERGY_PICKUP_SETTINGS.collision,
+    animations: [{ id: "idle", label: "Idle" }],
+  },
 } satisfies Record<AssetId, AssetDefinition>;
 
 const ASSETS: Array<{ id: AssetId; label: string }> = [
   { id: "player", label: ASSET_DEFINITIONS.player.label },
   { id: "lean-hunter", label: ASSET_DEFINITIONS["lean-hunter"].label },
+  { id: "elite-enemy", label: ASSET_DEFINITIONS["elite-enemy"].label },
+  { id: "health-pickup", label: ASSET_DEFINITIONS["health-pickup"].label },
+  { id: "ammo-pickup", label: ASSET_DEFINITIONS["ammo-pickup"].label },
+  { id: "energy-pickup", label: ASSET_DEFINITIONS["energy-pickup"].label },
 ];
 const STANDARD_CAMERA_DISTANCE = 1;
 const CAMERA_DISTANCE_STEP = 0.15;
@@ -96,6 +144,10 @@ const HEALTH_MAX = 999;
 const ASSET_SETTINGS_ENDPOINTS = {
   player: "/__dev/asset-settings/player",
   "lean-hunter": "/__dev/asset-settings/lean-hunter",
+  "elite-enemy": "/__dev/asset-settings/elite-enemy",
+  "health-pickup": "/__dev/asset-settings/health-pickup",
+  "ammo-pickup": "/__dev/asset-settings/ammo-pickup",
+  "energy-pickup": "/__dev/asset-settings/energy-pickup",
 } satisfies Record<AssetId, string>;
 
 const CAMERA_POSES: Record<AngleId, CameraPose> = {
@@ -154,8 +206,12 @@ export function startAssetRenderer(app: HTMLDivElement): void {
   const rigs = {
     player: loadPlayerRig(loader, renderer.capabilities.getMaxAnisotropy()),
     "lean-hunter": loadLeanHunterRig(loader, renderer.capabilities.getMaxAnisotropy()),
+    "elite-enemy": createEliteEnemyAsset(),
+    "health-pickup": createHealthPickupAsset(),
+    "ammo-pickup": createAmmoPickupAsset(),
+    "energy-pickup": createEnergyPickupAsset(),
   };
-  scene.add(rigs.player.root, rigs["lean-hunter"].root);
+  scene.add(...ASSETS.map((asset) => rigs[asset.id].root));
 
   const floor = createInspectionFloor();
   scene.add(floor);
@@ -172,14 +228,15 @@ export function startAssetRenderer(app: HTMLDivElement): void {
   let customOrbitRadius = 5.2;
   let usingCustomOrbit = false;
 
-  function activeRig(): typeof rigs.player | LeanHunterRig {
+  function activeRig(): typeof rigs.player | LeanHunterRig | EliteEnemyAsset | HealthPickupAsset | AmmoPickupAsset | EnergyPickupAsset {
     return rigs[state.asset];
   }
 
   function applyActiveAsset(): void {
     target.y = ASSET_DEFINITIONS[state.asset].targetY;
-    rigs.player.root.visible = state.asset === "player";
-    rigs["lean-hunter"].root.visible = state.asset === "lean-hunter";
+    for (const asset of ASSETS) {
+      rigs[asset.id].root.visible = state.asset === asset.id;
+    }
     applyCollisionVolume();
   }
 
@@ -317,8 +374,9 @@ export function startAssetRenderer(app: HTMLDivElement): void {
   }
 
   function applyRenderMode(): void {
-    setWireframe(rigs.player.root, state.renderMode === "wireframe");
-    setWireframe(rigs["lean-hunter"].root, state.renderMode === "wireframe");
+    for (const asset of ASSETS) {
+      setWireframe(rigs[asset.id].root, state.renderMode === "wireframe");
+    }
   }
 
   function updateCamera(): void {
@@ -380,7 +438,7 @@ export function startAssetRenderer(app: HTMLDivElement): void {
     updateCamera();
     if (state.asset === "player") {
       rigs.player.update(playerAnimationState(dt), dt);
-    } else {
+    } else if (state.asset === "lean-hunter") {
       rigs["lean-hunter"].update(leanHunterAnimationState(), dt);
     }
     renderer.render(scene, camera);
@@ -616,6 +674,10 @@ function defaultAssetSettings(): Record<AssetId, EditableAssetSettings> {
       health: playerSettings.health,
     }),
     "lean-hunter": cloneAssetSettings(LEAN_HUNTER_SETTINGS),
+    "elite-enemy": cloneAssetSettings(ELITE_ENEMY_SETTINGS),
+    "health-pickup": cloneAssetSettings(HEALTH_PICKUP_SETTINGS),
+    "ammo-pickup": cloneAssetSettings(AMMO_PICKUP_SETTINGS),
+    "energy-pickup": cloneAssetSettings(ENERGY_PICKUP_SETTINGS),
   };
 }
 
@@ -810,7 +872,18 @@ function addAxisMarkers(scene: THREE.Scene): void {
 }
 
 function toAssetId(value: string | null | undefined): AssetId {
-  return value === "player" || value === "lean-hunter" ? value : "player";
+  return isAssetId(value) ? value : "player";
+}
+
+function isAssetId(value: string | null | undefined): value is AssetId {
+  return (
+    value === "player" ||
+    value === "lean-hunter" ||
+    value === "elite-enemy" ||
+    value === "health-pickup" ||
+    value === "ammo-pickup" ||
+    value === "energy-pickup"
+  );
 }
 
 function toAngleId(value: string | null | undefined): AngleId {

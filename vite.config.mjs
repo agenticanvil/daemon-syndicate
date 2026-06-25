@@ -5,6 +5,10 @@ import { defineConfig } from "vite";
 const assetSettingsFiles = {
   player: "src/assets/player/player.settings.json",
   "lean-hunter": "src/assets/enemies/leanHunter.settings.json",
+  "elite-enemy": "src/assets/enemies/eliteEnemy/eliteEnemy.settings.json",
+  "health-pickup": "src/assets/pickups/healthPickup/healthPickup.settings.json",
+  "ammo-pickup": "src/assets/pickups/ammoPickup/ammoPickup.settings.json",
+  "energy-pickup": "src/assets/pickups/energyPickup/energyPickup.settings.json",
 };
 
 export default defineConfig({
