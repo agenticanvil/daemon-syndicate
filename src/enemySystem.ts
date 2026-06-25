@@ -1,21 +1,22 @@
 import * as THREE from "three";
-import { ELITE_ENEMY_SETTINGS } from "./assets/enemies/eliteEnemy/eliteEnemyAsset";
-import { LEAN_HUNTER_SETTINGS } from "./assets/enemies/leanHunterAsset";
 import { ENEMY_BALANCE, PLAYER_BALANCE } from "./balance";
 import { distance2D, withinRadius2D, type CollisionBody2D, type CollisionLayer } from "./collision";
 import { disposeObject3D } from "./entityLifecycle";
+import { chooseEnemyDefinition } from "./enemyDefinitions";
 import { key, tileToWorld, worldToTile, type LevelData } from "./level";
 import { canMoveOnWalkableLevel, moveOnWalkableLevel } from "./movement";
 import { findWorldPath, pathDirection } from "./pathfinding";
 import type { EffectsSystem } from "./effectsSystem";
 import type { PickupSystem } from "./pickupSystem";
 import type { GameScene } from "./scene";
-import type { Enemy, PlayerResources } from "./types";
+import type { Enemy, EnemyDraft, EnemyView, PlayerResources } from "./types";
 
 const MOVEMENT_EPSILON = 0.0001;
 
 export class EnemySystem {
   private readonly enemies: Enemy[] = [];
+  private readonly enemyViews = new Map<number, EnemyView>();
+  private nextEnemyId = 1;
 
   constructor(
     private readonly world: GameScene,
@@ -56,7 +57,7 @@ export class EnemySystem {
     if (enemy.deathTimer !== undefined) return;
     enemy.hp -= amount;
     if (showText) {
-      this.effects.spawnDamageText(enemy.mesh.position, Math.round(amount).toString());
+      this.effects.spawnDamageText(enemy.position, Math.round(amount).toString());
     }
   }
 
@@ -64,16 +65,16 @@ export class EnemySystem {
     for (const enemy of this.enemies) {
       if (enemy.hp <= 0 && enemy.deathTimer === undefined) {
         enemy.deathTimer = ENEMY_BALANCE.deathDuration;
-        enemy.updateRig?.("death", 0);
+        this.enemyViews.get(enemy.id)?.updateRig?.("death", 0);
       }
 
       if (enemy.deathTimer !== undefined) {
         enemy.deathTimer -= dt;
-        enemy.updateRig?.("death", dt);
+        this.enemyViews.get(enemy.id)?.updateRig?.("death", dt);
         continue;
       }
 
-      const distance = distance2D(enemy.mesh.position, this.world.player.position);
+      const distance = distance2D(enemy.position, this.world.player.position);
       const attackDistance = PLAYER_BALANCE.radius + enemy.radius + ENEMY_BALANCE.attackProximity;
       const pursuitDirection = this.getEnemyPursuitDirection(enemy, distance, enemy.speed * dt, dt);
       let moved = false;
@@ -83,17 +84,17 @@ export class EnemySystem {
       }
 
       if (pursuitDirection.lengthSq() > MOVEMENT_EPSILON) {
-        enemy.mesh.rotation.y = this.getEnemyFacingYaw(pursuitDirection);
-      } else if (!enemy.updateRig) {
-        enemy.mesh.rotation.y += dt * 2.4;
+        enemy.facingYaw = this.getEnemyFacingYaw(pursuitDirection);
+      } else if (!this.enemyViews.get(enemy.id)?.updateRig) {
+        enemy.facingYaw += dt * 2.4;
       }
 
       enemy.attackTimer -= dt;
       const inAttackRange = withinRadius2D(enemy, this.playerCollisionBody, attackDistance);
       if (inAttackRange) {
-        enemy.updateRig?.("melee", dt);
+        this.enemyViews.get(enemy.id)?.updateRig?.("melee", dt);
       } else {
-        enemy.updateRig?.(moved ? "walk" : "idle", dt);
+        this.enemyViews.get(enemy.id)?.updateRig?.(moved ? "walk" : "idle", dt);
       }
 
       if (
@@ -112,34 +113,68 @@ export class EnemySystem {
       }
     }
 
-    return this.collectDeadEnemies();
+    const kills = this.collectDeadEnemies();
+    this.syncEnemyViews();
+    return kills;
   }
 
   clear(): void {
     for (const enemy of this.enemies.splice(0)) {
-      this.world.scene.remove(enemy.mesh);
-      disposeObject3D(enemy.mesh, Boolean(enemy.updateRig));
+      this.disposeEnemyView(enemy.id);
     }
   }
 
   private spawnEnemy(spawn: THREE.Vector3): void {
     const wave = this.getWave();
-    const elite = Math.random() < Math.min(0.08 + wave * 0.015, 0.26);
-    const rig = elite ? undefined : this.world.createLeanHunterRig();
-    const mesh = rig?.root ?? this.world.createEliteEnemyAsset().root;
-    mesh.position.set(spawn.x, elite ? 0.72 : 0, spawn.z);
+    const definition = chooseEnemyDefinition(wave);
+    const view = definition.createView(this.world);
+    const mesh = view.root;
+    mesh.position.set(spawn.x, view.height, spawn.z);
     this.world.scene.add(mesh);
 
-    this.enemies.push({
-      mesh,
-      updateRig: rig ? (animation, dt) => rig.update({ animation }, dt) : undefined,
-      collisionLayer: this.getCollisionLayer(),
-      hp: elite ? ELITE_ENEMY_SETTINGS.health + wave * 8 : LEAN_HUNTER_SETTINGS.health + wave * 5,
-      speed: elite ? 2.2 + wave * 0.05 : 2.8 + wave * 0.07,
-      radius: elite ? ELITE_ENEMY_SETTINGS.collision.radius : LEAN_HUNTER_SETTINGS.collision.radius,
-      attackTimer: 0,
-      pathRefreshTimer: Math.random() * ENEMY_BALANCE.pathRefreshInterval,
-    });
+    this.addEnemy(
+      {
+        kind: definition.kind,
+        position: new THREE.Vector3(spawn.x, 0, spawn.z),
+        facingYaw: mesh.rotation.y,
+        collisionLayer: this.getCollisionLayer(),
+        hp: definition.health(wave),
+        speed: definition.speed(wave),
+        radius: definition.radius,
+        attackTimer: 0,
+        pathRefreshTimer: Math.random() * ENEMY_BALANCE.pathRefreshInterval,
+      },
+      {
+        root: mesh,
+        height: view.height,
+        updateRig: view.updateRig,
+        disposeMaterials: view.disposeMaterials,
+      },
+    );
+  }
+
+  private addEnemy(enemy: EnemyDraft, view: Omit<EnemyView, "id">): void {
+    const id = this.nextEnemyId;
+    this.nextEnemyId += 1;
+    this.enemies.push({ id, ...enemy });
+    this.enemyViews.set(id, { id, ...view });
+  }
+
+  private syncEnemyViews(): void {
+    for (const enemy of this.enemies) {
+      const view = this.enemyViews.get(enemy.id);
+      if (!view) continue;
+      view.root.position.set(enemy.position.x, view.height, enemy.position.z);
+      view.root.rotation.y = enemy.facingYaw;
+    }
+  }
+
+  private disposeEnemyView(id: number): void {
+    const view = this.enemyViews.get(id);
+    if (!view) return;
+    this.world.scene.remove(view.root);
+    disposeObject3D(view.root, view.disposeMaterials);
+    this.enemyViews.delete(id);
   }
 
   private levelEnemyCount(): number {
@@ -152,7 +187,7 @@ export class EnemySystem {
     moveDistance: number,
     dt: number,
   ): THREE.Vector3 {
-    const direct = this.world.player.position.clone().sub(enemy.mesh.position).setY(0);
+    const direct = this.world.player.position.clone().sub(enemy.position).setY(0);
     if (direct.lengthSq() <= MOVEMENT_EPSILON) return direct;
     direct.normalize();
 
@@ -171,20 +206,20 @@ export class EnemySystem {
     const playerKey = key(worldToTile(this.world.player.position));
     enemy.pathRefreshTimer = (enemy.pathRefreshTimer ?? 0) - dt;
     if (!enemy.path || enemy.pathTarget !== playerKey || enemy.pathRefreshTimer <= 0) {
-      enemy.path = findWorldPath(this.getLevel(), enemy.mesh.position, this.world.player.position);
+      enemy.path = findWorldPath(this.getLevel(), enemy.position, this.world.player.position);
       enemy.pathTarget = playerKey;
       enemy.pathRefreshTimer = ENEMY_BALANCE.pathRefreshInterval + Math.random() * ENEMY_BALANCE.pathRefreshJitter;
     }
 
-    return pathDirection(enemy.path, enemy.mesh.position, ENEMY_BALANCE.waypointReachedDistance) ?? direct;
+    return pathDirection(enemy.path, enemy.position, ENEMY_BALANCE.waypointReachedDistance) ?? direct;
   }
 
   private moveEnemy(enemy: Enemy, direction: THREE.Vector3, distance: number): boolean {
-    return moveOnWalkableLevel(this.getLevel(), enemy.mesh.position, direction, distance);
+    return moveOnWalkableLevel(this.getLevel(), enemy.position, direction, distance);
   }
 
   private canEnemyMove(enemy: Enemy, direction: THREE.Vector3, distance: number): boolean {
-    return canMoveOnWalkableLevel(this.getLevel(), enemy.mesh.position, direction, distance);
+    return canMoveOnWalkableLevel(this.getLevel(), enemy.position, direction, distance);
   }
 
   private collectDeadEnemies(): number {
@@ -192,9 +227,8 @@ export class EnemySystem {
     for (let i = this.enemies.length - 1; i >= 0; i -= 1) {
       const enemy = this.enemies[i];
       if (enemy.deathTimer !== undefined && enemy.deathTimer <= 0) {
-        this.pickups.maybeDropPickup(enemy.mesh.position);
-        this.world.scene.remove(enemy.mesh);
-        disposeObject3D(enemy.mesh, Boolean(enemy.updateRig));
+        this.pickups.maybeDropPickup(enemy.position);
+        this.disposeEnemyView(enemy.id);
         this.enemies.splice(i, 1);
         kills += 1;
       }

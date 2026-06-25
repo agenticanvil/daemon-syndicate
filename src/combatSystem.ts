@@ -1,16 +1,20 @@
 import * as THREE from "three";
 import { LEVEL_HEIGHT, LEVEL_WIDTH, TILE_SIZE } from "./constants";
-import { WEAPON_BALANCE } from "./balance";
-import { overlaps2D, withinRadius2D, type CollisionBody2D, type CollisionLayer } from "./collision";
+import { overlaps2D, type CollisionBody2D, type CollisionLayer } from "./collision";
 import { disposeMeshGeometry } from "./entityLifecycle";
 import type { EffectsSystem } from "./effectsSystem";
 import type { GameScene } from "./scene";
-import type { Enemy, PlayerResources, Projectile } from "./types";
+import type { Enemy, PlayerResources, Projectile, ProjectileDraft, ProjectileView } from "./types";
+import { ABILITY_DEFINITIONS, type AbilityId } from "./weaponDefinitions";
 
 export class CombatSystem {
   private readonly projectiles: Projectile[] = [];
-  private primaryTimer = 0;
-  private novaTimer = 0;
+  private readonly projectileViews = new Map<number, ProjectileView>();
+  private readonly abilityTimers: Record<AbilityId, number> = {
+    primary: 0,
+    nova: 0,
+  };
+  private nextProjectileId = 1;
 
   constructor(
     private readonly world: GameScene,
@@ -27,75 +31,40 @@ export class CombatSystem {
   }
 
   get primaryReady(): boolean {
-    return this.primaryTimer <= 0 && this.resources.ammo >= WEAPON_BALANCE.primary.ammoCost;
+    return this.isAbilityReady("primary");
   }
 
   get novaReady(): boolean {
-    return this.novaTimer <= 0 && this.resources.energy >= WEAPON_BALANCE.nova.energyCost;
+    return this.isAbilityReady("nova");
   }
 
   resetTimers(): void {
-    this.primaryTimer = 0;
-    this.novaTimer = 0;
+    this.abilityTimers.primary = 0;
+    this.abilityTimers.nova = 0;
   }
 
   prepareNextLevel(): void {
-    this.primaryTimer = 0;
-    this.novaTimer = Math.min(this.novaTimer, 0.4);
+    this.abilityTimers.primary = 0;
+    this.abilityTimers.nova = Math.min(this.abilityTimers.nova, 0.4);
   }
 
   updateTimers(dt: number): void {
-    this.primaryTimer = Math.max(this.primaryTimer - dt, 0);
-    this.novaTimer = Math.max(this.novaTimer - dt, 0);
+    for (const id of Object.keys(this.abilityTimers) as AbilityId[]) {
+      this.abilityTimers[id] = Math.max(this.abilityTimers[id] - dt, 0);
+    }
   }
 
   firePrimary(pointerWorld: THREE.Vector3): void {
-    if (!this.primaryReady) return;
-
-    const direction = pointerWorld.clone().sub(this.world.player.position);
-    direction.y = 0;
-    if (direction.lengthSq() < 0.01) return;
-    direction.normalize();
-
-    const mesh = new THREE.Mesh(new THREE.SphereGeometry(0.16, 12, 8), this.world.materials.projectile);
-    mesh.position.copy(this.world.player.position).addScaledVector(direction, WEAPON_BALANCE.primary.spawnOffset);
-    mesh.position.y = WEAPON_BALANCE.primary.spawnHeight;
-    this.world.scene.add(mesh);
-
-    this.projectiles.push({
-      mesh,
-      velocity: direction.multiplyScalar(WEAPON_BALANCE.primary.projectileSpeed),
-      collisionLayer: this.getCollisionLayer(),
-      life: WEAPON_BALANCE.primary.projectileLife,
-      damage: WEAPON_BALANCE.primary.damage,
-      radius: WEAPON_BALANCE.primary.projectileRadius,
-    });
-    this.world.playerRig.triggerFire();
-    this.resources.ammo -= WEAPON_BALANCE.primary.ammoCost;
-    this.primaryTimer = WEAPON_BALANCE.primary.cooldown;
+    this.fireAbility("primary", pointerWorld);
   }
 
   fireNova(): void {
-    if (!this.novaReady) return;
-
-    this.effects.spawnNova(this.world.player.position);
-
-    for (const enemy of this.enemies()) {
-      if (enemy.deathTimer !== undefined) continue;
-      if (withinRadius2D(enemy, this.playerCollisionBody, WEAPON_BALANCE.nova.radius)) {
-        this.damageEnemy(enemy, WEAPON_BALANCE.nova.damage, true);
-        const push = enemy.mesh.position.clone().sub(this.world.player.position).setY(0).normalize();
-        enemy.mesh.position.addScaledVector(push, WEAPON_BALANCE.nova.pushDistance);
-      }
-    }
-
-    this.resources.energy -= WEAPON_BALANCE.nova.energyCost;
-    this.novaTimer = WEAPON_BALANCE.nova.cooldown;
+    this.fireAbility("nova", this.world.player.position);
   }
 
   updateProjectiles(dt: number): void {
     for (const projectile of this.projectiles) {
-      projectile.mesh.position.addScaledVector(projectile.velocity, dt);
+      projectile.position.addScaledVector(projectile.velocity, dt);
       projectile.life -= dt;
 
       for (const enemy of this.enemies()) {
@@ -112,20 +81,70 @@ export class CombatSystem {
       const projectile = this.projectiles[i];
       if (
         projectile.life <= 0 ||
-        Math.abs(projectile.mesh.position.x) > (LEVEL_WIDTH * TILE_SIZE) / 2 ||
-        Math.abs(projectile.mesh.position.z) > (LEVEL_HEIGHT * TILE_SIZE) / 2
+        Math.abs(projectile.position.x) > (LEVEL_WIDTH * TILE_SIZE) / 2 ||
+        Math.abs(projectile.position.z) > (LEVEL_HEIGHT * TILE_SIZE) / 2
       ) {
-        this.world.scene.remove(projectile.mesh);
-        disposeMeshGeometry(projectile.mesh);
+        this.disposeProjectileView(projectile.id);
         this.projectiles.splice(i, 1);
       }
     }
+
+    this.syncProjectileViews();
   }
 
   clear(): void {
     for (const projectile of this.projectiles.splice(0)) {
-      this.world.scene.remove(projectile.mesh);
-      disposeMeshGeometry(projectile.mesh);
+      this.disposeProjectileView(projectile.id);
     }
+  }
+
+  private isAbilityReady(id: AbilityId): boolean {
+    const ability = ABILITY_DEFINITIONS[id];
+    return this.abilityTimers[id] <= 0 && this.resources[ability.resource] >= ability.cost;
+  }
+
+  private fireAbility(id: AbilityId, aimWorld: THREE.Vector3): void {
+    const ability = ABILITY_DEFINITIONS[id];
+    if (!this.isAbilityReady(id)) return;
+
+    const fired = ability.fire(
+      {
+        world: this.world,
+        effects: this.effects,
+        resources: this.resources,
+        playerCollisionBody: this.playerCollisionBody,
+        collisionLayer: this.getCollisionLayer(),
+        enemies: this.enemies(),
+        damageEnemy: this.damageEnemy,
+        addProjectile: (projectile, mesh) => this.addProjectile(projectile, mesh),
+      },
+      aimWorld,
+    );
+
+    if (fired) {
+      this.abilityTimers[id] = ability.cooldown;
+    }
+  }
+
+  private addProjectile(projectile: ProjectileDraft, mesh: THREE.Mesh): void {
+    const id = this.nextProjectileId;
+    this.nextProjectileId += 1;
+    this.projectiles.push({ id, ...projectile });
+    this.projectileViews.set(id, { id, mesh });
+  }
+
+  private syncProjectileViews(): void {
+    for (const projectile of this.projectiles) {
+      const view = this.projectileViews.get(projectile.id);
+      view?.mesh.position.copy(projectile.position);
+    }
+  }
+
+  private disposeProjectileView(id: number): void {
+    const view = this.projectileViews.get(id);
+    if (!view) return;
+    this.world.scene.remove(view.mesh);
+    disposeMeshGeometry(view.mesh);
+    this.projectileViews.delete(id);
   }
 }

@@ -6,10 +6,12 @@ import { DROP_BALANCE, EFFECT_BALANCE } from "./balance";
 import { overlaps2D, type CollisionBody2D, type CollisionLayer } from "./collision";
 import { disposeMeshGeometry } from "./entityLifecycle";
 import type { GameScene } from "./scene";
-import type { Pickup, PlayerResources, ResourceKind } from "./types";
+import type { Pickup, PickupDraft, PickupView, PlayerResources, ResourceKind } from "./types";
 
 export class PickupSystem {
   private readonly pickups: Pickup[] = [];
+  private readonly pickupViews = new Map<number, PickupView>();
+  private nextPickupId = 1;
 
   constructor(
     private readonly world: GameScene,
@@ -35,22 +37,22 @@ export class PickupSystem {
     mesh.position.copy(position);
     mesh.position.y = 0.45;
     this.world.scene.add(mesh);
-    this.pickups.push({
+    this.addPickup(
+      {
+        position: position.clone(),
+        kind,
+        collisionLayer: this.getCollisionLayer(),
+        amount,
+        radius: settings.collision.radius,
+        life: DROP_BALANCE.pickupLife,
+      },
       mesh,
-      kind,
-      collisionLayer: this.getCollisionLayer(),
-      amount,
-      radius: settings.collision.radius,
-      life: DROP_BALANCE.pickupLife,
-    });
+    );
   }
 
   update(dt: number): void {
     for (const pickup of this.pickups) {
       pickup.life -= dt;
-      pickup.mesh.rotation.y += dt * EFFECT_BALANCE.pickupSpinSpeed;
-      pickup.mesh.position.y =
-        0.45 + Math.sin(performance.now() * EFFECT_BALANCE.pickupBobSpeed + pickup.mesh.id) * EFFECT_BALANCE.pickupBobHeight;
 
       if (overlaps2D(pickup, this.playerCollisionBody)) {
         this.resources[pickup.kind] = Math.min(
@@ -64,17 +66,42 @@ export class PickupSystem {
     for (let i = this.pickups.length - 1; i >= 0; i -= 1) {
       const pickup = this.pickups[i];
       if (pickup.life <= 0) {
-        this.world.scene.remove(pickup.mesh);
-        disposeMeshGeometry(pickup.mesh);
+        this.disposePickupView(pickup.id);
         this.pickups.splice(i, 1);
       }
     }
+
+    this.syncPickupViews(dt);
   }
 
   clear(): void {
     for (const pickup of this.pickups.splice(0)) {
-      this.world.scene.remove(pickup.mesh);
-      disposeMeshGeometry(pickup.mesh);
+      this.disposePickupView(pickup.id);
     }
+  }
+
+  private addPickup(pickup: PickupDraft, mesh: THREE.Mesh): void {
+    const id = this.nextPickupId;
+    this.nextPickupId += 1;
+    this.pickups.push({ id, ...pickup });
+    this.pickupViews.set(id, { id, mesh });
+  }
+
+  private syncPickupViews(dt: number): void {
+    for (const pickup of this.pickups) {
+      const view = this.pickupViews.get(pickup.id);
+      if (!view) continue;
+      view.mesh.position.copy(pickup.position);
+      view.mesh.position.y = 0.45 + Math.sin(performance.now() * EFFECT_BALANCE.pickupBobSpeed + view.mesh.id) * EFFECT_BALANCE.pickupBobHeight;
+      view.mesh.rotation.y += dt * EFFECT_BALANCE.pickupSpinSpeed;
+    }
+  }
+
+  private disposePickupView(id: number): void {
+    const view = this.pickupViews.get(id);
+    if (!view) return;
+    this.world.scene.remove(view.mesh);
+    disposeMeshGeometry(view.mesh);
+    this.pickupViews.delete(id);
   }
 }
