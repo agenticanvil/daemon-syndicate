@@ -2,11 +2,12 @@ import * as THREE from "three";
 import { ENEMY_BALANCE, PLAYER_BALANCE } from "./balance";
 import { distance2D, withinRadius2D, type CollisionBody2D, type CollisionLayer } from "./collision";
 import { disposeObject3D } from "./entityLifecycle";
-import { chooseEnemyDefinition } from "./enemyDefinitions";
+import { chooseEnemyDefinition, ENEMY_DEFINITIONS, type EnemyKind } from "./enemyDefinitions";
 import { key, tileToWorld, worldToTile, type LevelData } from "./level";
 import { canMoveOnWalkableLevel, moveOnWalkableLevel } from "./movement";
 import { findWorldPath, pathDirection } from "./pathfinding";
 import type { EventQueue } from "./eventQueue";
+import type { Rng } from "./rng";
 import type { GameScene } from "./scene";
 import type { Enemy, EnemyDraft, EnemyView, PlayerResources } from "./types";
 
@@ -26,6 +27,7 @@ export class EnemySystem {
     private readonly getWave: () => number,
     private readonly getCollisionLayer: () => CollisionLayer,
     private readonly canDamagePlayer: () => boolean,
+    private readonly rng: Rng = Math.random,
   ) {}
 
   get count(): number {
@@ -43,10 +45,14 @@ export class EnemySystem {
     const targetCount = Math.min(this.levelEnemyCount(), candidates.length);
 
     for (let i = 0; i < targetCount; i += 1) {
-      const index = Math.floor(Math.random() * candidates.length);
+      const index = Math.floor(this.rng() * candidates.length);
       const [spawn] = candidates.splice(index, 1);
       this.spawnEnemy(spawn);
     }
+  }
+
+  spawnEnemyAt(kind: EnemyKind, spawn: THREE.Vector3): void {
+    this.spawnEnemy(spawn, kind);
   }
 
   damageEnemy(enemy: Enemy, amount: number, showText: boolean): void {
@@ -124,9 +130,34 @@ export class EnemySystem {
     }
   }
 
-  private spawnEnemy(spawn: THREE.Vector3): void {
+  snapshot(): object {
+    return this.enemies.map((enemy) => ({
+      id: enemy.id,
+      kind: enemy.kind,
+      position: vectorSnapshot(enemy.position),
+      facingYaw: enemy.facingYaw,
+      collisionLayer: enemy.collisionLayer,
+      hp: enemy.hp,
+      speed: enemy.speed,
+      radius: enemy.radius,
+      attack: { ...enemy.attack },
+      dropTable: {
+        chance: enemy.dropTable.chance,
+        entries: enemy.dropTable.entries.map((entry) => ({ ...entry })),
+      },
+      attackTimer: enemy.attackTimer,
+      deathTimer: enemy.deathTimer,
+      path: enemy.path ? [...enemy.path] : undefined,
+      pathTarget: enemy.pathTarget,
+      pathRefreshTimer: enemy.pathRefreshTimer,
+    }));
+  }
+
+  private spawnEnemy(spawn: THREE.Vector3, kind?: EnemyKind): void {
     const wave = this.getWave();
-    const definition = chooseEnemyDefinition(wave);
+    const definition = kind
+      ? ENEMY_DEFINITIONS.find((candidate) => candidate.kind === kind) ?? chooseEnemyDefinition(wave, this.rng)
+      : chooseEnemyDefinition(wave, this.rng);
     const view = definition.createView(this.world);
     const mesh = view.root;
     mesh.position.set(spawn.x, view.height, spawn.z);
@@ -144,7 +175,7 @@ export class EnemySystem {
         attack: definition.attack,
         dropTable: definition.dropTable,
         attackTimer: 0,
-        pathRefreshTimer: Math.random() * ENEMY_BALANCE.pathRefreshInterval,
+        pathRefreshTimer: this.rng() * ENEMY_BALANCE.pathRefreshInterval,
       },
       {
         root: mesh,
@@ -210,7 +241,7 @@ export class EnemySystem {
     if (!enemy.path || enemy.pathTarget !== playerKey || enemy.pathRefreshTimer <= 0) {
       enemy.path = findWorldPath(this.getLevel(), enemy.position, this.world.player.position);
       enemy.pathTarget = playerKey;
-      enemy.pathRefreshTimer = ENEMY_BALANCE.pathRefreshInterval + Math.random() * ENEMY_BALANCE.pathRefreshJitter;
+      enemy.pathRefreshTimer = ENEMY_BALANCE.pathRefreshInterval + this.rng() * ENEMY_BALANCE.pathRefreshJitter;
     }
 
     return pathDirection(enemy.path, enemy.position, ENEMY_BALANCE.waypointReachedDistance) ?? direct;
@@ -247,4 +278,8 @@ export class EnemySystem {
   private getEnemyFacingYaw(direction: THREE.Vector3): number {
     return Math.atan2(-direction.x, -direction.z);
   }
+}
+
+function vectorSnapshot(vector: THREE.Vector3): { x: number; y: number; z: number } {
+  return { x: vector.x, y: vector.y, z: vector.z };
 }

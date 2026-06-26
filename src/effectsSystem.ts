@@ -5,6 +5,7 @@ import type { DamageText } from "./types";
 
 export class EffectsSystem {
   private readonly damageTexts: DamageText[] = [];
+  private readonly damageTextPool: HTMLDivElement[] = [];
   private readonly novaMeshes: THREE.Mesh[] = [];
 
   constructor(
@@ -22,10 +23,9 @@ export class EffectsSystem {
   }
 
   spawnDamageText(position: THREE.Vector3, text: string): void {
-    const el = document.createElement("div");
+    const el = this.acquireDamageTextElement();
     el.textContent = text;
-    el.className = "damage-text";
-    document.body.appendChild(el);
+    el.style.opacity = "1";
     this.damageTexts.push({
       el,
       world: position.clone().add(new THREE.Vector3(0, EFFECT_BALANCE.damageTextHeight, 0)),
@@ -52,12 +52,27 @@ export class EffectsSystem {
 
   clear(): void {
     for (const damageText of this.damageTexts.splice(0)) {
-      damageText.el.remove();
+      this.releaseDamageTextElement(damageText.el);
     }
     for (const mesh of this.novaMeshes.splice(0)) {
       this.scene.remove(mesh);
       disposeMesh(mesh);
     }
+  }
+
+  snapshot(): object {
+    return {
+      damageTexts: this.damageTexts.map((damageText) => ({
+        world: vectorSnapshot(damageText.world),
+        life: damageText.life,
+        text: damageText.el.textContent ?? "",
+      })),
+      novaMeshes: this.novaMeshes.map((mesh) => ({
+        position: vectorSnapshot(mesh.position),
+        opacity: (mesh.material as THREE.MeshBasicMaterial).opacity,
+        scale: vectorSnapshot(mesh.scale),
+      })),
+    };
   }
 
   private updateNovaMeshes(dt: number): void {
@@ -84,9 +99,31 @@ export class EffectsSystem {
         `translate(${((projected.x + 1) * window.innerWidth) / 2}px, ${((-projected.y + 1) * window.innerHeight) / 2}px)`;
       damageText.el.style.opacity = Math.max(damageText.life / EFFECT_BALANCE.damageTextLife, 0).toString();
       if (damageText.life <= 0) {
-        damageText.el.remove();
+        this.releaseDamageTextElement(damageText.el);
         this.damageTexts.splice(i, 1);
       }
     }
   }
+
+  private acquireDamageTextElement(): HTMLDivElement {
+    const el = this.damageTextPool.pop() ?? document.createElement("div");
+    el.className = "damage-text";
+    el.hidden = false;
+    if (!el.isConnected) {
+      document.body.appendChild(el);
+    }
+    return el;
+  }
+
+  private releaseDamageTextElement(el: HTMLDivElement): void {
+    el.hidden = true;
+    el.textContent = "";
+    el.style.opacity = "0";
+    el.style.transform = "translate(-9999px, -9999px)";
+    this.damageTextPool.push(el);
+  }
+}
+
+function vectorSnapshot(vector: THREE.Vector3): { x: number; y: number; z: number } {
+  return { x: vector.x, y: vector.y, z: vector.z };
 }

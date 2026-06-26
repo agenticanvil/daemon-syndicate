@@ -15,7 +15,7 @@ export type CombatContext = {
   collisionLayer: CollisionLayer;
   enemies: Enemy[];
   damageEnemy: (enemy: Enemy, amount: number, showText: boolean) => void;
-  addProjectile: (projectile: ProjectileDraft, mesh: THREE.Mesh) => void;
+  addProjectile: (projectile: ProjectileDraft) => void;
 };
 
 export type AbilityDefinition = {
@@ -38,22 +38,19 @@ export const ABILITY_DEFINITIONS: Record<AbilityId, AbilityDefinition> = {
       if (direction.lengthSq() < 0.01) return false;
       direction.normalize();
 
-      const mesh = new THREE.Mesh(new THREE.SphereGeometry(0.16, 12, 8), context.world.materials.projectile);
-      mesh.position.copy(context.world.player.position).addScaledVector(direction, WEAPON_BALANCE.primary.spawnOffset);
-      mesh.position.y = WEAPON_BALANCE.primary.spawnHeight;
-      context.world.scene.add(mesh);
+      const position = context.world.player.position
+        .clone()
+        .addScaledVector(direction, WEAPON_BALANCE.primary.spawnOffset);
+      position.y = WEAPON_BALANCE.primary.spawnHeight;
 
-      context.addProjectile(
-        {
-          position: mesh.position.clone(),
-          velocity: direction.multiplyScalar(WEAPON_BALANCE.primary.projectileSpeed),
-          collisionLayer: context.collisionLayer,
-          life: WEAPON_BALANCE.primary.projectileLife,
-          damage: WEAPON_BALANCE.primary.damage,
-          radius: WEAPON_BALANCE.primary.projectileRadius,
-        },
-        mesh,
-      );
+      context.addProjectile({
+        position,
+        velocity: direction.multiplyScalar(WEAPON_BALANCE.primary.projectileSpeed),
+        collisionLayer: context.collisionLayer,
+        life: WEAPON_BALANCE.primary.projectileLife,
+        damage: WEAPON_BALANCE.primary.damage,
+        radius: WEAPON_BALANCE.primary.projectileRadius,
+      });
       context.world.playerRig.triggerFire();
       context.resources.ammo -= WEAPON_BALANCE.primary.ammoCost;
       return true;

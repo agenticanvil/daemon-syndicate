@@ -1,5 +1,6 @@
 import { Game } from "./game";
 import { createPerfRecorder, type PerfRecorder } from "./perf";
+import { seededRandom } from "./rng";
 import { createGameScene } from "./scene";
 import "./style.css";
 import { createUi } from "./ui";
@@ -9,6 +10,9 @@ declare global {
     __daemonPerf?: PerfRecorder;
     __daemonGame?: {
       startNewRun: () => void;
+      snapshot: () => unknown;
+      spawnEnemy: Game["spawnEnemy"];
+      grantResources: Game["grantResources"];
     };
   }
 }
@@ -42,20 +46,19 @@ function startGame(app: HTMLDivElement): void {
   const perfEnabled = params.get("perf") === "1";
   const seed = params.get("seed");
 
-  if (seed) {
-    Math.random = seededRandom(seed);
-  }
-
   const perf = createPerfRecorder(perfEnabled);
   const ui = createUi(app);
   const world = createGameScene(app);
   ui.onGraphicsSettingsChange((settings) => world.applyGraphicsSettings(settings));
-  const game = new Game(world, ui, perf);
+  const game = new Game(world, ui, perf, { rng: seed ? seededRandom(seed) : Math.random, seed: seed ?? undefined });
 
   game.bindEvents();
   window.__daemonPerf = perf;
   window.__daemonGame = {
     startNewRun: () => game.startNewRun(),
+    snapshot: () => game.snapshot(),
+    spawnEnemy: (kind, position) => game.spawnEnemy(kind, position),
+    grantResources: (resources) => game.grantResources(resources),
   };
 
   if (params.get("autostart") === "1") {
@@ -63,16 +66,4 @@ function startGame(app: HTMLDivElement): void {
   }
 
   game.startLoop();
-}
-
-function seededRandom(seed: string): () => number {
-  let state = 0;
-  for (let i = 0; i < seed.length; i += 1) {
-    state = Math.imul(31, state) + seed.charCodeAt(i);
-  }
-
-  return () => {
-    state = Math.imul(1664525, state) + 1013904223;
-    return ((state >>> 0) / 4294967296);
-  };
 }
