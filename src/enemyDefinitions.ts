@@ -29,7 +29,7 @@ export const ENEMY_DEFINITIONS: EnemyDefinition[] = [
     radius: LEAN_HUNTER_SETTINGS.collision.radius,
     spawnWeight: (wave) => Math.max(0.74, 0.92 - wave * 0.015),
     health: (wave) => LEAN_HUNTER_SETTINGS.health + wave * 5,
-    speed: (wave) => LEAN_HUNTER_SETTINGS.speed + wave * 0.07,
+    speed: (wave) => LEAN_HUNTER_SETTINGS.movement.speed + wave * LEAN_HUNTER_SETTINGS.movement.waveSpeedGrowth,
     createView: (world) => {
       const rig: LeanHunterRig = world.createLeanHunterRig();
       return {
@@ -45,7 +45,7 @@ export const ENEMY_DEFINITIONS: EnemyDefinition[] = [
     radius: ELITE_ENEMY_SETTINGS.collision.radius,
     spawnWeight: (wave) => Math.min(0.08 + wave * 0.015, 0.26),
     health: (wave) => ELITE_ENEMY_SETTINGS.health + wave * 8,
-    speed: (wave) => ELITE_ENEMY_SETTINGS.speed + wave * 0.05,
+    speed: (wave) => ELITE_ENEMY_SETTINGS.movement.speed + wave * ELITE_ENEMY_SETTINGS.movement.waveSpeedGrowth,
     createView: (world) => {
       const rig: LeanHunterRig = world.createEliteEnemyAsset();
       return {

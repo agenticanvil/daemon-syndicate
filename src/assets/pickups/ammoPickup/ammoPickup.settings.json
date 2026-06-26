@@ -1,8 +1,11 @@
 {
+  "kind": "pickup",
   "collision": {
     "radius": 0.62,
     "height": 0.32
   },
-  "health": 1,
-  "speed": 0
+  "resources": {
+    "ammo": 22
+  },
+  "lifetime": 18
 }

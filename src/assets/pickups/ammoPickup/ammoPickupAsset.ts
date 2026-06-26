@@ -1,7 +1,8 @@
 import * as THREE from "three";
+import type { PickupAssetSettings } from "../../../assetSettings";
 import ammoPickupSettings from "./ammoPickup.settings.json";
 
-export const AMMO_PICKUP_SETTINGS = ammoPickupSettings;
+export const AMMO_PICKUP_SETTINGS = ammoPickupSettings as PickupAssetSettings;
 
 export type AmmoPickupAsset = {
   root: THREE.Mesh<THREE.BoxGeometry, THREE.MeshStandardMaterial>;

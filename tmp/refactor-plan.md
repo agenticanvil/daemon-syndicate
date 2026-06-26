@@ -7,6 +7,7 @@ This plan continues from the current architecture after the latest refactor pass
 - Enemy and ability behavior are definition-driven through `src/enemyDefinitions.ts` and `src/weaponDefinitions.ts`.
 - Projectiles and pickups now have separate domain state and Three.js view handles.
 - Enemies, projectiles, and pickups now all keep domain state separate from runtime Three.js views.
+- Asset settings JSON is now discriminated by asset kind.
 - Focused Vitest coverage now protects pathfinding, movement, weapon definitions, enemy definitions, and runtime event queue behavior.
 
 ## Completed: Split Enemy Domain State From Views
@@ -48,89 +49,37 @@ Verification:
 - `npm run build` passes.
 - Browser page-load smoke against `http://127.0.0.1:5173/?autostart=1&seed=event-queue-smoke` confirmed the HUD and canvas render. Active browser input automation timed out, so no active combat screenshot was kept for this step.
 
-## Next: Typed Asset Data, Definition-Driven Drops, And Enemy Attacks
+## In Progress: Typed Asset Data, Definition-Driven Drops, And Enemy Attacks
 
 Goal: make asset-authored data scalable without forcing every asset to carry the same fields.
 
-Current issue:
+Completed in the current pass:
 
-- The asset editor currently treats settings as one shared shape.
-- That led to non-enemy assets needing placeholder movement speed values.
-- Future asset types will need different data: enemies need movement, attacks, AI, and drop tables; pickups need resource grants; players need max resources and movement/combat defaults.
-- Pickup drop odds live globally in `DROP_BALANCE`.
+- Added shared `AssetSettings` types with `enemy`, `pickup`, and `player` variants.
+- Added `kind` to every asset settings JSON.
+- Removed placeholder `health`/`speed` fields from pickups and replaced them with resource grant data.
+- Moved enemy movement speed into `movement.speed` with `movement.waveSpeedGrowth`.
+- Added enemy `attacks` and `dropTable` defaults to asset JSON for the next runtime migration.
+- Updated the asset editor to show kind-specific controls:
+  - Common: collision radius and preview/render controls.
+  - Enemy/player: health and movement speed.
+  - Pickup: health, ammo, and energy grants.
+- Updated the Vite asset-settings middleware to validate/normalize by `kind`.
+- Updated pickup drops to read pickup grant amount and lifetime from pickup asset settings.
+
+Remaining issue:
+
+- Pickup drop odds still live globally in `DROP_BALANCE`.
 - Enemy attack damage/cooldown/range is global in `ENEMY_BALANCE`.
-- Enemy definitions only describe spawn/scaling/view creation.
+- Enemy definitions still duplicate wave health growth and spawn weights outside asset settings.
 
-Recommended data model:
+Remaining steps:
 
-Use discriminated settings JSON with a `kind` field and type-specific sections.
-
-```ts
-type AssetSettings = EnemyAssetSettings | PickupAssetSettings | PlayerAssetSettings;
-
-type EnemyAssetSettings = {
-  kind: "enemy";
-  collision: CollisionSettings;
-  health: number;
-  movement: {
-    speed: number;
-    waveSpeedGrowth: number;
-  };
-  attacks: EnemyAttackDefinition[];
-  dropTable: DropTable;
-};
-
-type PickupAssetSettings = {
-  kind: "pickup";
-  collision: CollisionSettings;
-  resources: Partial<Record<ResourceKind, number>>;
-  lifetime?: number;
-};
-
-type PlayerAssetSettings = {
-  kind: "player";
-  collision: CollisionSettings;
-  health: number;
-  movement?: {
-    speed: number;
-  };
-};
-```
-
-Proposed additions:
-
-```ts
-type DropTable = {
-  chance: number;
-  entries: Array<{ kind: ResourceKind; weight: number; amount: number }>;
-};
-
-type EnemyAttackDefinition = {
-  kind: "melee" | "ranged";
-  damage: number;
-  cooldown: number;
-  range: number;
-  projectileSpeed?: number;
-  windup?: number;
-};
-```
-
-Steps:
-
-1. Add `kind` to each asset settings JSON.
-2. Replace the current universal `EditableAssetSettings` with a discriminated `AssetSettings` union.
-3. Update the Vite asset-settings middleware to dispatch validation/normalization by `kind`.
-4. Update the asset editor to render common sections plus kind-specific forms:
-   - Common: collision and preview/render controls.
-   - Enemy: health, movement speed, wave scaling, attacks, drop table.
-   - Pickup: resource grant amounts and lifetime.
-   - Player: health, collision, and player-only movement/combat fields when needed.
-5. Remove placeholder fields from unrelated assets, such as `speed: 0` on pickups.
-6. Move current global drop odds into enemy `dropTable` defaults.
-7. Move current enemy attack settings into enemy `attacks` defaults.
-8. Build runtime `EnemyDefinition` values from `EnemyAssetSettings` instead of duplicating speed/attack/drop constants.
-9. Update `PickupSystem` to read pickup resource grants from `PickupAssetSettings.resources`.
-10. Preserve current behavior as the default during migration.
+1. Move enemy death drop selection from `DROP_BALANCE` into each enemy `dropTable`.
+2. Move enemy attack damage/cooldown/range from `ENEMY_BALANCE` into each enemy `attacks` entry.
+3. Build runtime `EnemyDefinition` values from `EnemyAssetSettings` rather than duplicating scaling constants.
+4. Expand the asset editor with enemy attack and drop-table editing when those runtime fields are actively used.
+5. Preserve current gameplay behavior as the default during migration.
 
 Future benefits:
 
@@ -150,10 +99,10 @@ Risks:
 
 Verification:
 
-- Asset editor can load, edit, save, and reload each asset kind.
-- Enemy speed/health behavior matches current values after migration.
-- Pickup drops grant the same resource amounts as before unless intentionally changed.
-- `npm test` and `npm run build` pass.
+- `npm test` passes with 5 files and 14 tests.
+- `npm run build` passes.
+- Asset editor page-load smoke against `/dev/asset-renderer?asset=health-pickup` confirmed the canvas renders and pickup resource controls are visible while health/movement fields are hidden.
+- Save-endpoint behavior requires a dev-server restart to pick up the updated Vite middleware; the server was not restarted in this pass.
 
 ## Phase 5: Resource And Status Effect Model
 

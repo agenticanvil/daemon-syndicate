@@ -30,9 +30,9 @@ export class PickupSystem {
     if (roll > DROP_BALANCE.dropChance) return;
 
     const kind: ResourceKind = roll < DROP_BALANCE.healthRoll ? "health" : roll < DROP_BALANCE.ammoRoll ? "ammo" : "energy";
-    const amount = DROP_BALANCE.amount[kind];
     const settings =
       kind === "health" ? HEALTH_PICKUP_SETTINGS : kind === "ammo" ? AMMO_PICKUP_SETTINGS : ENERGY_PICKUP_SETTINGS;
+    const amount = settings.resources[kind] ?? DROP_BALANCE.amount[kind];
     const mesh = this.world.createPickupAsset(kind).root;
     mesh.position.copy(position);
     mesh.position.y = 0.45;
@@ -44,7 +44,7 @@ export class PickupSystem {
         collisionLayer: this.getCollisionLayer(),
         amount,
         radius: settings.collision.radius,
-        life: DROP_BALANCE.pickupLife,
+        life: settings.lifetime ?? DROP_BALANCE.pickupLife,
       },
       mesh,
     );

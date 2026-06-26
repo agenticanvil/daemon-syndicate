@@ -1,7 +1,8 @@
 import * as THREE from "three";
+import type { PickupAssetSettings } from "../../../assetSettings";
 import healthPickupSettings from "./healthPickup.settings.json";
 
-export const HEALTH_PICKUP_SETTINGS = healthPickupSettings;
+export const HEALTH_PICKUP_SETTINGS = healthPickupSettings as PickupAssetSettings;
 
 export type HealthPickupAsset = {
   root: THREE.Mesh<THREE.SphereGeometry, THREE.MeshStandardMaterial>;

@@ -1,8 +1,11 @@
 {
+  "kind": "player",
   "collision": {
     "radius": 0.55,
     "height": 1.85
   },
   "health": 100,
-  "speed": 0
+  "movement": {
+    "speed": 7.5
+  }
 }

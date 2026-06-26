@@ -1,7 +1,8 @@
 import * as THREE from "three";
+import type { PickupAssetSettings } from "../../../assetSettings";
 import energyPickupSettings from "./energyPickup.settings.json";
 
-export const ENERGY_PICKUP_SETTINGS = energyPickupSettings;
+export const ENERGY_PICKUP_SETTINGS = energyPickupSettings as PickupAssetSettings;
 
 export type EnergyPickupAsset = {
   root: THREE.Mesh<THREE.OctahedronGeometry, THREE.MeshStandardMaterial>;

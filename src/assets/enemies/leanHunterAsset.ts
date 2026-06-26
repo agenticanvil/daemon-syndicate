@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import type { EnemyAssetSettings } from "../../assetSettings";
 import {
   createRigidSkinnedAsset,
   type BoneDefinition,
@@ -12,7 +13,7 @@ const FLOOR_OFFSET = 0.08;
 
 export type LeanHunterAnimationId = "idle" | "walk" | "melee" | "death";
 
-export const LEAN_HUNTER_SETTINGS = leanHunterSettings;
+export const LEAN_HUNTER_SETTINGS = leanHunterSettings as EnemyAssetSettings;
 
 export type LeanHunterAnimationState = {
   animation: LeanHunterAnimationId;
