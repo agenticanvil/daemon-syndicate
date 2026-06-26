@@ -4,10 +4,18 @@
     "radius": 0.7,
     "height": 1.1
   },
-  "health": 70,
+  "health": {
+    "base": 70,
+    "waveGrowth": 5
+  },
   "movement": {
     "speed": 2.8,
     "waveSpeedGrowth": 0.07
+  },
+  "spawnWeight": {
+    "base": 0.92,
+    "waveGrowth": -0.015,
+    "min": 0.74
   },
   "attacks": [
     {

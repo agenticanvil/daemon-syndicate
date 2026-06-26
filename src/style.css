@@ -788,6 +788,51 @@ canvas {
   font-size: 0.66rem;
 }
 
+.asset-settings-grid,
+.enemy-settings-stack,
+.enemy-settings-group {
+  display: grid;
+  gap: 8px;
+}
+
+.asset-settings-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.enemy-settings-group {
+  border: 1px solid rgba(142, 255, 236, 0.12);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.03);
+  padding: 8px;
+}
+
+.enemy-settings-group h3 {
+  margin: 0;
+  color: #d7f5ff;
+  font-size: 0.66rem;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.drop-table-editor {
+  display: grid;
+  gap: 6px;
+}
+
+.drop-table-row {
+  display: grid;
+  grid-template-columns: minmax(48px, 0.8fr) repeat(2, minmax(0, 1fr));
+  gap: 6px;
+  align-items: end;
+}
+
+.drop-table-row > span {
+  color: #d7f5ff;
+  font-size: 0.68rem;
+  font-weight: 700;
+  line-height: 28px;
+}
+
 @media (max-width: 760px) {
   .topbar {
     display: block;

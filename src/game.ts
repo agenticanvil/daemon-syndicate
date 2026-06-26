@@ -6,11 +6,13 @@ import { CombatSystem } from "./combatSystem";
 import { EffectsSystem } from "./effectsSystem";
 import { EnemySystem } from "./enemySystem";
 import { EventQueue, type GameEvent } from "./eventQueue";
+import { InputState } from "./inputState";
 import { exitGateToWorld, generateLevel, tileToWorld, type LevelData } from "./level";
 import { movementInputFor, moveOnWalkableLevel } from "./movement";
 import type { PerfRecorder } from "./perf";
 import { PickupSystem } from "./pickupSystem";
 import type { GameScene } from "./scene";
+import { hasStatusEffect, setStatusEffect, tickStatusEffects, type StatusEffect } from "./statusEffects";
 import type { Ui } from "./ui";
 import type { PlayerResources } from "./types";
 
@@ -18,11 +20,8 @@ const PLAYER_MODEL_FORWARD_OFFSET = Math.PI;
 
 export class Game {
   private readonly clock = new THREE.Clock();
-  private readonly raycaster = new THREE.Raycaster();
-  private readonly pointer = new THREE.Vector2();
-  private readonly pointerWorld = new THREE.Vector3(0, 0, -1);
   private readonly fpsFrameTimes: number[] = [];
-  private readonly keys = new Set<string>();
+  private readonly input = new InputState();
   private readonly maxResources: PlayerResources = { ...PLAYER_MAX };
   private readonly movementInput = new THREE.Vector3();
   private readonly playerCollisionBody: CollisionBody2D;
@@ -38,8 +37,7 @@ export class Game {
   private gameOver = false;
   private kills = 0;
   private wave = 1;
-  private invulnTimer = 0;
-  private hasPointerPosition = false;
+  private readonly playerStatusEffects: StatusEffect[] = [];
   private playerMoving = false;
   private fpsVisible = false;
   private nextFpsHudUpdateAt = 0;
@@ -71,7 +69,7 @@ export class Game {
       () => this.currentLevel,
       () => this.wave,
       () => this.currentCollisionLayer(),
-      () => this.invulnTimer <= 0,
+      () => !this.playerHasStatus("invulnerable"),
     );
     this.combat = new CombatSystem(
       this.world,
@@ -95,7 +93,7 @@ export class Game {
     window.addEventListener("pointerdown", this.handlePointerDown);
     window.addEventListener("contextmenu", (event) => event.preventDefault());
     window.addEventListener("keydown", this.handleKeyDown);
-    window.addEventListener("keyup", (event) => this.keys.delete(event.code));
+    window.addEventListener("keyup", (event) => this.input.deleteKey(event.code));
     this.ui.startButton.addEventListener("click", () => this.startNewRun());
     this.ui.resumeButton.addEventListener("click", () => this.setPaused(false));
   }
@@ -109,28 +107,17 @@ export class Game {
   }
 
   private readonly updatePointerWorld = (event: PointerEvent): void => {
-    this.hasPointerPosition = true;
-    this.pointer.x = (event.clientX / window.innerWidth) * 2 - 1;
-    this.pointer.y = -(event.clientY / window.innerHeight) * 2 + 1;
-    this.updatePointerWorldFromCamera();
+    this.input.updatePointerFromEvent(event, this.world.camera, this.world.floor, this.world.reticle);
   };
 
   private updatePointerWorldFromCamera(): void {
-    if (!this.hasPointerPosition) return;
-
-    this.raycaster.setFromCamera(this.pointer, this.world.camera);
-    const hit = this.raycaster.intersectObject(this.world.floor, false)[0];
-    if (hit) {
-      this.pointerWorld.copy(hit.point);
-      this.pointerWorld.y = 0;
-      this.world.reticle.position.copy(this.pointerWorld);
-    }
+    this.input.updatePointerWorldFromCamera(this.world.camera, this.world.floor, this.world.reticle);
   };
 
   private readonly handlePointerDown = (event: PointerEvent): void => {
     this.updatePointerWorld(event);
     if (!this.canAct()) return;
-    if (event.button === 0) this.combat.firePrimary(this.pointerWorld);
+    if (event.button === 0) this.combat.firePrimary(this.input.pointerWorld);
     if (event.button === 2) this.combat.fireNova();
   };
 
@@ -152,7 +139,7 @@ export class Game {
       return;
     }
 
-    this.keys.add(event.code);
+    this.input.addKey(event.code);
     if (event.code === "Space") {
       event.preventDefault();
       if (this.canAct()) this.combat.fireNova();
@@ -177,12 +164,12 @@ export class Game {
   }
 
   private getMovementInput(): THREE.Vector3 {
-    const strafe = (this.keys.has("KeyD") ? 1 : 0) - (this.keys.has("KeyA") ? 1 : 0);
-    const forward = (this.keys.has("KeyW") ? 1 : 0) - (this.keys.has("KeyS") ? 1 : 0);
+    const strafe = (this.input.hasKey("KeyD") ? 1 : 0) - (this.input.hasKey("KeyA") ? 1 : 0);
+    const forward = (this.input.hasKey("KeyW") ? 1 : 0) - (this.input.hasKey("KeyS") ? 1 : 0);
     return movementInputFor({
       mode: this.ui.getMovementMode(),
       camera: this.world.camera,
-      pointerWorld: this.pointerWorld,
+      pointerWorld: this.input.pointerWorld,
       playerPosition: this.world.player.position,
       playerYaw: this.world.player.rotation.y,
       strafe,
@@ -192,7 +179,7 @@ export class Game {
   }
 
   private updatePlayerAim(): void {
-    const aim = this.pointerWorld.clone().sub(this.world.player.position).setY(0);
+    const aim = this.input.pointerWorld.clone().sub(this.world.player.position).setY(0);
     if (aim.lengthSq() > 0.01) {
       this.world.player.rotation.y = this.getPlayerAimYaw(aim);
     }
@@ -258,7 +245,7 @@ export class Game {
         this.pickups.maybeDropPickup(event.position, event.dropTable);
         break;
       case "playerDamaged":
-        this.invulnTimer = PLAYER_BALANCE.invulnerabilityDuration;
+        this.setPlayerStatus("invulnerable", PLAYER_BALANCE.invulnerabilityDuration);
         this.world.playerBody.material.color.set(
           this.resources.health <= PLAYER_BALANCE.lowHealthThreshold ? 0xff7474 : 0xffffff,
         );
@@ -316,7 +303,7 @@ export class Game {
     this.wave = 1;
     this.enemies.spawnLevelEnemies();
     this.combat.resetTimers();
-    this.invulnTimer = 0;
+    this.playerStatusEffects.length = 0;
     this.gameOver = false;
     this.paused = false;
     this.world.playerBody.material.color.set(0x9bf0df);
@@ -342,8 +329,8 @@ export class Game {
   }
 
   private resetReticle(): void {
-    this.pointerWorld.copy(this.world.player.position).add(new THREE.Vector3(0, 0, -TILE_SIZE));
-    this.world.reticle.position.copy(this.pointerWorld);
+    this.input.resetPointerWorld(this.world.player.position.clone().add(new THREE.Vector3(0, 0, -TILE_SIZE)));
+    this.world.reticle.position.copy(this.input.pointerWorld);
   }
 
   private clearEntities(): void {
@@ -360,6 +347,14 @@ export class Game {
 
   private updatePlayerCollisionLayer(): void {
     this.playerCollisionBody.collisionLayer = this.currentCollisionLayer();
+  }
+
+  private playerHasStatus(kind: StatusEffect["kind"]): boolean {
+    return hasStatusEffect(this.playerStatusEffects, kind);
+  }
+
+  private setPlayerStatus(kind: StatusEffect["kind"], remaining: number): void {
+    setStatusEffect(this.playerStatusEffects, { kind, remaining });
   }
 
   private perfFrameArgs(dt: number): Record<string, number | string | boolean> {
@@ -394,7 +389,7 @@ export class Game {
       if (this.started && !this.gameOver && !this.paused) {
         this.perf.span("timers", () => {
           this.combat.updateTimers(dt);
-          this.invulnTimer = Math.max(this.invulnTimer - dt, 0);
+          tickStatusEffects(this.playerStatusEffects, dt);
           this.world.playerBody.material.color.lerp(
             new THREE.Color(this.resources.health <= PLAYER_BALANCE.lowHealthThreshold ? 0xff7474 : 0x9bf0df),
             dt * 10,
@@ -411,7 +406,7 @@ export class Game {
             {
               moving: this.playerMoving,
               moveSpeed: PLAYER_BALANCE.speed,
-              damaged: this.invulnTimer > 0,
+              damaged: this.playerHasStatus("invulnerable"),
               lowHealth: this.resources.health <= PLAYER_BALANCE.lowHealthThreshold,
             },
             dt,

@@ -2,7 +2,7 @@ import * as THREE from "three";
 import type { LeanHunterRig } from "./assets/enemies/leanHunterAsset";
 import { ELITE_ENEMY_SETTINGS } from "./assets/enemies/eliteEnemy/eliteEnemyAsset";
 import { LEAN_HUNTER_SETTINGS } from "./assets/enemies/leanHunterAsset";
-import type { DropTable, EnemyAssetSettings, EnemyAttackDefinition } from "./assetSettings";
+import type { DropTable, EnemyAssetSettings, EnemyAttackDefinition, EnemySpawnWeightSettings } from "./assetSettings";
 import type { GameScene } from "./scene";
 import type { EnemyAnimation } from "./types";
 
@@ -30,8 +30,8 @@ export const ENEMY_DEFINITIONS: EnemyDefinition[] = [
   {
     kind: "leanHunter",
     radius: LEAN_HUNTER_SETTINGS.collision.radius,
-    spawnWeight: (wave) => Math.max(0.74, 0.92 - wave * 0.015),
-    health: (wave) => LEAN_HUNTER_SETTINGS.health + wave * 5,
+    spawnWeight: spawnWeightFromSettings(LEAN_HUNTER_SETTINGS.spawnWeight),
+    health: (wave) => LEAN_HUNTER_SETTINGS.health.base + wave * LEAN_HUNTER_SETTINGS.health.waveGrowth,
     speed: (wave) => LEAN_HUNTER_SETTINGS.movement.speed + wave * LEAN_HUNTER_SETTINGS.movement.waveSpeedGrowth,
     attack: primaryEnemyAttack(LEAN_HUNTER_SETTINGS),
     dropTable: LEAN_HUNTER_SETTINGS.dropTable,
@@ -48,8 +48,8 @@ export const ENEMY_DEFINITIONS: EnemyDefinition[] = [
   {
     kind: "elite",
     radius: ELITE_ENEMY_SETTINGS.collision.radius,
-    spawnWeight: (wave) => Math.min(0.08 + wave * 0.015, 0.26),
-    health: (wave) => ELITE_ENEMY_SETTINGS.health + wave * 8,
+    spawnWeight: spawnWeightFromSettings(ELITE_ENEMY_SETTINGS.spawnWeight),
+    health: (wave) => ELITE_ENEMY_SETTINGS.health.base + wave * ELITE_ENEMY_SETTINGS.health.waveGrowth,
     speed: (wave) => ELITE_ENEMY_SETTINGS.movement.speed + wave * ELITE_ENEMY_SETTINGS.movement.waveSpeedGrowth,
     attack: primaryEnemyAttack(ELITE_ENEMY_SETTINGS),
     dropTable: ELITE_ENEMY_SETTINGS.dropTable,
@@ -80,4 +80,12 @@ export function chooseEnemyDefinition(wave: number, rng: () => number = Math.ran
 function primaryEnemyAttack(settings: EnemyAssetSettings): EnemyAttackDefinition {
   const melee = settings.attacks.find((attack) => attack.kind === "melee");
   return melee ?? settings.attacks[0];
+}
+
+function spawnWeightFromSettings(settings: EnemySpawnWeightSettings): (wave: number) => number {
+  return (wave) => {
+    const scaled = settings.base + wave * settings.waveGrowth;
+    const withMin = settings.min === undefined ? scaled : Math.max(settings.min, scaled);
+    return settings.max === undefined ? withMin : Math.min(settings.max, withMin);
+  };
 }

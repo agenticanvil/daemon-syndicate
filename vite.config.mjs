@@ -55,9 +55,10 @@ function normalizeAssetSettings(value) {
 
 function normalizeEnemySettings(value) {
   const collision = normalizeCollisionSettings(value);
-  const health = normalizeHealth(value?.health);
+  const health = normalizeEnemyHealth(value?.health);
   const speed = Number(value?.movement?.speed);
   const waveSpeedGrowth = Number(value?.movement?.waveSpeedGrowth);
+  const spawnWeight = normalizeSpawnWeight(value?.spawnWeight);
   const attacks = normalizeEnemyAttacks(value?.attacks);
   const dropTable = normalizeDropTable(value?.dropTable);
 
@@ -77,6 +78,7 @@ function normalizeEnemySettings(value) {
       speed: round(speed, 2),
       waveSpeedGrowth: round(waveSpeedGrowth, 3),
     },
+    spawnWeight,
     attacks,
     dropTable,
   };
@@ -148,6 +150,54 @@ function normalizeHealth(value) {
   }
 
   return Math.round(health);
+}
+
+function normalizeEnemyHealth(value) {
+  const base = normalizeHealth(value?.base);
+  const waveGrowth = Number(value?.waveGrowth);
+
+  if (!Number.isFinite(waveGrowth) || waveGrowth < 0 || waveGrowth > 100) {
+    throw new Error("health.waveGrowth must be between 0 and 100");
+  }
+
+  return {
+    base,
+    waveGrowth: round(waveGrowth, 2),
+  };
+}
+
+function normalizeSpawnWeight(value) {
+  const base = Number(value?.base);
+  const waveGrowth = Number(value?.waveGrowth);
+  const min = value?.min === undefined ? undefined : Number(value.min);
+  const max = value?.max === undefined ? undefined : Number(value.max);
+
+  if (!Number.isFinite(base) || base <= 0 || base > 10) {
+    throw new Error("spawnWeight.base must be between 0 and 10");
+  }
+
+  if (!Number.isFinite(waveGrowth) || waveGrowth < -10 || waveGrowth > 10) {
+    throw new Error("spawnWeight.waveGrowth must be between -10 and 10");
+  }
+
+  if (min !== undefined && (!Number.isFinite(min) || min < 0 || min > 10)) {
+    throw new Error("spawnWeight.min must be between 0 and 10");
+  }
+
+  if (max !== undefined && (!Number.isFinite(max) || max <= 0 || max > 10)) {
+    throw new Error("spawnWeight.max must be between 0 and 10");
+  }
+
+  if (min !== undefined && max !== undefined && min > max) {
+    throw new Error("spawnWeight.min must be less than or equal to spawnWeight.max");
+  }
+
+  return {
+    base: round(base, 3),
+    waveGrowth: round(waveGrowth, 3),
+    ...(min === undefined ? {} : { min: round(min, 3) }),
+    ...(max === undefined ? {} : { max: round(max, 3) }),
+  };
 }
 
 function normalizeEnemyAttacks(value) {

@@ -29,6 +29,7 @@ import {
 } from "./assets/pickups/healthPickup/healthPickupAsset";
 import playerSettings from "./assets/player/player.settings.json";
 import { loadPlayerRig, type PlayerAnimationState } from "./playerAsset";
+import type { ResourceKind } from "./types";
 
 type AssetId = "player" | "lean-hunter" | "elite-enemy" | "health-pickup" | "ammo-pickup" | "energy-pickup";
 type AngleId = "head-on" | "side" | "behind" | "isometric";
@@ -143,6 +144,9 @@ const HEALTH_MIN = 1;
 const HEALTH_MAX = 999;
 const ASSET_SPEED_MIN = 0;
 const ASSET_SPEED_MAX = 8;
+const DROP_CHANCE_MIN = 0;
+const DROP_CHANCE_MAX = 1;
+const ENEMY_ATTACK_MAX = 999;
 const ASSET_SETTINGS_ENDPOINTS = {
   player: "/__dev/asset-settings/player",
   "lean-hunter": "/__dev/asset-settings/lean-hunter",
@@ -190,6 +194,10 @@ export function startAssetEditor(app: HTMLDivElement): void {
   const pickupResourcesInputs = Array.from(
     app.querySelectorAll<HTMLInputElement>("[data-pickup-resource]"),
   );
+  const enemyCombatField = app.querySelector<HTMLElement>("#enemyCombatField")!;
+  const enemyAttackInputs = Array.from(app.querySelectorAll<HTMLInputElement>("[data-enemy-attack-field]"));
+  const enemyDropChanceInput = app.querySelector<HTMLInputElement>("#enemyDropChanceInput")!;
+  const enemyDropEntryInputs = Array.from(app.querySelectorAll<HTMLInputElement>("[data-enemy-drop-kind]"));
   const assetSettingsSaveButton = app.querySelector<HTMLButtonElement>("#assetSettingsSaveButton")!;
   const assetSettingsStatus = app.querySelector<HTMLElement>("#assetSettingsStatus")!;
   const renderCalls = app.querySelector<HTMLElement>("#renderCalls")!;
@@ -266,7 +274,7 @@ export function startAssetEditor(app: HTMLDivElement): void {
     assetCollisionRadiusInput.value = settings.collision.radius.toFixed(2);
     assetHealthField.hidden = !hasHealth(settings);
     if (hasHealth(settings)) {
-      assetHealthInput.value = settings.health.toString();
+      assetHealthInput.value = assetHealthValue(settings).toString();
     }
     assetSpeedField.hidden = !hasMovementSpeed(settings);
     if (hasMovementSpeed(settings)) {
@@ -278,6 +286,19 @@ export function startAssetEditor(app: HTMLDivElement): void {
       for (const input of pickupResourcesInputs) {
         input.value = String(settings.resources[input.dataset.pickupResource as keyof typeof settings.resources] ?? 0);
       }
+    }
+    enemyCombatField.hidden = settings.kind !== "enemy";
+    if (settings.kind === "enemy") {
+      const attack = primaryEditableAttack(settings);
+      enemyAttackInputs.forEach((input) => {
+        input.value = enemyAttackInputValue(attack, input.dataset.enemyAttackField).toString();
+      });
+      enemyDropChanceInput.value = settings.dropTable.chance.toFixed(3);
+      enemyDropEntryInputs.forEach((input) => {
+        const entry = enemyDropEntry(settings, toResourceKind(input.dataset.enemyDropKind));
+        const field = input.dataset.enemyDropField;
+        input.value = String(field === "amount" ? entry.amount : entry.weight);
+      });
     }
     assetSettingsSaveButton.disabled = false;
 
@@ -352,7 +373,11 @@ export function startAssetEditor(app: HTMLDivElement): void {
   function setAssetHealth(health: number): void {
     const settings = activeAssetSettings();
     if (!hasHealth(settings)) return;
-    settings.health = Math.round(clamp(health, HEALTH_MIN, HEALTH_MAX));
+    if (settings.kind === "enemy") {
+      settings.health.base = Math.round(clamp(health, HEALTH_MIN, HEALTH_MAX));
+    } else {
+      settings.health = Math.round(clamp(health, HEALTH_MIN, HEALTH_MAX));
+    }
     applyStateToControls();
     setAssetSettingsStatus("Unsaved changes");
   }
@@ -369,6 +394,50 @@ export function startAssetEditor(app: HTMLDivElement): void {
     const settings = activeAssetSettings();
     if (settings.kind !== "pickup") return;
     settings.resources[kind] = Math.round(clamp(amount, 0, HEALTH_MAX));
+    applyStateToControls();
+    setAssetSettingsStatus("Unsaved changes");
+  }
+
+  function setEnemyAttackField(field: string | undefined, value: number): void {
+    const settings = activeAssetSettings();
+    if (settings.kind !== "enemy") return;
+    const attack = primaryEditableAttack(settings);
+
+    if (field === "damage") {
+      attack.damage = Math.round(clamp(value, 1, ENEMY_ATTACK_MAX));
+    } else if (field === "cooldown") {
+      attack.cooldown = clamp(value, 0.01, 10);
+    } else if (field === "range") {
+      attack.range = clamp(value, 0.01, 50);
+    } else {
+      return;
+    }
+
+    applyStateToControls();
+    setAssetSettingsStatus("Unsaved changes");
+  }
+
+  function setEnemyDropChance(chance: number): void {
+    const settings = activeAssetSettings();
+    if (settings.kind !== "enemy") return;
+    settings.dropTable.chance = clamp(chance, DROP_CHANCE_MIN, DROP_CHANCE_MAX);
+    applyStateToControls();
+    setAssetSettingsStatus("Unsaved changes");
+  }
+
+  function setEnemyDropEntryField(kind: ResourceKind, field: string | undefined, value: number): void {
+    const settings = activeAssetSettings();
+    if (settings.kind !== "enemy") return;
+    const entry = enemyDropEntry(settings, kind);
+
+    if (field === "amount") {
+      entry.amount = Math.round(clamp(value, 1, HEALTH_MAX));
+    } else if (field === "weight") {
+      entry.weight = Math.round(clamp(value, 1, HEALTH_MAX));
+    } else {
+      return;
+    }
+
     applyStateToControls();
     setAssetSettingsStatus("Unsaved changes");
   }
@@ -554,6 +623,26 @@ export function startAssetEditor(app: HTMLDivElement): void {
     });
   }
 
+  for (const input of enemyAttackInputs) {
+    input.addEventListener("input", () => {
+      setEnemyAttackField(input.dataset.enemyAttackField, Number(input.value));
+    });
+  }
+
+  enemyDropChanceInput.addEventListener("input", () => {
+    setEnemyDropChance(Number(enemyDropChanceInput.value));
+  });
+
+  for (const input of enemyDropEntryInputs) {
+    input.addEventListener("input", () => {
+      setEnemyDropEntryField(
+        toResourceKind(input.dataset.enemyDropKind),
+        input.dataset.enemyDropField,
+        Number(input.value),
+      );
+    });
+  }
+
   assetSettingsSaveButton.addEventListener("click", () => {
     void saveActiveAssetSettings();
   });
@@ -718,6 +807,37 @@ function createAssetEditorMarkup(state: AssetEditorState): string {
               <input data-pickup-resource="energy" type="number" min="0" max="${HEALTH_MAX}" step="1" value="0" />
             </label>
           </div>
+          <div id="enemyCombatField" class="enemy-settings-stack">
+            <div class="enemy-settings-group">
+              <h3>Primary Attack</h3>
+              <div class="asset-settings-grid">
+                <label>
+                  <span>Damage</span>
+                  <input data-enemy-attack-field="damage" type="number" min="1" max="${ENEMY_ATTACK_MAX}" step="1" value="1" />
+                </label>
+                <label>
+                  <span>Cooldown</span>
+                  <input data-enemy-attack-field="cooldown" type="number" min="0.01" max="10" step="0.01" value="1" />
+                </label>
+                <label>
+                  <span>Range</span>
+                  <input data-enemy-attack-field="range" type="number" min="0.01" max="50" step="0.01" value="1" />
+                </label>
+              </div>
+            </div>
+            <div class="enemy-settings-group">
+              <h3>Drop Table</h3>
+              <label>
+                <span>Drop Chance</span>
+                <input id="enemyDropChanceInput" type="number" min="${DROP_CHANCE_MIN}" max="${DROP_CHANCE_MAX}" step="0.001" value="0" />
+              </label>
+              <div class="drop-table-editor">
+                ${dropTableEditorRow("health", "Health")}
+                ${dropTableEditorRow("ammo", "Ammo")}
+                ${dropTableEditorRow("energy", "Energy")}
+              </div>
+            </div>
+          </div>
           <div class="asset-settings-actions">
             <button id="assetSettingsSaveButton" type="button">Save Asset Settings</button>
             <span id="assetSettingsStatus">Loaded from code</span>
@@ -786,11 +906,54 @@ function setMovementSpeed(settings: EnemyAssetSettings | PlayerAssetSettings, sp
 }
 
 function assetHealthValue(settings: AssetSettings): number {
+  if (settings.kind === "enemy") return settings.health.base;
   return hasHealth(settings) ? settings.health : 0;
 }
 
 function assetSpeedValue(settings: AssetSettings): number {
   return hasMovementSpeed(settings) ? getMovementSpeed(settings) : 0;
+}
+
+function primaryEditableAttack(settings: EnemyAssetSettings): EnemyAssetSettings["attacks"][number] {
+  const melee = settings.attacks.find((attack) => attack.kind === "melee");
+  return melee ?? settings.attacks[0];
+}
+
+function enemyAttackInputValue(attack: EnemyAssetSettings["attacks"][number], field: string | undefined): number {
+  if (field === "damage") return attack.damage;
+  if (field === "cooldown") return attack.cooldown;
+  if (field === "range") return attack.range;
+  return 0;
+}
+
+function enemyDropEntry(settings: EnemyAssetSettings, kind: ResourceKind): EnemyAssetSettings["dropTable"]["entries"][number] {
+  let entry = settings.dropTable.entries.find((candidate) => candidate.kind === kind);
+  if (!entry) {
+    entry = { kind, weight: 1, amount: 1 };
+    settings.dropTable.entries.push(entry);
+  }
+  return entry;
+}
+
+function toResourceKind(value: string | undefined): ResourceKind {
+  if (value === "health" || value === "ammo" || value === "energy") return value;
+  return "health";
+}
+
+function dropTableEditorRow(kind: ResourceKind, label: string): string {
+  return `
+    <div class="drop-table-row">
+      <span>${label}</span>
+      <label>
+        <span>Weight</span>
+        <input data-enemy-drop-kind="${kind}" data-enemy-drop-field="weight" type="number" min="1" max="${HEALTH_MAX}" step="1" value="1" />
+      </label>
+      <label>
+        <span>Amount</span>
+        <input data-enemy-drop-kind="${kind}" data-enemy-drop-field="amount" type="number" min="1" max="${HEALTH_MAX}" step="1" value="1" />
+      </label>
+    </div>
+  `;
 }
 
 function setWireframe(root: THREE.Object3D, enabled: boolean): void {

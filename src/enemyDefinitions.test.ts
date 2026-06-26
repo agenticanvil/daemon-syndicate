@@ -14,7 +14,15 @@ describe("ENEMY_DEFINITIONS", () => {
     const leanHunter = definition("leanHunter");
     const elite = definition("elite");
 
-    expect(leanHunter.health(3)).toBe(LEAN_HUNTER_SETTINGS.health + 3 * 5);
+    expect(leanHunter.health(3)).toBe(
+      LEAN_HUNTER_SETTINGS.health.base + 3 * LEAN_HUNTER_SETTINGS.health.waveGrowth,
+    );
+    expect(leanHunter.spawnWeight(3)).toBeCloseTo(
+      Math.max(
+        LEAN_HUNTER_SETTINGS.spawnWeight.min ?? -Infinity,
+        LEAN_HUNTER_SETTINGS.spawnWeight.base + 3 * LEAN_HUNTER_SETTINGS.spawnWeight.waveGrowth,
+      ),
+    );
     expect(leanHunter.speed(3)).toBeCloseTo(
       LEAN_HUNTER_SETTINGS.movement.speed + 3 * LEAN_HUNTER_SETTINGS.movement.waveSpeedGrowth,
     );
@@ -22,7 +30,13 @@ describe("ENEMY_DEFINITIONS", () => {
     expect(leanHunter.attack).toBe(LEAN_HUNTER_SETTINGS.attacks[0]);
     expect(leanHunter.dropTable).toBe(LEAN_HUNTER_SETTINGS.dropTable);
 
-    expect(elite.health(3)).toBe(ELITE_ENEMY_SETTINGS.health + 3 * 8);
+    expect(elite.health(3)).toBe(ELITE_ENEMY_SETTINGS.health.base + 3 * ELITE_ENEMY_SETTINGS.health.waveGrowth);
+    expect(elite.spawnWeight(3)).toBeCloseTo(
+      Math.min(
+        ELITE_ENEMY_SETTINGS.spawnWeight.max ?? Infinity,
+        ELITE_ENEMY_SETTINGS.spawnWeight.base + 3 * ELITE_ENEMY_SETTINGS.spawnWeight.waveGrowth,
+      ),
+    );
     expect(elite.speed(3)).toBeCloseTo(
       ELITE_ENEMY_SETTINGS.movement.speed + 3 * ELITE_ENEMY_SETTINGS.movement.waveSpeedGrowth,
     );
