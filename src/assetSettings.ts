@@ -19,14 +19,27 @@ export type EnemyAttackDefinition = {
   windup?: number;
 };
 
+export type EnemyHealthSettings = {
+  base: number;
+  waveGrowth: number;
+};
+
+export type EnemySpawnWeightSettings = {
+  base: number;
+  waveGrowth: number;
+  min?: number;
+  max?: number;
+};
+
 export type EnemyAssetSettings = {
   kind: "enemy";
   collision: CollisionSettings;
-  health: number;
+  health: EnemyHealthSettings;
   movement: {
     speed: number;
     waveSpeedGrowth: number;
   };
+  spawnWeight: EnemySpawnWeightSettings;
   attacks: EnemyAttackDefinition[];
   dropTable: DropTable;
 };

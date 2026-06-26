@@ -45,21 +45,21 @@ Runtime side effects now flow through a small synchronous `EventQueue` instead o
 
 Verification:
 
-- `npm test` passes with 5 files and 14 tests.
+- `npm test` passes with 6 files and 17 tests.
 - `npm run build` passes.
 - Browser page-load smoke against `http://127.0.0.1:5173/?autostart=1&seed=event-queue-smoke` confirmed the HUD and canvas render. Active browser input automation timed out, so no active combat screenshot was kept for this step.
 
-## In Progress: Typed Asset Data, Definition-Driven Drops, And Enemy Attacks
+## Completed: Typed Asset Data, Definition-Driven Drops, And Enemy Attacks
 
-Goal: make asset-authored data scalable without forcing every asset to carry the same fields.
+Asset-authored data is now scalable without forcing every asset to carry the same fields.
 
-Completed in the current pass:
+Completed in this phase:
 
 - Added shared `AssetSettings` types with `enemy`, `pickup`, and `player` variants.
 - Added `kind` to every asset settings JSON.
 - Removed placeholder `health`/`speed` fields from pickups and replaced them with resource grant data.
 - Moved enemy movement speed into `movement.speed` with `movement.waveSpeedGrowth`.
-- Added enemy `attacks` and `dropTable` defaults to asset JSON for the next runtime migration.
+- Added enemy `attacks` and `dropTable` defaults to asset JSON.
 - Updated the asset editor to show kind-specific controls:
   - Common: collision radius and preview/render controls.
   - Enemy/player: health and movement speed.
@@ -69,80 +69,38 @@ Completed in the current pass:
 - Moved enemy death drop selection from `DROP_BALANCE` into each enemy `dropTable`.
 - Moved enemy melee damage/cooldown/range from `ENEMY_BALANCE` into each enemy `attacks` entry.
 - Runtime enemies now carry their attack and drop-table data from `EnemyDefinition`.
-
-Remaining issue:
-
-- Enemy definitions still duplicate wave health growth and spawn weights outside asset settings.
-
-Remaining steps:
-
-1. Build runtime `EnemyDefinition` values from `EnemyAssetSettings` rather than duplicating spawn and health-growth constants.
-2. Expand the asset editor with enemy attack and drop-table editing.
-3. Preserve current gameplay behavior as the default during migration.
-
-Future benefits:
-
-- Asset data can grow by domain without bloating every asset.
-- The editor can stay explicit and ergonomic as assets become more specialized.
-- Ranged enemies can drop ammo less often.
-- Elites can drop larger pickups or guaranteed energy.
-- Bosses can use different attack cadence/range.
-- Pickups can grant multiple resources or different amounts without hardcoded drop-balance branches.
-
-Risks:
-
-- Avoid building a generic form system too early. A small registry per `kind` is enough:
-  `enemy`, `pickup`, and `player`.
-- Keep runtime systems consuming domain-specific settings, not editor UI state.
-- Do not mix spawn weighting, drop tables, and pickup grant values into one generic "loot" abstraction until there are multiple real cases.
+- Moved enemy base health, wave health growth, and spawn weighting into enemy asset settings.
+- Runtime `EnemyDefinition` health and spawn-weight functions now derive from `EnemyAssetSettings`.
+- Expanded the asset editor with enemy primary-attack and drop-table controls.
 
 Verification:
 
 - `npm test` passes with 5 files and 14 tests.
 - `npm run build` passes.
-- Asset editor page-load smoke against `/dev/asset-editor?asset=health-pickup` confirmed the canvas renders and pickup resource controls are visible while health/movement fields are hidden.
-- Save-endpoint behavior requires a dev-server restart to pick up the updated Vite middleware; the server was not restarted in this pass.
+- Browser smoke checked `/dev/asset-editor?asset=lean-hunter`; enemy combat controls rendered with current JSON values, pickup-only controls were hidden, editing damage changed the status to `Unsaved changes`, and screenshot was saved to `tmp/asset-editor-enemy-combat.png`.
 
-## Phase 5: Resource And Status Effect Model
+## Completed: Resource And Status Effect Model
 
-Goal: make player/enemy modifiers explicit instead of scattering timers and hardcoded state checks.
-
-Current issue:
-
-- Player invulnerability is `Game.invulnTimer`.
-- Low health is checked in multiple places.
-- Future effects like slow, burn, stun, armor, shield, haste, damage-over-time, or buffs need a shared model.
-
-Proposed shape:
-
-```ts
-type StatusEffect = {
-  kind: "invulnerable" | "slow" | "burn" | "stun" | "shield";
-  remaining: number;
-  magnitude?: number;
-  sourceId?: number;
-};
-```
-
-Steps:
-
-1. Add a small `statusEffects.ts` helper for ticking effects and querying flags.
-2. Replace `invulnTimer` with a player status effect.
-3. Add enemy status effect arrays only when a real enemy effect is introduced.
-4. Keep resource regeneration in `Game` or move it to `playerSystem.ts`.
+Player invulnerability now uses an explicit `invulnerable` status effect instead of a dedicated `Game.invulnTimer`. The new `statusEffects.ts` helper handles ticking, querying, and refreshing status effects, with enemy status arrays deferred until a real enemy effect is introduced.
 
 Verification:
 
-- Player still takes damage no faster than the current invulnerability window.
-- HUD readiness and health color behavior stay unchanged.
+- `npm test` passes with 6 files and 17 tests.
+- `npm run build` passes.
+- Browser smoke checked `/?autostart=1&seed=status-effects-smoke`; the canvas and HUD rendered and no console errors were reported.
 
-## Phase 6: Split Player System
+## In Progress: Split Player System
 
 Goal: move player-specific simulation out of `Game`.
 
 Current issue:
 
-- `Game` still owns input interpretation, movement, aim, camera follow, player resource regen, player damage state, and player rig update orchestration.
+- `Game` still owns movement, aim, camera follow, player resource regen, player damage state, and player rig update orchestration.
+
+Completed in this phase:
+
+- Extracted key and pointer tracking into `src/inputState.ts`.
+- `Game` now consumes `InputState` for movement input, pointer aiming, reticle reset, and firing targets.
 
 Suggested split:
 
@@ -150,19 +108,17 @@ Suggested split:
 - `PlayerSystem`: movement, aim yaw, resources, damage/status.
 - `CameraSystem`: camera follow and resize interaction remains in scene/renderer.
 
-Steps:
+Remaining steps:
 
-1. Extract key/pointer handling into `inputState.ts`.
-2. Move `getMovementInput`, `applyMovement`, `updatePlayerAim`, `regenerate`, and player damage color state into `PlayerSystem`.
-3. Keep `Game` as the frame-order coordinator.
-4. Preserve UI movement mode access, or copy UI setting into input state when changed.
+1. Move `getMovementInput`, `applyMovement`, `updatePlayerAim`, `regenerate`, and player damage color state into `PlayerSystem`.
+2. Keep `Game` as the frame-order coordinator.
+3. Preserve UI movement mode access, or copy UI setting into input state when changed.
 
 Verification:
 
-- WASD movement modes still behave the same.
-- Mouse aim still rotates player correctly.
-- Gate transitions still trigger.
-- Energy regen still updates HUD.
+- `npm test` passes with 6 files and 17 tests.
+- `npm run build` passes.
+- Browser smoke checked `/?autostart=1&seed=input-state-smoke`; the canvas and HUD rendered and no console errors were reported.
 
 ## Phase 7: Scene/Asset Factory Cleanup
 
