@@ -4,14 +4,24 @@ import { TILE_SIZE } from "./constants";
 import { CombatSystem } from "./combatSystem";
 import { EffectsSystem } from "./effectsSystem";
 import { EnemySystem } from "./enemySystem";
+import type { EnemyKind } from "./enemyDefinitions";
 import { EventQueue, type GameEvent } from "./eventQueue";
 import { InputState } from "./inputState";
-import { exitGateToWorld, generateLevel, tileToWorld, type LevelData } from "./level";
+import { exitGateToWorld, generateLevel, tileToWorld, type LevelData, type TileCoord } from "./level";
 import type { PerfRecorder } from "./perf";
 import { PickupSystem } from "./pickupSystem";
 import { PlayerSystem } from "./playerSystem";
+import type { Rng } from "./rng";
 import type { GameScene } from "./scene";
+import type { PlayerResources } from "./types";
 import type { Ui } from "./ui";
+
+type GameOptions = {
+  rng?: Rng;
+  seed?: string;
+};
+
+export type DebugSpawnPosition = TileCoord | { x: number; y?: number; z: number };
 
 export class Game {
   private readonly clock = new THREE.Clock();
@@ -33,13 +43,18 @@ export class Game {
   private nextFpsHudUpdateAt = 0;
   private levelNumber = 1;
   private currentLevel: LevelData;
+  private readonly rng: Rng;
+  private readonly seed?: string;
 
   constructor(
     private readonly world: GameScene,
     private readonly ui: Ui,
     private readonly perf: PerfRecorder,
+    options: GameOptions = {},
   ) {
-    this.currentLevel = generateLevel(this.levelNumber);
+    this.rng = options.rng ?? Math.random;
+    this.seed = options.seed;
+    this.currentLevel = generateLevel(this.levelNumber, this.rng);
     this.player = new PlayerSystem(
       this.world,
       this.input,
@@ -52,6 +67,7 @@ export class Game {
       this.events,
       this.player.collisionBody,
       () => this.currentCollisionLayer(),
+      this.rng,
     );
     this.enemies = new EnemySystem(
       this.world,
@@ -62,6 +78,7 @@ export class Game {
       () => this.wave,
       () => this.currentCollisionLayer(),
       () => !this.player.hasStatus("invulnerable"),
+      this.rng,
     );
     this.combat = new CombatSystem(
       this.world,
@@ -94,6 +111,47 @@ export class Game {
 
   startNewRun(): void {
     this.reset();
+  }
+
+  snapshot(): object {
+    return {
+      seed: this.seed,
+      started: this.started,
+      paused: this.paused,
+      gameOver: this.gameOver,
+      kills: this.kills,
+      wave: this.wave,
+      levelNumber: this.levelNumber,
+      level: {
+        id: this.currentLevel.id,
+        width: this.currentLevel.width,
+        height: this.currentLevel.height,
+        exitDirection: this.currentLevel.exitDirection,
+        start: { ...this.currentLevel.start },
+        end: { ...this.currentLevel.end },
+        walkable: [...this.currentLevel.walkable],
+        spawnPoints: this.currentLevel.spawnPoints.map((spawn) => ({ ...spawn })),
+      },
+      player: this.player.snapshot(),
+      enemies: this.enemies.snapshot(),
+      combat: this.combat.snapshot(),
+      pickups: this.pickups.snapshot(),
+      effects: this.effects.snapshot(),
+    };
+  }
+
+  spawnEnemy(kind: EnemyKind, position: DebugSpawnPosition): void {
+    this.enemies.spawnEnemyAt(kind, debugPositionToWorld(position));
+  }
+
+  grantResources(resources: Partial<PlayerResources>): void {
+    for (const kind of ["health", "ammo", "energy"] as const) {
+      const amount = resources[kind];
+      if (amount !== undefined) {
+        this.player.grantResource(kind, amount);
+      }
+    }
+    this.updateHud();
   }
 
   private readonly updatePointerWorld = (event: PointerEvent): void => {
@@ -224,7 +282,7 @@ export class Game {
   private reset(): void {
     this.clearEntities();
     this.levelNumber = 1;
-    this.currentLevel = generateLevel(this.levelNumber);
+    this.currentLevel = generateLevel(this.levelNumber, this.rng);
     this.world.renderLevel(this.currentLevel);
     this.player.reset(tileToWorld(this.currentLevel.start), this.currentCollisionLayer());
     this.resetReticle();
@@ -245,7 +303,7 @@ export class Game {
     this.clearEntities();
     this.levelNumber += 1;
     this.wave = this.levelNumber;
-    this.currentLevel = generateLevel(this.levelNumber);
+    this.currentLevel = generateLevel(this.levelNumber, this.rng);
     this.world.renderLevel(this.currentLevel);
     this.player.moveTo(tileToWorld(this.currentLevel.start), this.currentCollisionLayer());
     this.resetReticle();
@@ -330,4 +388,11 @@ export class Game {
       this.perf.span("three.render.cpu", () => this.world.renderer.render(this.world.scene, this.world.camera));
     });
   };
+}
+
+function debugPositionToWorld(position: DebugSpawnPosition): THREE.Vector3 {
+  if ("z" in position) {
+    return new THREE.Vector3(position.x, position.y ?? 0, position.z);
+  }
+  return tileToWorld(position);
 }

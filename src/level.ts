@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import { LEVEL_HEIGHT, LEVEL_WIDTH, TILE_SIZE } from "./constants";
+import type { Rng } from "./rng";
 
 export type TileCoord = {
   x: number;
@@ -26,13 +27,13 @@ const CARDINALS: TileCoord[] = [
   { x: 0, y: -1 },
 ];
 
-export function generateLevel(id: number): LevelData {
+export function generateLevel(id: number, rng: Rng = Math.random): LevelData {
   const width = LEVEL_WIDTH;
   const height = LEVEL_HEIGHT;
-  const exitDirection: ExitDirection = Math.random() < 0.55 ? "north" : "east";
+  const exitDirection: ExitDirection = rng() < 0.55 ? "north" : "east";
   const start = { x: 3, y: height - 4 };
   const end = exitDirection === "north" ? { x: width - 5, y: 1 } : { x: width - 2, y: 5 };
-  const path = buildMainPath(start, end, exitDirection, width, height);
+  const path = buildMainPath(start, end, exitDirection, width, height, rng);
   const walkable = new Set<string>();
 
   carveRoom(walkable, path[0], width, height, 1);
@@ -42,8 +43,8 @@ export function generateLevel(id: number): LevelData {
 
   const branchCount = 3 + Math.min(Math.floor(id / 2), 4);
   for (let i = 0; i < branchCount; i += 1) {
-    const anchor = path[3 + Math.floor(Math.random() * Math.max(path.length - 6, 1))];
-    carveBranch(walkable, anchor, width, height, 4 + Math.floor(Math.random() * 5));
+    const anchor = path[3 + Math.floor(rng() * Math.max(path.length - 6, 1))];
+    carveBranch(walkable, anchor, width, height, 4 + Math.floor(rng() * 5), rng);
   }
 
   carveRoom(walkable, start, width, height, 2);
@@ -106,6 +107,7 @@ function buildMainPath(
   exitDirection: ExitDirection,
   width: number,
   height: number,
+  rng: Rng,
 ): TileCoord[] {
   const path: TileCoord[] = [{ ...start }];
   const current = { ...start };
@@ -116,14 +118,14 @@ function buildMainPath(
     const options: TileCoord[] = [];
     if (current.x < end.x) options.push({ x: current.x + 1, y: current.y });
     if (current.y > end.y) options.push({ x: current.x, y: current.y - 1 });
-    if (Math.random() < 0.24 && current.y < height - 4) options.push({ x: current.x, y: current.y + 1 });
-    if (Math.random() < 0.2 && current.x > 3) options.push({ x: current.x - 1, y: current.y });
+    if (rng() < 0.24 && current.y < height - 4) options.push({ x: current.x, y: current.y + 1 });
+    if (rng() < 0.2 && current.x > 3) options.push({ x: current.x - 1, y: current.y });
 
     const preferred =
       exitDirection === "east"
         ? options.sort((a, b) => Math.abs(a.x - end.x) - Math.abs(b.x - end.x))
         : options.sort((a, b) => Math.abs(a.y - end.y) - Math.abs(b.y - end.y));
-    const next = preferred[Math.floor(Math.random() * Math.min(preferred.length, 2))] ?? end;
+    const next = preferred[Math.floor(rng() * Math.min(preferred.length, 2))] ?? end;
     current.x = THREE.MathUtils.clamp(next.x, 1, width - 2);
     current.y = THREE.MathUtils.clamp(next.y, 1, height - 2);
     path.push({ ...current });
@@ -142,15 +144,22 @@ function buildMainPath(
   return path;
 }
 
-function carveBranch(walkable: Set<string>, anchor: TileCoord, width: number, height: number, length: number): void {
+function carveBranch(
+  walkable: Set<string>,
+  anchor: TileCoord,
+  width: number,
+  height: number,
+  length: number,
+  rng: Rng,
+): void {
   const current = { ...anchor };
-  const dir = CARDINALS[Math.floor(Math.random() * CARDINALS.length)];
+  const dir = CARDINALS[Math.floor(rng() * CARDINALS.length)];
   for (let i = 0; i < length; i += 1) {
     const previous = { ...current };
     current.x = THREE.MathUtils.clamp(current.x + dir.x, 2, width - 3);
     current.y = THREE.MathUtils.clamp(current.y + dir.y, 2, height - 3);
     carveCorridor(walkable, previous, current, width, height);
-    if (Math.random() < 0.25) {
+    if (rng() < 0.25) {
       carveRoom(walkable, current, width, height, 1);
     }
   }

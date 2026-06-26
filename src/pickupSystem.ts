@@ -5,14 +5,19 @@ import { HEALTH_PICKUP_SETTINGS } from "./assets/pickups/healthPickup/healthPick
 import type { DropTable } from "./assetSettings";
 import { DROP_BALANCE, EFFECT_BALANCE } from "./balance";
 import { overlaps2D, type CollisionBody2D, type CollisionLayer } from "./collision";
-import { disposeMeshGeometry } from "./entityLifecycle";
 import type { EventQueue } from "./eventQueue";
+import type { Rng } from "./rng";
 import type { GameScene } from "./scene";
 import type { Pickup, PickupDraft, PickupView, ResourceKind } from "./types";
 
 export class PickupSystem {
   private readonly pickups: Pickup[] = [];
   private readonly pickupViews = new Map<number, PickupView>();
+  private readonly pickupMeshPools: Record<ResourceKind, THREE.Mesh[]> = {
+    health: [],
+    ammo: [],
+    energy: [],
+  };
   private nextPickupId = 1;
 
   constructor(
@@ -20,6 +25,7 @@ export class PickupSystem {
     private readonly events: EventQueue,
     private readonly playerCollisionBody: CollisionBody2D,
     private readonly getCollisionLayer: () => CollisionLayer,
+    private readonly rng: Rng = Math.random,
   ) {}
 
   get count(): number {
@@ -27,16 +33,12 @@ export class PickupSystem {
   }
 
   maybeDropPickup(position: THREE.Vector3, dropTable: DropTable): void {
-    const entry = chooseDropEntry(dropTable);
+    const entry = chooseDropEntry(dropTable, this.rng);
     if (!entry) return;
 
     const { kind, amount } = entry;
     const settings =
       kind === "health" ? HEALTH_PICKUP_SETTINGS : kind === "ammo" ? AMMO_PICKUP_SETTINGS : ENERGY_PICKUP_SETTINGS;
-    const mesh = this.world.createPickupAsset(kind).root;
-    mesh.position.copy(position);
-    mesh.position.y = 0.45;
-    this.world.scene.add(mesh);
     this.addPickup(
       {
         position: position.clone(),
@@ -46,7 +48,6 @@ export class PickupSystem {
         radius: settings.collision.radius,
         life: settings.lifetime ?? DROP_BALANCE.pickupLife,
       },
-      mesh,
     );
   }
 
@@ -72,14 +73,28 @@ export class PickupSystem {
   }
 
   clear(): void {
-    for (const pickup of this.pickups.splice(0)) {
+    for (const pickup of this.pickups) {
       this.disposePickupView(pickup.id);
     }
+    this.pickups.length = 0;
   }
 
-  private addPickup(pickup: PickupDraft, mesh: THREE.Mesh): void {
+  snapshot(): object {
+    return this.pickups.map((pickup) => ({
+      id: pickup.id,
+      position: vectorSnapshot(pickup.position),
+      kind: pickup.kind,
+      collisionLayer: pickup.collisionLayer,
+      amount: pickup.amount,
+      radius: pickup.radius,
+      life: pickup.life,
+    }));
+  }
+
+  private addPickup(pickup: PickupDraft): void {
     const id = this.nextPickupId;
     this.nextPickupId += 1;
+    const mesh = this.acquirePickupMesh(pickup.kind, pickup.position);
     this.pickups.push({ id, ...pickup });
     this.pickupViews.set(id, { id, mesh });
   }
@@ -98,18 +113,28 @@ export class PickupSystem {
     const view = this.pickupViews.get(id);
     if (!view) return;
     this.world.scene.remove(view.mesh);
-    disposeMeshGeometry(view.mesh);
+    const pickup = this.pickups.find((candidate) => candidate.id === id);
+    if (pickup) this.pickupMeshPools[pickup.kind].push(view.mesh);
     this.pickupViews.delete(id);
+  }
+
+  private acquirePickupMesh(kind: ResourceKind, position: THREE.Vector3): THREE.Mesh {
+    const mesh = this.pickupMeshPools[kind].pop() ?? this.world.createPickupAsset(kind).root;
+    mesh.position.copy(position);
+    mesh.position.y = 0.45;
+    mesh.rotation.set(0, 0, 0);
+    this.world.scene.add(mesh);
+    return mesh;
   }
 }
 
-function chooseDropEntry(dropTable: DropTable): { kind: ResourceKind; amount: number } | null {
-  if (Math.random() > dropTable.chance) return null;
+function chooseDropEntry(dropTable: DropTable, rng: Rng): { kind: ResourceKind; amount: number } | null {
+  if (rng() > dropTable.chance) return null;
 
   const totalWeight = dropTable.entries.reduce((sum, entry) => sum + entry.weight, 0);
   if (totalWeight <= 0) return null;
 
-  let roll = Math.random() * totalWeight;
+  let roll = rng() * totalWeight;
   for (const entry of dropTable.entries) {
     roll -= entry.weight;
     if (roll <= 0) {
@@ -119,4 +144,8 @@ function chooseDropEntry(dropTable: DropTable): { kind: ResourceKind; amount: nu
 
   const fallback = dropTable.entries[0];
   return fallback ? { kind: fallback.kind, amount: fallback.amount } : null;
+}
+
+function vectorSnapshot(vector: THREE.Vector3): { x: number; y: number; z: number } {
+  return { x: vector.x, y: vector.y, z: vector.z };
 }

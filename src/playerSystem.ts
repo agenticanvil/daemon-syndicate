@@ -119,6 +119,18 @@ export class PlayerSystem {
     return hasStatusEffect(this.statusEffects, kind);
   }
 
+  snapshot(): object {
+    return {
+      position: vectorSnapshot(this.world.player.position),
+      rotationY: this.world.player.rotation.y,
+      collisionLayer: this.collisionBody.collisionLayer,
+      resources: { ...this.resources },
+      maxResources: { ...this.maxResources },
+      statusEffects: this.statusEffects.map((status) => ({ ...status })),
+      moving: this.moving,
+    };
+  }
+
   private setStatus(kind: StatusEffect["kind"], remaining: number): void {
     setStatusEffect(this.statusEffects, { kind, remaining });
   }
@@ -141,4 +153,8 @@ export class PlayerSystem {
   private targetBodyColor(): number {
     return this.resources.health <= PLAYER_BALANCE.lowHealthThreshold ? PLAYER_LOW_HEALTH_COLOR : PLAYER_BASE_COLOR;
   }
+}
+
+function vectorSnapshot(vector: THREE.Vector3): { x: number; y: number; z: number } {
+  return { x: vector.x, y: vector.y, z: vector.z };
 }

@@ -1,15 +1,17 @@
 import * as THREE from "three";
 import { LEVEL_HEIGHT, LEVEL_WIDTH, TILE_SIZE } from "./constants";
 import { overlaps2D, type CollisionBody2D, type CollisionLayer } from "./collision";
-import { disposeMeshGeometry } from "./entityLifecycle";
 import type { EffectsSystem } from "./effectsSystem";
 import type { GameScene } from "./scene";
 import type { Enemy, PlayerResources, Projectile, ProjectileDraft, ProjectileView } from "./types";
 import { ABILITY_DEFINITIONS, type AbilityId } from "./weaponDefinitions";
 
+const PROJECTILE_GEOMETRY = new THREE.SphereGeometry(0.16, 12, 8);
+
 export class CombatSystem {
   private readonly projectiles: Projectile[] = [];
   private readonly projectileViews = new Map<number, ProjectileView>();
+  private readonly projectileMeshPool: THREE.Mesh[] = [];
   private readonly abilityTimers: Record<AbilityId, number> = {
     primary: 0,
     nova: 0,
@@ -98,6 +100,21 @@ export class CombatSystem {
     }
   }
 
+  snapshot(): object {
+    return {
+      abilityTimers: { ...this.abilityTimers },
+      projectiles: this.projectiles.map((projectile) => ({
+        id: projectile.id,
+        position: vectorSnapshot(projectile.position),
+        velocity: vectorSnapshot(projectile.velocity),
+        collisionLayer: projectile.collisionLayer,
+        life: projectile.life,
+        damage: projectile.damage,
+        radius: projectile.radius,
+      })),
+    };
+  }
+
   private isAbilityReady(id: AbilityId): boolean {
     const ability = ABILITY_DEFINITIONS[id];
     return this.abilityTimers[id] <= 0 && this.resources[ability.resource] >= ability.cost;
@@ -116,7 +133,7 @@ export class CombatSystem {
         collisionLayer: this.getCollisionLayer(),
         enemies: this.enemies(),
         damageEnemy: this.damageEnemy,
-        addProjectile: (projectile, mesh) => this.addProjectile(projectile, mesh),
+        addProjectile: (projectile) => this.addProjectile(projectile),
       },
       aimWorld,
     );
@@ -126,9 +143,10 @@ export class CombatSystem {
     }
   }
 
-  private addProjectile(projectile: ProjectileDraft, mesh: THREE.Mesh): void {
+  private addProjectile(projectile: ProjectileDraft): void {
     const id = this.nextProjectileId;
     this.nextProjectileId += 1;
+    const mesh = this.acquireProjectileMesh(projectile.position);
     this.projectiles.push({ id, ...projectile });
     this.projectileViews.set(id, { id, mesh });
   }
@@ -144,7 +162,20 @@ export class CombatSystem {
     const view = this.projectileViews.get(id);
     if (!view) return;
     this.world.scene.remove(view.mesh);
-    disposeMeshGeometry(view.mesh);
+    this.projectileMeshPool.push(view.mesh);
     this.projectileViews.delete(id);
   }
+
+  private acquireProjectileMesh(position: THREE.Vector3): THREE.Mesh {
+    const mesh =
+      this.projectileMeshPool.pop() ?? new THREE.Mesh(PROJECTILE_GEOMETRY, this.world.materials.projectile);
+    mesh.position.copy(position);
+    mesh.visible = true;
+    this.world.scene.add(mesh);
+    return mesh;
+  }
+}
+
+function vectorSnapshot(vector: THREE.Vector3): { x: number; y: number; z: number } {
+  return { x: vector.x, y: vector.y, z: vector.z };
 }

@@ -77,6 +77,7 @@ describe("ABILITY_DEFINITIONS", () => {
     expect(projectile?.position.x).toBeCloseTo(WEAPON_BALANCE.primary.spawnOffset);
     expect(projectile?.position.y).toBeCloseTo(WEAPON_BALANCE.primary.spawnHeight);
     expect(projectile?.velocity.length()).toBeCloseTo(WEAPON_BALANCE.primary.projectileSpeed);
+    expect(context.world.scene.children).toHaveLength(0);
     expect(context.resources.ammo).toBe(80 - WEAPON_BALANCE.primary.ammoCost);
   });
 
