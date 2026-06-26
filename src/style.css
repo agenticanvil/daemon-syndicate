@@ -591,7 +591,7 @@ canvas {
   display: none;
 }
 
-.asset-renderer {
+.asset-editor {
   color: #e8f7ff;
   font-size: 0.9rem;
   background:
@@ -599,35 +599,35 @@ canvas {
     linear-gradient(135deg, #05080a 0%, #101412 52%, #050709 100%);
 }
 
-.asset-renderer-shell {
+.asset-editor-shell {
   position: fixed;
   inset: 0;
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(260px, 300px);
 }
 
-.asset-renderer-stage {
+.asset-editor-stage {
   position: relative;
   min-width: 0;
   min-height: 0;
 }
 
-.asset-renderer-canvas {
+.asset-editor-canvas {
   position: absolute;
   inset: 0;
 }
 
-.asset-renderer-canvas canvas {
+.asset-editor-canvas canvas {
   width: 100%;
   height: 100%;
   cursor: grab;
 }
 
-.asset-renderer-canvas canvas:active {
+.asset-editor-canvas canvas:active {
   cursor: grabbing;
 }
 
-.asset-renderer-readout {
+.asset-editor-readout {
   position: absolute;
   left: 16px;
   bottom: 16px;
@@ -637,7 +637,7 @@ canvas {
   pointer-events: none;
 }
 
-.asset-renderer-readout div {
+.asset-editor-readout div {
   min-width: 92px;
   border: 1px solid rgba(142, 255, 236, 0.18);
   border-radius: 6px;
@@ -646,8 +646,8 @@ canvas {
   backdrop-filter: blur(10px);
 }
 
-.asset-renderer-readout span,
-.asset-renderer-panel label > span,
+.asset-editor-readout span,
+.asset-editor-panel label > span,
 .control-group > span {
   display: block;
   color: #8ca8ad;
@@ -655,7 +655,7 @@ canvas {
   text-transform: uppercase;
 }
 
-.asset-renderer-readout strong {
+.asset-editor-readout strong {
   display: block;
   margin-top: 3px;
   color: #f4fbff;
@@ -663,7 +663,7 @@ canvas {
   font-variant-numeric: tabular-nums;
 }
 
-.asset-renderer-panel {
+.asset-editor-panel {
   z-index: 2;
   display: flex;
   flex-direction: column;
@@ -676,7 +676,7 @@ canvas {
   backdrop-filter: blur(14px);
 }
 
-.asset-renderer-title h1 {
+.asset-editor-title h1 {
   margin: 0;
   color: #f4fbff;
   font-size: 1rem;
@@ -685,14 +685,14 @@ canvas {
   text-transform: uppercase;
 }
 
-.asset-renderer-section {
+.asset-editor-section {
   display: grid;
   gap: 8px;
   border-top: 1px solid rgba(142, 255, 236, 0.13);
   padding-top: 10px;
 }
 
-.asset-renderer-section h2 {
+.asset-editor-section h2 {
   margin: 0;
   color: #9bf0df;
   font-size: 0.66rem;
@@ -700,20 +700,20 @@ canvas {
   text-transform: uppercase;
 }
 
-.asset-renderer-panel label,
+.asset-editor-panel label,
 .control-group {
   display: grid;
   gap: 5px;
 }
 
-.asset-renderer-panel select,
-.asset-renderer-panel input[type="range"],
-.asset-renderer-panel input[type="number"] {
+.asset-editor-panel select,
+.asset-editor-panel input[type="range"],
+.asset-editor-panel input[type="number"] {
   width: 100%;
 }
 
-.asset-renderer-panel select,
-.asset-renderer-panel input[type="number"] {
+.asset-editor-panel select,
+.asset-editor-panel input[type="number"] {
   min-height: 28px;
   border: 1px solid rgba(142, 255, 236, 0.28);
   border-radius: 6px;
@@ -773,7 +773,7 @@ canvas {
   accent-color: #9bf0df;
 }
 
-.asset-renderer-panel input[type="range"] {
+.asset-editor-panel input[type="range"] {
   accent-color: #9bf0df;
 }
 
@@ -875,18 +875,18 @@ canvas {
     text-align: left;
   }
 
-  .asset-renderer-shell {
+  .asset-editor-shell {
     grid-template-columns: 1fr;
     grid-template-rows: minmax(0, 1fr) auto;
   }
 
-  .asset-renderer-panel {
+  .asset-editor-panel {
     max-height: 45vh;
     border-top: 1px solid rgba(142, 255, 236, 0.16);
     border-left: 0;
   }
 
-  .asset-renderer-title h1 {
+  .asset-editor-title h1 {
     font-size: 1rem;
   }
 }

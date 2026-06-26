@@ -36,7 +36,7 @@ type PlayerAnimationStateId = "idle" | "walk" | "fire" | "damaged" | "low-health
 type AnimationStateId = PlayerAnimationStateId | LeanHunterAnimationId;
 type RenderModeId = "shaded" | "wireframe";
 
-type AssetRendererState = {
+type AssetEditorState = {
   asset: AssetId;
   angle: AngleId;
   animation: AnimationStateId;
@@ -164,12 +164,12 @@ const RENDER_MODES: Array<{ id: RenderModeId; label: string }> = [
   { id: "wireframe", label: "Wireframe" },
 ];
 
-export function startAssetRenderer(app: HTMLDivElement): void {
+export function startAssetEditor(app: HTMLDivElement): void {
   const state = readStateFromUrl();
-  app.className = "asset-renderer";
-  app.innerHTML = createAssetRendererMarkup(state);
+  app.className = "asset-editor";
+  app.innerHTML = createAssetEditorMarkup(state);
 
-  const canvasHost = app.querySelector<HTMLDivElement>("#assetRendererCanvas")!;
+  const canvasHost = app.querySelector<HTMLDivElement>("#assetEditorCanvas")!;
   const assetSelect = app.querySelector<HTMLSelectElement>("#assetSelect")!;
   const animationSelect = app.querySelector<HTMLSelectElement>("#animationSelect")!;
   const playToggle = app.querySelector<HTMLInputElement>("#playToggle")!;
@@ -595,7 +595,7 @@ export function startAssetRenderer(app: HTMLDivElement): void {
   animate();
 }
 
-function createAssetRendererMarkup(state: AssetRendererState): string {
+function createAssetEditorMarkup(state: AssetEditorState): string {
   const angleButtons = Object.entries(CAMERA_POSES)
     .map(
       ([id, pose]) =>
@@ -618,23 +618,23 @@ function createAssetRendererMarkup(state: AssetRendererState): string {
   ).join("");
 
   return `
-    <main class="asset-renderer-shell">
-      <section class="asset-renderer-stage" aria-label="Asset preview">
-        <div id="assetRendererCanvas" class="asset-renderer-canvas"></div>
-        <div class="asset-renderer-readout">
+    <main class="asset-editor-shell">
+      <section class="asset-editor-stage" aria-label="Asset preview">
+        <div id="assetEditorCanvas" class="asset-editor-canvas"></div>
+        <div class="asset-editor-readout">
           <div><span>Render Calls</span><strong id="renderCalls">0</strong></div>
           <div><span>Triangles</span><strong id="triangleCount">0</strong></div>
         </div>
       </section>
-      <aside class="asset-renderer-panel" aria-label="Asset renderer controls">
-        <div class="asset-renderer-title">
+      <aside class="asset-editor-panel" aria-label="Asset editor controls">
+        <div class="asset-editor-title">
           <h1>Asset Editor</h1>
         </div>
         <label>
           <span>Asset</span>
           <select id="assetSelect">${assetOptions}</select>
         </label>
-        <section class="asset-renderer-section" aria-label="Render settings">
+        <section class="asset-editor-section" aria-label="Render settings">
           <h2>Render Settings</h2>
           <div class="control-group">
             <span>Angle</span>
@@ -669,7 +669,7 @@ function createAssetRendererMarkup(state: AssetRendererState): string {
             <input id="speedInput" type="range" min="0.1" max="2.5" step="0.1" value="${state.speed}" />
           </label>
         </section>
-        <section class="asset-renderer-section" aria-label="Asset settings">
+        <section class="asset-editor-section" aria-label="Asset settings">
           <h2>Asset Settings</h2>
           <label>
             <span>Collision Radius</span>
@@ -728,7 +728,7 @@ function createAssetRendererMarkup(state: AssetRendererState): string {
   `;
 }
 
-function readStateFromUrl(): AssetRendererState {
+function readStateFromUrl(): AssetEditorState {
   const params = new URLSearchParams(window.location.search);
   const asset = toAssetId(params.get("asset"));
 
@@ -1006,7 +1006,7 @@ function animationOptions(asset: AssetId): Array<{ id: AnimationStateId; label: 
   return ASSET_DEFINITIONS[asset].animations;
 }
 
-function syncAnimationOptions(select: HTMLSelectElement, state: AssetRendererState): void {
+function syncAnimationOptions(select: HTMLSelectElement, state: AssetEditorState): void {
   const optionsMarkup = animationOptions(state.asset)
     .map((entry) => `<option value="${entry.id}" ${entry.id === state.animation ? "selected" : ""}>${entry.label}</option>`)
     .join("");

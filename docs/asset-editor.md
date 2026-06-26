@@ -1,9 +1,9 @@
-# Asset Renderer
+# Asset Editor
 
-The asset renderer is a dev-only preview tool for inspecting game assets in isolation. Open it at:
+The asset editor is a dev-only preview tool for inspecting game assets in isolation. Open it at:
 
 ```text
-/dev/asset-renderer
+/dev/asset-editor
 ```
 
 It renders gameplay assets with the same Three.js asset pipeline used by the game.

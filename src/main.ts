@@ -23,11 +23,11 @@ if (!app) {
 void startApp(app, routePath);
 
 async function startApp(app: HTMLDivElement, routePath: string): Promise<void> {
-  if (routePath === "/dev/asset-renderer") {
+  if (routePath === "/dev/asset-editor") {
     document.title = "Asset Editor | Daemon Syndicate";
     if (import.meta.env.DEV) {
-      const { startAssetRenderer } = await import("./assetRenderer");
-      startAssetRenderer(app);
+      const { startAssetEditor } = await import("./assetEditor");
+      startAssetEditor(app);
     } else {
       app.innerHTML = "";
     }
