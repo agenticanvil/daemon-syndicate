@@ -20,6 +20,7 @@ export class Game {
   private readonly raycaster = new THREE.Raycaster();
   private readonly pointer = new THREE.Vector2();
   private readonly pointerWorld = new THREE.Vector3(0, 0, -1);
+  private readonly fpsFrameTimes: number[] = [];
   private readonly keys = new Set<string>();
   private readonly maxResources: PlayerResources = { ...PLAYER_MAX };
   private readonly movementInput = new THREE.Vector3();
@@ -38,6 +39,8 @@ export class Game {
   private invulnTimer = 0;
   private hasPointerPosition = false;
   private playerMoving = false;
+  private fpsVisible = false;
+  private nextFpsHudUpdateAt = 0;
   private levelNumber = 1;
   private currentLevel: LevelData;
 
@@ -136,6 +139,15 @@ export class Game {
   };
 
   private readonly handleKeyDown = (event: KeyboardEvent): void => {
+    if (event.code === "KeyP") {
+      if (!event.repeat) {
+        this.fpsVisible = !this.fpsVisible;
+        this.ui.setFpsVisible(this.fpsVisible);
+        this.updateFpsHud(performance.now(), true);
+      }
+      return;
+    }
+
     if (event.code === "Escape") {
       event.preventDefault();
       if (this.started && !this.gameOver) {
@@ -234,6 +246,26 @@ export class Game {
     });
   }
 
+  private sampleFps(now: number): void {
+    this.fpsFrameTimes.push(now);
+    const cutoff = now - 2000;
+    while (this.fpsFrameTimes.length > 0 && this.fpsFrameTimes[0] < cutoff) {
+      this.fpsFrameTimes.shift();
+    }
+  }
+
+  private updateFpsHud(now: number, force = false): void {
+    if (!this.fpsVisible) return;
+    if (!force && now < this.nextFpsHudUpdateAt) return;
+    this.nextFpsHudUpdateAt = now + 250;
+
+    const first = this.fpsFrameTimes[0];
+    const last = this.fpsFrameTimes[this.fpsFrameTimes.length - 1];
+    const elapsedSeconds = first === undefined || last === undefined ? 0 : (last - first) / 1000;
+    const fps = elapsedSeconds > 0 ? (this.fpsFrameTimes.length - 1) / elapsedSeconds : 0;
+    this.ui.updateFps(fps);
+  }
+
   private endGame(): void {
     this.gameOver = true;
     this.setPaused(false);
@@ -323,6 +355,9 @@ export class Game {
 
   private readonly animate = (): void => {
     requestAnimationFrame(this.animate);
+    const now = performance.now();
+    this.sampleFps(now);
+    this.updateFpsHud(now);
     const dt = Math.min(this.clock.getDelta(), 0.033);
 
     this.perf.frame(this.perfFrameArgs(dt), () => {
