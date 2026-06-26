@@ -1,10 +1,11 @@
 import type * as THREE from "three";
+import type { EnemyAssetSettings } from "../../../assetSettings";
 import eliteEnemySettings from "./eliteEnemy.settings.json";
 import { loadLeanHunterRig, type LeanHunterRig } from "../leanHunterAsset";
 
 const ELITE_HUNTER_ATLAS_URL = "/assets/elite-hunter-atlas.png";
 
-export const ELITE_ENEMY_SETTINGS = eliteEnemySettings;
+export const ELITE_ENEMY_SETTINGS = eliteEnemySettings as EnemyAssetSettings;
 
 export type EliteEnemyAsset = LeanHunterRig;
 

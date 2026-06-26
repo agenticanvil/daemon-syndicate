@@ -15,11 +15,15 @@ describe("ENEMY_DEFINITIONS", () => {
     const elite = definition("elite");
 
     expect(leanHunter.health(3)).toBe(LEAN_HUNTER_SETTINGS.health + 3 * 5);
-    expect(leanHunter.speed(3)).toBeCloseTo(LEAN_HUNTER_SETTINGS.speed + 3 * 0.07);
+    expect(leanHunter.speed(3)).toBeCloseTo(
+      LEAN_HUNTER_SETTINGS.movement.speed + 3 * LEAN_HUNTER_SETTINGS.movement.waveSpeedGrowth,
+    );
     expect(leanHunter.radius).toBe(LEAN_HUNTER_SETTINGS.collision.radius);
 
     expect(elite.health(3)).toBe(ELITE_ENEMY_SETTINGS.health + 3 * 8);
-    expect(elite.speed(3)).toBeCloseTo(ELITE_ENEMY_SETTINGS.speed + 3 * 0.05);
+    expect(elite.speed(3)).toBeCloseTo(
+      ELITE_ENEMY_SETTINGS.movement.speed + 3 * ELITE_ENEMY_SETTINGS.movement.waveSpeedGrowth,
+    );
     expect(elite.radius).toBe(ELITE_ENEMY_SETTINGS.collision.radius);
   });
 

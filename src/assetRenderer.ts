@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import type { AssetSettings, EnemyAssetSettings, PickupAssetSettings, PlayerAssetSettings } from "./assetSettings";
 import {
   ELITE_ENEMY_SETTINGS,
   createEliteEnemyAsset,
@@ -35,15 +36,6 @@ type PlayerAnimationStateId = "idle" | "walk" | "fire" | "damaged" | "low-health
 type AnimationStateId = PlayerAnimationStateId | LeanHunterAnimationId;
 type RenderModeId = "shaded" | "wireframe";
 
-type EditableAssetSettings = {
-  collision: {
-    radius: number;
-    height: number;
-  };
-  health: number;
-  speed: number;
-};
-
 type AssetRendererState = {
   asset: AssetId;
   angle: AngleId;
@@ -53,7 +45,7 @@ type AssetRendererState = {
   playing: boolean;
   renderMode: RenderModeId;
   collisionVisible: boolean;
-  assetSettings: Record<AssetId, EditableAssetSettings>;
+  assetSettings: Record<AssetId, AssetSettings>;
 };
 
 type CameraPose = {
@@ -76,11 +68,13 @@ type AssetDefinition = {
   animations: Array<{ id: AnimationStateId; label: string }>;
 };
 
+const PLAYER_SETTINGS = playerSettings as PlayerAssetSettings;
+
 const ASSET_DEFINITIONS = {
   player: {
     label: "Player",
     targetY: 1.05,
-    collision: playerSettings.collision,
+    collision: PLAYER_SETTINGS.collision,
     animations: [
       { id: "idle", label: "Idle" },
       { id: "walk", label: "Walk" },
@@ -186,9 +180,16 @@ export function startAssetRenderer(app: HTMLDivElement): void {
   const cameraAwayButton = app.querySelector<HTMLButtonElement>("#cameraAwayButton")!;
   const cameraDistanceValue = app.querySelector<HTMLElement>("#cameraDistanceValue")!;
   const collisionToggle = app.querySelector<HTMLInputElement>("#collisionToggle")!;
+  const assetHealthField = app.querySelector<HTMLElement>("#assetHealthField")!;
   const assetCollisionRadiusInput = app.querySelector<HTMLInputElement>("#assetCollisionRadiusInput")!;
   const assetHealthInput = app.querySelector<HTMLInputElement>("#assetHealthInput")!;
+  const assetSpeedField = app.querySelector<HTMLElement>("#assetSpeedField")!;
+  const assetSpeedLabel = app.querySelector<HTMLElement>("#assetSpeedLabel")!;
   const assetSpeedInput = app.querySelector<HTMLInputElement>("#assetSpeedInput")!;
+  const pickupResourcesField = app.querySelector<HTMLElement>("#pickupResourcesField")!;
+  const pickupResourcesInputs = Array.from(
+    app.querySelectorAll<HTMLInputElement>("[data-pickup-resource]"),
+  );
   const assetSettingsSaveButton = app.querySelector<HTMLButtonElement>("#assetSettingsSaveButton")!;
   const assetSettingsStatus = app.querySelector<HTMLElement>("#assetSettingsStatus")!;
   const renderCalls = app.querySelector<HTMLElement>("#renderCalls")!;
@@ -263,8 +264,21 @@ export function startAssetRenderer(app: HTMLDivElement): void {
     cameraAwayButton.disabled = state.cameraDistance >= CAMERA_DISTANCE_MAX;
     collisionToggle.checked = state.collisionVisible;
     assetCollisionRadiusInput.value = settings.collision.radius.toFixed(2);
-    assetHealthInput.value = settings.health.toString();
-    assetSpeedInput.value = settings.speed.toFixed(2);
+    assetHealthField.hidden = !hasHealth(settings);
+    if (hasHealth(settings)) {
+      assetHealthInput.value = settings.health.toString();
+    }
+    assetSpeedField.hidden = !hasMovementSpeed(settings);
+    if (hasMovementSpeed(settings)) {
+      assetSpeedLabel.textContent = settings.kind === "enemy" ? "Movement Speed" : "Player Speed";
+      assetSpeedInput.value = getMovementSpeed(settings).toFixed(2);
+    }
+    pickupResourcesField.hidden = settings.kind !== "pickup";
+    if (settings.kind === "pickup") {
+      for (const input of pickupResourcesInputs) {
+        input.value = String(settings.resources[input.dataset.pickupResource as keyof typeof settings.resources] ?? 0);
+      }
+    }
     assetSettingsSaveButton.disabled = false;
 
     for (const button of app.querySelectorAll<HTMLButtonElement>("[data-angle]")) {
@@ -324,7 +338,7 @@ export function startAssetRenderer(app: HTMLDivElement): void {
     syncUrl();
   }
 
-  function activeAssetSettings(): EditableAssetSettings {
+  function activeAssetSettings(): AssetSettings {
     return state.assetSettings[state.asset];
   }
 
@@ -336,13 +350,25 @@ export function startAssetRenderer(app: HTMLDivElement): void {
   }
 
   function setAssetHealth(health: number): void {
-    activeAssetSettings().health = Math.round(clamp(health, HEALTH_MIN, HEALTH_MAX));
+    const settings = activeAssetSettings();
+    if (!hasHealth(settings)) return;
+    settings.health = Math.round(clamp(health, HEALTH_MIN, HEALTH_MAX));
     applyStateToControls();
     setAssetSettingsStatus("Unsaved changes");
   }
 
   function setAssetSpeed(speed: number): void {
-    activeAssetSettings().speed = clamp(speed, ASSET_SPEED_MIN, ASSET_SPEED_MAX);
+    const settings = activeAssetSettings();
+    if (!hasMovementSpeed(settings)) return;
+    setMovementSpeed(settings, clamp(speed, ASSET_SPEED_MIN, ASSET_SPEED_MAX));
+    applyStateToControls();
+    setAssetSettingsStatus("Unsaved changes");
+  }
+
+  function setPickupResource(kind: keyof PickupAssetSettings["resources"], amount: number): void {
+    const settings = activeAssetSettings();
+    if (settings.kind !== "pickup") return;
+    settings.resources[kind] = Math.round(clamp(amount, 0, HEALTH_MAX));
     applyStateToControls();
     setAssetSettingsStatus("Unsaved changes");
   }
@@ -522,6 +548,12 @@ export function startAssetRenderer(app: HTMLDivElement): void {
     setAssetSpeed(Number(assetSpeedInput.value));
   });
 
+  for (const input of pickupResourcesInputs) {
+    input.addEventListener("input", () => {
+      setPickupResource(input.dataset.pickupResource as keyof PickupAssetSettings["resources"], Number(input.value));
+    });
+  }
+
   assetSettingsSaveButton.addEventListener("click", () => {
     void saveActiveAssetSettings();
   });
@@ -650,7 +682,7 @@ function createAssetRendererMarkup(state: AssetRendererState): string {
               value="${state.assetSettings[state.asset].collision.radius.toFixed(2)}"
             />
           </label>
-          <label>
+          <label id="assetHealthField">
             <span>Health</span>
             <input
               id="assetHealthInput"
@@ -658,20 +690,34 @@ function createAssetRendererMarkup(state: AssetRendererState): string {
               min="${HEALTH_MIN}"
               max="${HEALTH_MAX}"
               step="1"
-              value="${state.assetSettings[state.asset].health}"
+              value="${assetHealthValue(state.assetSettings[state.asset])}"
             />
           </label>
-          <label>
-            <span>Movement Speed</span>
+          <label id="assetSpeedField">
+            <span id="assetSpeedLabel">Movement Speed</span>
             <input
               id="assetSpeedInput"
               type="number"
               min="${ASSET_SPEED_MIN}"
               max="${ASSET_SPEED_MAX}"
               step="0.01"
-              value="${state.assetSettings[state.asset].speed.toFixed(2)}"
+              value="${assetSpeedValue(state.assetSettings[state.asset]).toFixed(2)}"
             />
           </label>
+          <div id="pickupResourcesField" class="asset-settings-grid">
+            <label>
+              <span>Health Grant</span>
+              <input data-pickup-resource="health" type="number" min="0" max="${HEALTH_MAX}" step="1" value="0" />
+            </label>
+            <label>
+              <span>Ammo Grant</span>
+              <input data-pickup-resource="ammo" type="number" min="0" max="${HEALTH_MAX}" step="1" value="0" />
+            </label>
+            <label>
+              <span>Energy Grant</span>
+              <input data-pickup-resource="energy" type="number" min="0" max="${HEALTH_MAX}" step="1" value="0" />
+            </label>
+          </div>
           <div class="asset-settings-actions">
             <button id="assetSettingsSaveButton" type="button">Save Asset Settings</button>
             <span id="assetSettingsStatus">Loaded from code</span>
@@ -699,12 +745,13 @@ function readStateFromUrl(): AssetRendererState {
   };
 }
 
-function defaultAssetSettings(): Record<AssetId, EditableAssetSettings> {
+function defaultAssetSettings(): Record<AssetId, AssetSettings> {
   return {
     player: cloneAssetSettings({
-      collision: playerSettings.collision,
-      health: playerSettings.health,
-      speed: playerSettings.speed,
+      kind: "player",
+      collision: PLAYER_SETTINGS.collision,
+      health: PLAYER_SETTINGS.health,
+      movement: PLAYER_SETTINGS.movement,
     }),
     "lean-hunter": cloneAssetSettings(LEAN_HUNTER_SETTINGS),
     "elite-enemy": cloneAssetSettings(ELITE_ENEMY_SETTINGS),
@@ -714,15 +761,36 @@ function defaultAssetSettings(): Record<AssetId, EditableAssetSettings> {
   };
 }
 
-function cloneAssetSettings(settings: EditableAssetSettings): EditableAssetSettings {
-  return {
-    collision: {
-      radius: settings.collision.radius,
-      height: settings.collision.height,
-    },
-    health: settings.health,
-    speed: settings.speed,
-  };
+function cloneAssetSettings<T extends AssetSettings>(settings: T): T {
+  return structuredClone(settings);
+}
+
+function hasHealth(settings: AssetSettings): settings is EnemyAssetSettings | PlayerAssetSettings {
+  return settings.kind === "enemy" || settings.kind === "player";
+}
+
+function hasMovementSpeed(settings: AssetSettings): settings is EnemyAssetSettings | PlayerAssetSettings {
+  return settings.kind === "enemy" || (settings.kind === "player" && settings.movement !== undefined);
+}
+
+function getMovementSpeed(settings: EnemyAssetSettings | PlayerAssetSettings): number {
+  return settings.kind === "enemy" ? settings.movement.speed : settings.movement?.speed ?? 0;
+}
+
+function setMovementSpeed(settings: EnemyAssetSettings | PlayerAssetSettings, speed: number): void {
+  if (settings.kind === "enemy") {
+    settings.movement.speed = speed;
+    return;
+  }
+  settings.movement = { speed };
+}
+
+function assetHealthValue(settings: AssetSettings): number {
+  return hasHealth(settings) ? settings.health : 0;
+}
+
+function assetSpeedValue(settings: AssetSettings): number {
+  return hasMovementSpeed(settings) ? getMovementSpeed(settings) : 0;
 }
 
 function setWireframe(root: THREE.Object3D, enabled: boolean): void {
