@@ -66,20 +66,19 @@ Completed in the current pass:
   - Pickup: health, ammo, and energy grants.
 - Updated the Vite asset-settings middleware to validate/normalize by `kind`.
 - Updated pickup drops to read pickup grant amount and lifetime from pickup asset settings.
+- Moved enemy death drop selection from `DROP_BALANCE` into each enemy `dropTable`.
+- Moved enemy melee damage/cooldown/range from `ENEMY_BALANCE` into each enemy `attacks` entry.
+- Runtime enemies now carry their attack and drop-table data from `EnemyDefinition`.
 
 Remaining issue:
 
-- Pickup drop odds still live globally in `DROP_BALANCE`.
-- Enemy attack damage/cooldown/range is global in `ENEMY_BALANCE`.
 - Enemy definitions still duplicate wave health growth and spawn weights outside asset settings.
 
 Remaining steps:
 
-1. Move enemy death drop selection from `DROP_BALANCE` into each enemy `dropTable`.
-2. Move enemy attack damage/cooldown/range from `ENEMY_BALANCE` into each enemy `attacks` entry.
-3. Build runtime `EnemyDefinition` values from `EnemyAssetSettings` rather than duplicating scaling constants.
-4. Expand the asset editor with enemy attack and drop-table editing when those runtime fields are actively used.
-5. Preserve current gameplay behavior as the default during migration.
+1. Build runtime `EnemyDefinition` values from `EnemyAssetSettings` rather than duplicating spawn and health-growth constants.
+2. Expand the asset editor with enemy attack and drop-table editing.
+3. Preserve current gameplay behavior as the default during migration.
 
 Future benefits:
 

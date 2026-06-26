@@ -14,6 +14,8 @@ function enemyAt(id: number, x: number, z: number, collisionLayer: number): Enem
     hp: 100,
     speed: 1,
     radius: 0.5,
+    attack: { kind: "melee", damage: 9, cooldown: 0.72, range: 0.42 },
+    dropTable: { chance: 0, entries: [{ kind: "ammo", weight: 1, amount: 1 }] },
     attackTimer: 0,
   };
 }

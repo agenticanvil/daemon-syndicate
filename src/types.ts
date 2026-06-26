@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import type { DropTable, EnemyAttackDefinition } from "./assetSettings";
 import type { CollisionLayer } from "./collision";
 import type { EnemyKind } from "./enemyDefinitions";
 
@@ -21,6 +22,8 @@ export type Enemy = {
   hp: number;
   speed: number;
   radius: number;
+  attack: EnemyAttackDefinition;
+  dropTable: DropTable;
   attackTimer: number;
   deathTimer?: number;
   path?: string[];

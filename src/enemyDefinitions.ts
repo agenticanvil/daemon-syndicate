@@ -2,6 +2,7 @@ import * as THREE from "three";
 import type { LeanHunterRig } from "./assets/enemies/leanHunterAsset";
 import { ELITE_ENEMY_SETTINGS } from "./assets/enemies/eliteEnemy/eliteEnemyAsset";
 import { LEAN_HUNTER_SETTINGS } from "./assets/enemies/leanHunterAsset";
+import type { DropTable, EnemyAssetSettings, EnemyAttackDefinition } from "./assetSettings";
 import type { GameScene } from "./scene";
 import type { EnemyAnimation } from "./types";
 
@@ -20,6 +21,8 @@ export type EnemyDefinition = {
   spawnWeight: (wave: number) => number;
   health: (wave: number) => number;
   speed: (wave: number) => number;
+  attack: EnemyAttackDefinition;
+  dropTable: DropTable;
   createView: (world: GameScene) => EnemyViewDefinition;
 };
 
@@ -30,6 +33,8 @@ export const ENEMY_DEFINITIONS: EnemyDefinition[] = [
     spawnWeight: (wave) => Math.max(0.74, 0.92 - wave * 0.015),
     health: (wave) => LEAN_HUNTER_SETTINGS.health + wave * 5,
     speed: (wave) => LEAN_HUNTER_SETTINGS.movement.speed + wave * LEAN_HUNTER_SETTINGS.movement.waveSpeedGrowth,
+    attack: primaryEnemyAttack(LEAN_HUNTER_SETTINGS),
+    dropTable: LEAN_HUNTER_SETTINGS.dropTable,
     createView: (world) => {
       const rig: LeanHunterRig = world.createLeanHunterRig();
       return {
@@ -46,6 +51,8 @@ export const ENEMY_DEFINITIONS: EnemyDefinition[] = [
     spawnWeight: (wave) => Math.min(0.08 + wave * 0.015, 0.26),
     health: (wave) => ELITE_ENEMY_SETTINGS.health + wave * 8,
     speed: (wave) => ELITE_ENEMY_SETTINGS.movement.speed + wave * ELITE_ENEMY_SETTINGS.movement.waveSpeedGrowth,
+    attack: primaryEnemyAttack(ELITE_ENEMY_SETTINGS),
+    dropTable: ELITE_ENEMY_SETTINGS.dropTable,
     createView: (world) => {
       const rig: LeanHunterRig = world.createEliteEnemyAsset();
       return {
@@ -68,4 +75,9 @@ export function chooseEnemyDefinition(wave: number, rng: () => number = Math.ran
   }
 
   return ENEMY_DEFINITIONS[0];
+}
+
+function primaryEnemyAttack(settings: EnemyAssetSettings): EnemyAttackDefinition {
+  const melee = settings.attacks.find((attack) => attack.kind === "melee");
+  return melee ?? settings.attacks[0];
 }

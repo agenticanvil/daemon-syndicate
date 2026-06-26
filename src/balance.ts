@@ -1,8 +1,5 @@
 import {
-  AMMO_DROP_AMOUNT,
-  ENERGY_DROP_AMOUNT,
   ENERGY_REGEN_PER_SECOND,
-  HEALTH_DROP_AMOUNT,
   NOVA_COOLDOWN,
   PLAYER_RADIUS,
   PLAYER_SPEED,
@@ -41,11 +38,8 @@ export const WEAPON_BALANCE = {
 } as const;
 
 export const ENEMY_BALANCE = {
-  attackProximity: 0.42,
   stopProximity: 0.18,
   deathDuration: 0.5,
-  attackDamage: 9,
-  attackCooldown: 0.72,
   minSpawnDistance: TILE_SIZE * 5,
   pathfindingRadius: TILE_SIZE * 13,
   directApproachRadius: TILE_SIZE * 3,
@@ -57,14 +51,6 @@ export const ENEMY_BALANCE = {
 
 export const DROP_BALANCE = {
   pickupLife: 18,
-  dropChance: 0.72,
-  healthRoll: 0.14,
-  ammoRoll: 0.48,
-  amount: {
-    health: HEALTH_DROP_AMOUNT,
-    ammo: AMMO_DROP_AMOUNT,
-    energy: ENERGY_DROP_AMOUNT,
-  },
 } as const;
 
 export const EFFECT_BALANCE = {
