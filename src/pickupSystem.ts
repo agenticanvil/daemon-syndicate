@@ -5,8 +5,9 @@ import { HEALTH_PICKUP_SETTINGS } from "./assets/pickups/healthPickup/healthPick
 import { DROP_BALANCE, EFFECT_BALANCE } from "./balance";
 import { overlaps2D, type CollisionBody2D, type CollisionLayer } from "./collision";
 import { disposeMeshGeometry } from "./entityLifecycle";
+import type { EventQueue } from "./eventQueue";
 import type { GameScene } from "./scene";
-import type { Pickup, PickupDraft, PickupView, PlayerResources, ResourceKind } from "./types";
+import type { Pickup, PickupDraft, PickupView, ResourceKind } from "./types";
 
 export class PickupSystem {
   private readonly pickups: Pickup[] = [];
@@ -15,10 +16,9 @@ export class PickupSystem {
 
   constructor(
     private readonly world: GameScene,
+    private readonly events: EventQueue,
     private readonly playerCollisionBody: CollisionBody2D,
     private readonly getCollisionLayer: () => CollisionLayer,
-    private readonly resources: PlayerResources,
-    private readonly maxResources: PlayerResources,
   ) {}
 
   get count(): number {
@@ -55,10 +55,7 @@ export class PickupSystem {
       pickup.life -= dt;
 
       if (overlaps2D(pickup, this.playerCollisionBody)) {
-        this.resources[pickup.kind] = Math.min(
-          this.maxResources[pickup.kind],
-          this.resources[pickup.kind] + pickup.amount,
-        );
+        this.events.emit({ type: "pickupCollected", kind: pickup.kind, amount: pickup.amount });
         pickup.life = 0;
       }
     }

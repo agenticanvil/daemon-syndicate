@@ -6,8 +6,7 @@ import { chooseEnemyDefinition } from "./enemyDefinitions";
 import { key, tileToWorld, worldToTile, type LevelData } from "./level";
 import { canMoveOnWalkableLevel, moveOnWalkableLevel } from "./movement";
 import { findWorldPath, pathDirection } from "./pathfinding";
-import type { EffectsSystem } from "./effectsSystem";
-import type { PickupSystem } from "./pickupSystem";
+import type { EventQueue } from "./eventQueue";
 import type { GameScene } from "./scene";
 import type { Enemy, EnemyDraft, EnemyView, PlayerResources } from "./types";
 
@@ -20,16 +19,13 @@ export class EnemySystem {
 
   constructor(
     private readonly world: GameScene,
-    private readonly effects: EffectsSystem,
-    private readonly pickups: PickupSystem,
+    private readonly events: EventQueue,
     private readonly playerCollisionBody: CollisionBody2D,
     private readonly resources: PlayerResources,
     private readonly getLevel: () => LevelData,
     private readonly getWave: () => number,
     private readonly getCollisionLayer: () => CollisionLayer,
     private readonly canDamagePlayer: () => boolean,
-    private readonly onPlayerDamaged: () => void,
-    private readonly onPlayerKilled: () => void,
   ) {}
 
   get count(): number {
@@ -57,11 +53,18 @@ export class EnemySystem {
     if (enemy.deathTimer !== undefined) return;
     enemy.hp -= amount;
     if (showText) {
-      this.effects.spawnDamageText(enemy.position, Math.round(amount).toString());
+      this.events.emit({
+        type: "enemyDamaged",
+        enemyId: enemy.id,
+        amount,
+        position: enemy.position.clone(),
+      });
     }
   }
 
-  update(dt: number): number {
+  update(dt: number): void {
+    let damagedPlayerThisFrame = false;
+
     for (const enemy of this.enemies) {
       if (enemy.hp <= 0 && enemy.deathTimer === undefined) {
         enemy.deathTimer = ENEMY_BALANCE.deathDuration;
@@ -101,21 +104,18 @@ export class EnemySystem {
         inAttackRange &&
         enemy.attackTimer <= 0 &&
         this.playerCollisionBody.collisionLayer === enemy.collisionLayer &&
-        this.canDamagePlayer()
+        this.canDamagePlayer() &&
+        !damagedPlayerThisFrame
       ) {
         this.resources.health = Math.max(0, this.resources.health - ENEMY_BALANCE.attackDamage);
         enemy.attackTimer = ENEMY_BALANCE.attackCooldown;
-        this.onPlayerDamaged();
-        this.world.playerBody.material.color.set(this.resources.health <= PLAYER_BALANCE.lowHealthThreshold ? 0xff7474 : 0xffffff);
-        if (this.resources.health <= 0) {
-          this.onPlayerKilled();
-        }
+        damagedPlayerThisFrame = true;
+        this.events.emit({ type: "playerDamaged", amount: ENEMY_BALANCE.attackDamage });
       }
     }
 
-    const kills = this.collectDeadEnemies();
+    this.collectDeadEnemies();
     this.syncEnemyViews();
-    return kills;
   }
 
   clear(): void {
@@ -227,7 +227,12 @@ export class EnemySystem {
     for (let i = this.enemies.length - 1; i >= 0; i -= 1) {
       const enemy = this.enemies[i];
       if (enemy.deathTimer !== undefined && enemy.deathTimer <= 0) {
-        this.pickups.maybeDropPickup(enemy.position);
+        this.events.emit({
+          type: "enemyKilled",
+          enemyId: enemy.id,
+          kind: enemy.kind,
+          position: enemy.position.clone(),
+        });
         this.disposeEnemyView(enemy.id);
         this.enemies.splice(i, 1);
         kills += 1;

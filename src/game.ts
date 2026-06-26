@@ -5,6 +5,7 @@ import { PLAYER_MAX, TILE_SIZE } from "./constants";
 import { CombatSystem } from "./combatSystem";
 import { EffectsSystem } from "./effectsSystem";
 import { EnemySystem } from "./enemySystem";
+import { EventQueue, type GameEvent } from "./eventQueue";
 import { exitGateToWorld, generateLevel, tileToWorld, type LevelData } from "./level";
 import { movementInputFor, moveOnWalkableLevel } from "./movement";
 import type { PerfRecorder } from "./perf";
@@ -26,6 +27,7 @@ export class Game {
   private readonly movementInput = new THREE.Vector3();
   private readonly playerCollisionBody: CollisionBody2D;
   private readonly effects: EffectsSystem;
+  private readonly events = new EventQueue();
   private readonly pickups: PickupSystem;
   private readonly enemies: EnemySystem;
   private readonly combat: CombatSystem;
@@ -57,25 +59,19 @@ export class Game {
     this.effects = new EffectsSystem(this.world.scene, this.world.camera, this.world.materials.nova);
     this.pickups = new PickupSystem(
       this.world,
+      this.events,
       this.playerCollisionBody,
       () => this.currentCollisionLayer(),
-      this.resources,
-      this.maxResources,
     );
     this.enemies = new EnemySystem(
       this.world,
-      this.effects,
-      this.pickups,
+      this.events,
       this.playerCollisionBody,
       this.resources,
       () => this.currentLevel,
       () => this.wave,
       () => this.currentCollisionLayer(),
       () => this.invulnTimer <= 0,
-      () => {
-        this.invulnTimer = PLAYER_BALANCE.invulnerabilityDuration;
-      },
-      () => this.endGame(),
     );
     this.combat = new CombatSystem(
       this.world,
@@ -246,6 +242,39 @@ export class Game {
     });
   }
 
+  private processEvents(): void {
+    for (const event of this.events.drain()) {
+      this.processEvent(event);
+    }
+  }
+
+  private processEvent(event: GameEvent): void {
+    switch (event.type) {
+      case "enemyDamaged":
+        this.effects.spawnDamageText(event.position, Math.round(event.amount).toString());
+        break;
+      case "enemyKilled":
+        this.kills += 1;
+        this.pickups.maybeDropPickup(event.position);
+        break;
+      case "playerDamaged":
+        this.invulnTimer = PLAYER_BALANCE.invulnerabilityDuration;
+        this.world.playerBody.material.color.set(
+          this.resources.health <= PLAYER_BALANCE.lowHealthThreshold ? 0xff7474 : 0xffffff,
+        );
+        if (this.resources.health <= 0) {
+          this.endGame();
+        }
+        break;
+      case "pickupCollected":
+        this.resources[event.kind] = Math.min(
+          this.maxResources[event.kind],
+          this.resources[event.kind] + event.amount,
+        );
+        break;
+    }
+  }
+
   private sampleFps(now: number): void {
     this.fpsFrameTimes.push(now);
     const cutoff = now - 2000;
@@ -318,6 +347,7 @@ export class Game {
   }
 
   private clearEntities(): void {
+    this.events.clear();
     this.enemies.clear();
     this.combat.clear();
     this.pickups.clear();
@@ -388,10 +418,10 @@ export class Game {
           ),
         );
         this.perf.span("projectiles", () => this.combat.updateProjectiles(dt));
-        this.perf.span("enemies", () => {
-          this.kills += this.enemies.update(dt);
-        });
+        this.perf.span("enemies", () => this.enemies.update(dt));
+        this.perf.span("events.afterEnemies", () => this.processEvents());
         this.perf.span("pickups", () => this.pickups.update(dt));
+        this.perf.span("events.afterPickups", () => this.processEvents());
         this.perf.span("effects/dom", () => this.effects.update(dt));
         this.perf.span("hud/dom", () => this.updateHud());
       }
