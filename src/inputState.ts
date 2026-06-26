@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import { RETICLE_FLOOR_OFFSET } from "./constants";
 
 export class InputState {
   readonly pointerWorld = new THREE.Vector3(0, 0, -1);
@@ -41,6 +42,7 @@ export class InputState {
       this.pointerWorld.copy(hit.point);
       this.pointerWorld.y = 0;
       reticle.position.copy(this.pointerWorld);
+      reticle.position.y = RETICLE_FLOOR_OFFSET;
     }
   }
 

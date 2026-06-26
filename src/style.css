@@ -706,6 +706,10 @@ canvas {
   gap: 5px;
 }
 
+.asset-editor-panel [hidden] {
+  display: none !important;
+}
+
 .asset-editor-panel select,
 .asset-editor-panel input[type="range"],
 .asset-editor-panel input[type="number"] {

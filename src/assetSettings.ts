@@ -60,4 +60,9 @@ export type PlayerAssetSettings = {
   };
 };
 
-export type AssetSettings = EnemyAssetSettings | PickupAssetSettings | PlayerAssetSettings;
+export type EnvironmentAssetSettings = {
+  kind: "environment";
+  collision: CollisionSettings;
+};
+
+export type AssetSettings = EnemyAssetSettings | PickupAssetSettings | PlayerAssetSettings | EnvironmentAssetSettings;

@@ -1,12 +1,12 @@
 import * as THREE from "three";
-import { fromKey, key, neighbors, tileToWorld, worldToTile, type LevelData, type TileCoord } from "./level";
+import { fromKey, isTileWalkable, key, neighbors, tileToWorld, worldToTile, type LevelData, type TileCoord } from "./level";
 
 export function findPath(level: LevelData, start: TileCoord, target: TileCoord): string[] | undefined {
   const startKey = key(start);
   const targetKey = key(target);
 
   if (startKey === targetKey) return [];
-  if (!level.walkable.has(startKey) || !level.walkable.has(targetKey)) return undefined;
+  if (!isTileWalkable(level, start) || !isTileWalkable(level, target)) return undefined;
 
   const queue: string[] = [startKey];
   const cameFrom = new Map<string, string | undefined>([[startKey, undefined]]);
@@ -17,7 +17,7 @@ export function findPath(level: LevelData, start: TileCoord, target: TileCoord):
 
     for (const neighbor of neighbors(fromKey(currentKey))) {
       const neighborKey = key(neighbor);
-      if (!level.walkable.has(neighborKey) || cameFrom.has(neighborKey)) continue;
+      if (!isTileWalkable(level, neighbor) || cameFrom.has(neighborKey)) continue;
       cameFrom.set(neighborKey, currentKey);
       queue.push(neighborKey);
     }
@@ -37,6 +37,27 @@ export function findPath(level: LevelData, start: TileCoord, target: TileCoord):
 
 export function findWorldPath(level: LevelData, from: THREE.Vector3, target: THREE.Vector3): string[] | undefined {
   return findPath(level, worldToTile(from), worldToTile(target));
+}
+
+export function hasClearWorldPath(level: LevelData, from: THREE.Vector3, target: THREE.Vector3): boolean {
+  return hasClearTileLine(level, worldToTile(from), worldToTile(target));
+}
+
+export function hasClearTileLine(level: LevelData, start: TileCoord, target: TileCoord): boolean {
+  const dx = target.x - start.x;
+  const dy = target.y - start.y;
+  const steps = Math.max(Math.abs(dx), Math.abs(dy));
+  if (steps === 0) return isTileWalkable(level, start);
+
+  for (let step = 0; step <= steps; step += 1) {
+    const tile = {
+      x: Math.round(start.x + (dx * step) / steps),
+      y: Math.round(start.y + (dy * step) / steps),
+    };
+    if (!isTileWalkable(level, tile)) return false;
+  }
+
+  return true;
 }
 
 export function pathDirection(

@@ -13,6 +13,11 @@ import {
   type LeanHunterRig,
 } from "./assets/enemies/leanHunterAsset";
 import {
+  INDUSTRIAL_CRATE_SETTINGS,
+  createIndustrialCrateAsset,
+  type IndustrialCrateAsset,
+} from "./assets/environment/industrialCrate/industrialCrateAsset";
+import {
   AMMO_PICKUP_SETTINGS,
   createAmmoPickupAsset,
   type AmmoPickupAsset,
@@ -31,7 +36,14 @@ import playerSettings from "./assets/player/player.settings.json";
 import { loadPlayerRig, type PlayerAnimationState } from "./playerAsset";
 import type { ResourceKind } from "./types";
 
-type AssetId = "player" | "lean-hunter" | "elite-enemy" | "health-pickup" | "ammo-pickup" | "energy-pickup";
+type AssetId =
+  | "player"
+  | "lean-hunter"
+  | "elite-enemy"
+  | "health-pickup"
+  | "ammo-pickup"
+  | "energy-pickup"
+  | "industrial-crate";
 type AngleId = "head-on" | "side" | "behind" | "isometric";
 type PlayerAnimationStateId = "idle" | "walk" | "fire" | "damaged" | "low-health";
 type AnimationStateId = PlayerAnimationStateId | LeanHunterAnimationId;
@@ -124,6 +136,12 @@ const ASSET_DEFINITIONS = {
     collision: ENERGY_PICKUP_SETTINGS.collision,
     animations: [{ id: "idle", label: "Idle" }],
   },
+  "industrial-crate": {
+    label: "Industrial Crate",
+    targetY: 0.36,
+    collision: INDUSTRIAL_CRATE_SETTINGS.collision,
+    animations: [{ id: "idle", label: "Idle" }],
+  },
 } satisfies Record<AssetId, AssetDefinition>;
 
 const ASSETS: Array<{ id: AssetId; label: string }> = [
@@ -133,6 +151,7 @@ const ASSETS: Array<{ id: AssetId; label: string }> = [
   { id: "health-pickup", label: ASSET_DEFINITIONS["health-pickup"].label },
   { id: "ammo-pickup", label: ASSET_DEFINITIONS["ammo-pickup"].label },
   { id: "energy-pickup", label: ASSET_DEFINITIONS["energy-pickup"].label },
+  { id: "industrial-crate", label: ASSET_DEFINITIONS["industrial-crate"].label },
 ];
 const STANDARD_CAMERA_DISTANCE = 1;
 const CAMERA_DISTANCE_STEP = 0.15;
@@ -154,6 +173,7 @@ const ASSET_SETTINGS_ENDPOINTS = {
   "health-pickup": "/__dev/asset-settings/health-pickup",
   "ammo-pickup": "/__dev/asset-settings/ammo-pickup",
   "energy-pickup": "/__dev/asset-settings/energy-pickup",
+  "industrial-crate": "/__dev/asset-settings/industrial-crate",
 } satisfies Record<AssetId, string>;
 
 const CAMERA_POSES: Record<AngleId, CameraPose> = {
@@ -228,6 +248,7 @@ export function startAssetEditor(app: HTMLDivElement): void {
     "health-pickup": createHealthPickupAsset(),
     "ammo-pickup": createAmmoPickupAsset(),
     "energy-pickup": createEnergyPickupAsset(),
+    "industrial-crate": createIndustrialCrateAsset(loader, renderer.capabilities.getMaxAnisotropy()),
   };
   scene.add(...ASSETS.map((asset) => rigs[asset.id].root));
 
@@ -246,7 +267,14 @@ export function startAssetEditor(app: HTMLDivElement): void {
   let customOrbitRadius = 5.2;
   let usingCustomOrbit = false;
 
-  function activeRig(): typeof rigs.player | LeanHunterRig | EliteEnemyAsset | HealthPickupAsset | AmmoPickupAsset | EnergyPickupAsset {
+  function activeRig():
+    | typeof rigs.player
+    | LeanHunterRig
+    | EliteEnemyAsset
+    | HealthPickupAsset
+    | AmmoPickupAsset
+    | EnergyPickupAsset
+    | IndustrialCrateAsset {
     return rigs[state.asset];
   }
 
@@ -878,6 +906,7 @@ function defaultAssetSettings(): Record<AssetId, AssetSettings> {
     "health-pickup": cloneAssetSettings(HEALTH_PICKUP_SETTINGS),
     "ammo-pickup": cloneAssetSettings(AMMO_PICKUP_SETTINGS),
     "energy-pickup": cloneAssetSettings(ENERGY_PICKUP_SETTINGS),
+    "industrial-crate": cloneAssetSettings(INDUSTRIAL_CRATE_SETTINGS),
   };
 }
 
@@ -1147,7 +1176,8 @@ function isAssetId(value: string | null | undefined): value is AssetId {
     value === "elite-enemy" ||
     value === "health-pickup" ||
     value === "ammo-pickup" ||
-    value === "energy-pickup"
+    value === "energy-pickup" ||
+    value === "industrial-crate"
   );
 }
 

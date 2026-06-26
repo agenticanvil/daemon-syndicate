@@ -1,6 +1,6 @@
 import * as THREE from "three";
 import { distance2D, type CollisionLayer } from "./collision";
-import { TILE_SIZE } from "./constants";
+import { RETICLE_FLOOR_OFFSET, TILE_SIZE } from "./constants";
 import { CombatSystem } from "./combatSystem";
 import { EffectsSystem } from "./effectsSystem";
 import { EnemySystem } from "./enemySystem";
@@ -130,6 +130,12 @@ export class Game {
         start: { ...this.currentLevel.start },
         end: { ...this.currentLevel.end },
         walkable: [...this.currentLevel.walkable],
+        blocked: [...this.currentLevel.blocked],
+        environmentalObjects: this.currentLevel.environmentalObjects.map((object) => ({
+          kind: object.kind,
+          tile: { ...object.tile },
+          rotation: object.rotation,
+        })),
         spawnPoints: this.currentLevel.spawnPoints.map((spawn) => ({ ...spawn })),
       },
       player: this.player.snapshot(),
@@ -315,6 +321,7 @@ export class Game {
   private resetReticle(): void {
     this.input.resetPointerWorld(this.world.player.position.clone().add(new THREE.Vector3(0, 0, -TILE_SIZE)));
     this.world.reticle.position.copy(this.input.pointerWorld);
+    this.world.reticle.position.y = RETICLE_FLOOR_OFFSET;
   }
 
   private clearEntities(): void {

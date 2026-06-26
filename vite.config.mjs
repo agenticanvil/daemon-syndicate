@@ -9,6 +9,7 @@ const assetSettingsFiles = {
   "health-pickup": "src/assets/pickups/healthPickup/healthPickup.settings.json",
   "ammo-pickup": "src/assets/pickups/ammoPickup/ammoPickup.settings.json",
   "energy-pickup": "src/assets/pickups/energyPickup/energyPickup.settings.json",
+  "industrial-crate": "src/assets/environment/industrialCrate/industrialCrate.settings.json",
 };
 
 export default defineConfig({
@@ -50,7 +51,8 @@ function normalizeAssetSettings(value) {
   if (kind === "enemy") return normalizeEnemySettings(value);
   if (kind === "pickup") return normalizePickupSettings(value);
   if (kind === "player") return normalizePlayerSettings(value);
-  throw new Error("kind must be enemy, pickup, or player");
+  if (kind === "environment") return normalizeEnvironmentSettings(value);
+  throw new Error("kind must be enemy, pickup, player, or environment");
 }
 
 function normalizeEnemySettings(value) {
@@ -121,6 +123,13 @@ function normalizePlayerSettings(value) {
     movement: {
       speed: round(speed, 2),
     },
+  };
+}
+
+function normalizeEnvironmentSettings(value) {
+  return {
+    kind: "environment",
+    collision: normalizeCollisionSettings(value),
   };
 }
 

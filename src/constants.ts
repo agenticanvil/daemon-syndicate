@@ -2,6 +2,7 @@ export const ARENA_SIZE = 38;
 export const TILE_SIZE = 2.4;
 export const LEVEL_WIDTH = 23;
 export const LEVEL_HEIGHT = 23;
+export const RETICLE_FLOOR_OFFSET = 0.08;
 export const PLAYER_RADIUS = 0.55;
 export const ENEMY_RADIUS = 0.48;
 export const PLAYER_SPEED = 7.5;

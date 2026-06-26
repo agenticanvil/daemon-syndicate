@@ -1,7 +1,15 @@
 import * as THREE from "three";
-import { LEVEL_HEIGHT, LEVEL_WIDTH, TILE_SIZE } from "./constants";
-import { createAssetFactory, type EliteEnemyAsset, type LeanHunterRig, type PickupAsset, type PlayerRig } from "./assetFactory";
-import { type LevelData } from "./level";
+import { LEVEL_HEIGHT, LEVEL_WIDTH, RETICLE_FLOOR_OFFSET, TILE_SIZE } from "./constants";
+import {
+  createAssetFactory,
+  type EliteEnemyAsset,
+  type EnvironmentAsset,
+  type EnvironmentAssetKind,
+  type LeanHunterRig,
+  type PickupAsset,
+  type PlayerRig,
+} from "./assetFactory";
+import { tileToWorld, type LevelData } from "./level";
 import { renderLevel as renderLevelToRoot } from "./levelRenderer";
 import { createSceneMaterials, type GameplayMaterials } from "./materials";
 import { createRenderContext, type GraphicsSettings } from "./renderer";
@@ -22,6 +30,7 @@ export type GameScene = {
   createLeanHunterRig: () => LeanHunterRig;
   createEliteEnemyAsset: () => EliteEnemyAsset;
   createPickupAsset: (kind: ResourceKind) => PickupAsset;
+  createEnvironmentAsset: (kind: EnvironmentAssetKind) => EnvironmentAsset;
   materials: GameplayMaterials;
   resize: () => void;
   applyGraphicsSettings: (settings: GraphicsSettings) => void;
@@ -56,16 +65,25 @@ export function createGameScene(app: HTMLDivElement): GameScene {
 
   const reticle = new THREE.Mesh(
     new THREE.RingGeometry(0.45, 0.52, 36),
-    new THREE.MeshBasicMaterial({ color: 0x91fff0, transparent: true, opacity: 0.55 }),
+    new THREE.MeshBasicMaterial({ color: 0x91fff0, transparent: true, opacity: 0.55, depthWrite: false }),
   );
   reticle.rotation.x = -Math.PI / 2;
-  reticle.position.y = 0.04;
+  reticle.position.y = RETICLE_FLOOR_OFFSET;
+  reticle.renderOrder = 5;
   scene.add(reticle);
 
-  addLighting(scene);
+  addLighting(scene, player);
 
   const renderLevel = (level: LevelData): void => {
     renderLevelToRoot(levelRoot, level, materials.level);
+    for (const object of level.environmentalObjects) {
+      const asset = assetFactory.createEnvironmentAsset(object.kind);
+      const position = tileToWorld(object.tile);
+      asset.root.position.x = position.x;
+      asset.root.position.z = position.z;
+      asset.root.rotation.y = object.rotation;
+      levelRoot.add(asset.root);
+    }
   };
 
   return {
@@ -83,17 +101,18 @@ export function createGameScene(app: HTMLDivElement): GameScene {
     createLeanHunterRig: assetFactory.createLeanHunterRig,
     createEliteEnemyAsset: assetFactory.createEliteEnemyAsset,
     createPickupAsset: assetFactory.createPickupAsset,
+    createEnvironmentAsset: assetFactory.createEnvironmentAsset,
     materials: materials.gameplay,
     resize: renderContext.resize,
     applyGraphicsSettings: renderContext.applyGraphicsSettings,
   };
 }
 
-function addLighting(scene: THREE.Scene): void {
-  const ambient = new THREE.HemisphereLight(0x9cf3ff, 0x07110d, 1.2);
+function addLighting(scene: THREE.Scene, player: THREE.Group): void {
+  const ambient = new THREE.HemisphereLight(0x9cf3ff, 0x07110d, 0.55);
   scene.add(ambient);
 
-  const keyLight = new THREE.DirectionalLight(0xe6fffa, 2.7);
+  const keyLight = new THREE.DirectionalLight(0xe6fffa, 1.55);
   keyLight.position.set(13, 22, 8);
   keyLight.castShadow = true;
   keyLight.shadow.mapSize.set(2048, 2048);
@@ -106,4 +125,10 @@ function addLighting(scene: THREE.Scene): void {
   const alertLight = new THREE.PointLight(0xff3344, 18, 18);
   alertLight.position.set(-9, 5, -9);
   scene.add(alertLight);
+
+  const armorFlashlight = new THREE.SpotLight(0xa8fff4, 36, 22, 0.45, 0.48, 1.7);
+  armorFlashlight.position.set(0, 1.35, -0.28);
+  armorFlashlight.target.position.set(0, 0.9, -9);
+  player.add(armorFlashlight);
+  player.add(armorFlashlight.target);
 }
