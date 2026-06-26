@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import { LEVEL_HEIGHT, LEVEL_WIDTH, TILE_SIZE } from "./constants";
+import type { EnvironmentAssetKind } from "./assetFactory";
 import type { Rng } from "./rng";
 
 export type TileCoord = {
@@ -9,6 +10,12 @@ export type TileCoord = {
 
 export type ExitDirection = "north" | "east";
 
+export type EnvironmentalObject = {
+  kind: EnvironmentAssetKind;
+  tile: TileCoord;
+  rotation: number;
+};
+
 export type LevelData = {
   id: number;
   width: number;
@@ -17,6 +24,8 @@ export type LevelData = {
   start: TileCoord;
   end: TileCoord;
   walkable: Set<string>;
+  blocked: Set<string>;
+  environmentalObjects: EnvironmentalObject[];
   spawnPoints: TileCoord[];
 };
 
@@ -52,11 +61,14 @@ export function generateLevel(id: number, rng: Rng = Math.random): LevelData {
   walkable.add(key(start));
   walkable.add(key(end));
 
+  const blocked = new Set<string>();
+  const environmentalObjects = placeEnvironmentalObjects(walkable, blocked, start, end, rng);
+
   const spawnPoints = [...walkable]
     .map(fromKey)
-    .filter((tile) => distance(tile, start) > 6 && distance(tile, end) > 3);
+    .filter((tile) => !blocked.has(key(tile)) && distance(tile, start) > 6 && distance(tile, end) > 3);
 
-  return { id, width, height, exitDirection, start, end, walkable, spawnPoints };
+  return { id, width, height, exitDirection, start, end, walkable, blocked, environmentalObjects, spawnPoints };
 }
 
 export function key(tile: TileCoord): string {
@@ -94,7 +106,12 @@ export function worldToTile(position: THREE.Vector3): TileCoord {
 }
 
 export function isWalkable(level: LevelData, position: THREE.Vector3): boolean {
-  return level.walkable.has(key(worldToTile(position)));
+  return isTileWalkable(level, worldToTile(position));
+}
+
+export function isTileWalkable(level: LevelData, tile: TileCoord): boolean {
+  const tileKey = key(tile);
+  return level.walkable.has(tileKey) && !level.blocked.has(tileKey);
 }
 
 export function neighbors(tile: TileCoord): TileCoord[] {
@@ -197,6 +214,74 @@ function addWalkable(walkable: Set<string>, tile: TileCoord, width: number, heig
   if (tile.x > 0 && tile.x < width - 1 && tile.y > 0 && tile.y < height - 1) {
     walkable.add(key(tile));
   }
+}
+
+function placeEnvironmentalObjects(
+  walkable: Set<string>,
+  blocked: Set<string>,
+  start: TileCoord,
+  end: TileCoord,
+  rng: Rng,
+): EnvironmentalObject[] {
+  const targetCount = 2 + Math.floor(rng() * 2);
+  const candidates = shuffle(
+    [...walkable]
+      .map(fromKey)
+      .filter((tile) => distance(tile, start) > 4 && distance(tile, end) > 3 && walkableNeighborCount(walkable, tile) >= 2),
+    rng,
+  );
+  const objects: EnvironmentalObject[] = [];
+
+  for (const tile of candidates) {
+    if (objects.length >= targetCount) break;
+    const tileKey = key(tile);
+    if (blocked.has(tileKey)) continue;
+    blocked.add(tileKey);
+    if (!isConnectedAfterBlocking(walkable, blocked, start)) {
+      blocked.delete(tileKey);
+      continue;
+    }
+
+    objects.push({
+      kind: "industrial-crate",
+      tile,
+      rotation: Math.floor(rng() * 4) * (Math.PI / 2),
+    });
+  }
+
+  return objects;
+}
+
+function isConnectedAfterBlocking(walkable: Set<string>, blocked: Set<string>, start: TileCoord): boolean {
+  const startKey = key(start);
+  if (!walkable.has(startKey) || blocked.has(startKey)) return false;
+
+  const openCount = [...walkable].filter((tileKey) => !blocked.has(tileKey)).length;
+  const queue = [startKey];
+  const visited = new Set<string>(queue);
+
+  for (let cursor = 0; cursor < queue.length; cursor += 1) {
+    for (const neighbor of neighbors(fromKey(queue[cursor]))) {
+      const neighborKey = key(neighbor);
+      if (!walkable.has(neighborKey) || blocked.has(neighborKey) || visited.has(neighborKey)) continue;
+      visited.add(neighborKey);
+      queue.push(neighborKey);
+    }
+  }
+
+  return visited.size === openCount;
+}
+
+function walkableNeighborCount(walkable: Set<string>, tile: TileCoord): number {
+  return neighbors(tile).filter((neighbor) => walkable.has(key(neighbor))).length;
+}
+
+function shuffle<T>(items: T[], rng: Rng): T[] {
+  for (let index = items.length - 1; index > 0; index -= 1) {
+    const swapIndex = Math.floor(rng() * (index + 1));
+    [items[index], items[swapIndex]] = [items[swapIndex], items[index]];
+  }
+  return items;
 }
 
 function perpendicularOffset(value: number, size: number): number {

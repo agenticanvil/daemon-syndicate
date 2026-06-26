@@ -4,8 +4,8 @@ import { distance2D, withinRadius2D, type CollisionBody2D, type CollisionLayer }
 import { disposeObject3D } from "./entityLifecycle";
 import { chooseEnemyDefinition, ENEMY_DEFINITIONS, type EnemyKind } from "./enemyDefinitions";
 import { key, tileToWorld, worldToTile, type LevelData } from "./level";
-import { canMoveOnWalkableLevel, moveOnWalkableLevel } from "./movement";
-import { findWorldPath, pathDirection } from "./pathfinding";
+import { canMoveDirectlyOnWalkableLevel, moveOnWalkableLevel } from "./movement";
+import { findWorldPath, hasClearWorldPath, pathDirection } from "./pathfinding";
 import type { EventQueue } from "./eventQueue";
 import type { Rng } from "./rng";
 import type { GameScene } from "./scene";
@@ -230,7 +230,11 @@ export class EnemySystem {
       return direct;
     }
 
-    if (playerDistance <= ENEMY_BALANCE.directApproachRadius && this.canEnemyMove(enemy, direct, moveDistance)) {
+    if (
+      playerDistance <= ENEMY_BALANCE.directApproachRadius &&
+      hasClearWorldPath(this.getLevel(), enemy.position, this.world.player.position) &&
+      this.canEnemyMoveDirectly(enemy, direct, moveDistance)
+    ) {
       enemy.path = undefined;
       enemy.pathTarget = undefined;
       return direct;
@@ -251,8 +255,8 @@ export class EnemySystem {
     return moveOnWalkableLevel(this.getLevel(), enemy.position, direction, distance);
   }
 
-  private canEnemyMove(enemy: Enemy, direction: THREE.Vector3, distance: number): boolean {
-    return canMoveOnWalkableLevel(this.getLevel(), enemy.position, direction, distance);
+  private canEnemyMoveDirectly(enemy: Enemy, direction: THREE.Vector3, distance: number): boolean {
+    return canMoveDirectlyOnWalkableLevel(this.getLevel(), enemy.position, direction, distance);
   }
 
   private collectDeadEnemies(): number {

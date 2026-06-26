@@ -12,6 +12,8 @@ function levelWithWalkable(tiles: TileCoord[]): LevelData {
     start: tiles[0],
     end: tiles[tiles.length - 1],
     walkable: new Set(tiles.map(key)),
+    blocked: new Set(),
+    environmentalObjects: [],
     spawnPoints: [],
   };
 }
