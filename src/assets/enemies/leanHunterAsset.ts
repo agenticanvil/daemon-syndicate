@@ -30,6 +30,7 @@ export type LeanHunterRig = {
   root: THREE.Group;
   body: THREE.SkinnedMesh<THREE.BufferGeometry, THREE.MeshStandardMaterial>;
   skeleton: THREE.Skeleton;
+  applyBasePose: () => void;
   update: (state: LeanHunterAnimationState, dt: number) => void;
 };
 
@@ -93,6 +94,11 @@ function createProceduralLeanHunterRig(atlas: THREE.Texture, options: LeanHunter
     root: asset.root,
     body: asset.meshes.surface as THREE.SkinnedMesh<THREE.BufferGeometry, THREE.MeshStandardMaterial>,
     skeleton: asset.skeleton,
+    applyBasePose() {
+      resetPose(asset.bones, basePose);
+      applyIdlePose(asset.bones, 0);
+      material.emissiveIntensity = 0.135;
+    },
     update(state, dt) {
       elapsed += dt;
       if (activeAnimation !== state.animation) {
