@@ -100,7 +100,7 @@ Verification:
 
 - `npm test` passes with 5 files and 14 tests.
 - `npm run build` passes.
-- Asset editor page-load smoke against `/dev/asset-renderer?asset=health-pickup` confirmed the canvas renders and pickup resource controls are visible while health/movement fields are hidden.
+- Asset editor page-load smoke against `/dev/asset-editor?asset=health-pickup` confirmed the canvas renders and pickup resource controls are visible while health/movement fields are hidden.
 - Save-endpoint behavior requires a dev-server restart to pick up the updated Vite middleware; the server was not restarted in this pass.
 
 ## Phase 5: Resource And Status Effect Model
@@ -188,7 +188,7 @@ Steps:
 Verification:
 
 - Level renders exactly as before.
-- Asset renderer route still works.
+- Asset editor route still works.
 - Browser smoke test.
 
 ## Phase 8: Performance-Oriented Entity Pooling
@@ -246,20 +246,24 @@ Verification:
 
 Recommended next commit scope:
 
-1. Complete Phase 1 only: enemy domain/view split.
-2. Preserve behavior.
-3. Verify with build and browser smoke.
+1. Finish Phase 4 runtime data migration:
+   - Add spawn/scaling metadata to enemy asset settings.
+   - Build `EnemyDefinition` values from a small helper that accepts `EnemyAssetSettings` plus view factory.
+   - Remove duplicated spawn/health-growth constants from `enemyDefinitions.ts`.
+2. Preserve current enemy health, speed, spawn weighting, attack, and drop behavior.
+3. Verify with `npm test`, `npm run build`, and an asset editor smoke check.
 
 Reason:
 
-- Enemy domain/view split is the last major architecture blocker before tests and event hooks become straightforward.
-- Doing tests first is possible, but enemies are still renderer-coupled, so test value would be limited.
+- Enemy attacks and drops already come from asset settings, but spawn/health-growth metadata still does not.
+- Finishing this closes the runtime half of Phase 4 before broadening the editor UI for attack/drop-table editing.
 
 ## Standard Verification Checklist
 
 Run this before finishing each phase:
 
 ```sh
+npm test
 npm run build
 ```
 
@@ -273,3 +277,5 @@ Then run a browser smoke test against the existing dev server:
 - Fire nova.
 - Wait at least one second.
 - Save screenshot under `tmp/`.
+
+For asset-data work, also load `http://127.0.0.1:5173/dev/asset-editor?asset=health-pickup` or an enemy asset URL and confirm the editor canvas and relevant kind-specific controls render.

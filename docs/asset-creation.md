@@ -1,6 +1,6 @@
 # Asset Creation Notes
 
-This project favors procedural, low-poly, skinned Three.js enemy assets that can be inspected in the dev asset renderer before they are used in gameplay.
+This project favors procedural, low-poly, skinned Three.js enemy assets that can be inspected in the dev asset editor before they are used in gameplay.
 
 ## Goals
 
@@ -8,7 +8,7 @@ This project favors procedural, low-poly, skinned Three.js enemy assets that can
 - Prefer one skinned surface mesh and one shared skeleton for small enemies.
 - Use a single 512x512 texture atlas per enemy unless there is a strong reason to split materials.
 - Keep enemy triangle budgets low. For small enemies, start under 100 triangles for a blockout, then allow up to 200 triangles when silhouette or grounding needs it.
-- Verify every asset in `/dev/asset-renderer`, not only in code.
+- Verify every asset in `/dev/asset-editor`, not only in code.
 
 ## Concept To Mesh
 
@@ -71,7 +71,7 @@ The rigged asset helper rigidly binds each part to a single bone and merges part
 
 Guidelines:
 
-- Keep body geometry closed. Open prism sides and inconsistent winding are very visible under the asset renderer lights.
+- Keep body geometry closed. Open prism sides and inconsistent winding are very visible under the asset editor lights.
 - Use custom `BufferGeometry` when primitive boxes/prisms do not create the needed silhouette.
 - Use `DoubleSide` only when needed for thin, blade-like shapes; prefer closed geometry where possible.
 - Different front and rear leg transforms are acceptable even when they share the same geometry helper.
@@ -111,9 +111,9 @@ for (const leg of LEG_DEFINITIONS) {
 
 This gives the body a mechanical breathing/sway motion without making the leg tips float.
 
-## Asset Renderer
+## Asset Editor
 
-Always wire new enemies into `/dev/asset-renderer` early. The renderer is the source of truth for:
+Always wire new enemies into `/dev/asset-editor` early. The editor is the source of truth for:
 
 - Whether the asset appears at the right scale.
 - Whether the silhouette reads from isometric, side, head-on, and behind views.
@@ -124,7 +124,7 @@ Always wire new enemies into `/dev/asset-renderer` early. The renderer is the so
 Useful URL pattern:
 
 ```text
-/dev/asset-renderer?asset=lean-hunter&angle=isometric&state=idle&distance=0.70&speed=1.0
+/dev/asset-editor?asset=lean-hunter&angle=isometric&state=idle&distance=0.70&speed=1.0
 ```
 
 Capture screenshots into `tmp/` for comparisons. For example:
@@ -141,8 +141,8 @@ tmp/lean-hunter-death.png
 Before considering an enemy asset done:
 
 - `npm run build` passes.
-- The asset renderer loads the enemy directly from the URL.
-- The asset renderer reports the expected render-call and triangle count.
+- The asset editor loads the enemy directly from the URL.
+- The asset editor reports the expected render-call and triangle count.
 - The model reads correctly from the isometric camera.
 - Front/back direction is clear.
 - Feet or contact points do not float during idle.
@@ -163,5 +163,4 @@ Current characteristics:
 - Four animation states: `idle`, `walk`, `melee`, `death`.
 - Fixed L-shaped leg meshes bound to single leg bones.
 - Body idle bob with planted leg compensation.
-- Asset renderer readout: `1` render call, `150` triangles.
-
+- Asset editor readout: `1` render call, `150` triangles.
