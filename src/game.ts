@@ -1,44 +1,34 @@
 import * as THREE from "three";
-import { PLAYER_BALANCE } from "./balance";
-import { distance2D, type CollisionBody2D, type CollisionLayer } from "./collision";
-import { PLAYER_MAX, TILE_SIZE } from "./constants";
+import { distance2D, type CollisionLayer } from "./collision";
+import { TILE_SIZE } from "./constants";
 import { CombatSystem } from "./combatSystem";
 import { EffectsSystem } from "./effectsSystem";
 import { EnemySystem } from "./enemySystem";
 import { EventQueue, type GameEvent } from "./eventQueue";
 import { InputState } from "./inputState";
 import { exitGateToWorld, generateLevel, tileToWorld, type LevelData } from "./level";
-import { movementInputFor, moveOnWalkableLevel } from "./movement";
 import type { PerfRecorder } from "./perf";
 import { PickupSystem } from "./pickupSystem";
+import { PlayerSystem } from "./playerSystem";
 import type { GameScene } from "./scene";
-import { hasStatusEffect, setStatusEffect, tickStatusEffects, type StatusEffect } from "./statusEffects";
 import type { Ui } from "./ui";
-import type { PlayerResources } from "./types";
-
-const PLAYER_MODEL_FORWARD_OFFSET = Math.PI;
 
 export class Game {
   private readonly clock = new THREE.Clock();
   private readonly fpsFrameTimes: number[] = [];
   private readonly input = new InputState();
-  private readonly maxResources: PlayerResources = { ...PLAYER_MAX };
-  private readonly movementInput = new THREE.Vector3();
-  private readonly playerCollisionBody: CollisionBody2D;
+  private readonly player: PlayerSystem;
   private readonly effects: EffectsSystem;
   private readonly events = new EventQueue();
   private readonly pickups: PickupSystem;
   private readonly enemies: EnemySystem;
   private readonly combat: CombatSystem;
 
-  private resources: PlayerResources = { ...PLAYER_MAX };
   private started = false;
   private paused = false;
   private gameOver = false;
   private kills = 0;
   private wave = 1;
-  private readonly playerStatusEffects: StatusEffect[] = [];
-  private playerMoving = false;
   private fpsVisible = false;
   private nextFpsHudUpdateAt = 0;
   private levelNumber = 1;
@@ -49,41 +39,41 @@ export class Game {
     private readonly ui: Ui,
     private readonly perf: PerfRecorder,
   ) {
-    this.playerCollisionBody = {
-      position: this.world.player.position,
-      radius: PLAYER_BALANCE.radius,
-      collisionLayer: 0,
-    };
+    this.currentLevel = generateLevel(this.levelNumber);
+    this.player = new PlayerSystem(
+      this.world,
+      this.input,
+      () => this.currentLevel,
+      () => this.ui.getMovementMode(),
+    );
     this.effects = new EffectsSystem(this.world.scene, this.world.camera, this.world.materials.nova);
     this.pickups = new PickupSystem(
       this.world,
       this.events,
-      this.playerCollisionBody,
+      this.player.collisionBody,
       () => this.currentCollisionLayer(),
     );
     this.enemies = new EnemySystem(
       this.world,
       this.events,
-      this.playerCollisionBody,
-      this.resources,
+      this.player.collisionBody,
+      this.player.resources,
       () => this.currentLevel,
       () => this.wave,
       () => this.currentCollisionLayer(),
-      () => !this.playerHasStatus("invulnerable"),
+      () => !this.player.hasStatus("invulnerable"),
     );
     this.combat = new CombatSystem(
       this.world,
       this.effects,
-      this.resources,
-      this.playerCollisionBody,
+      this.player.resources,
+      this.player.collisionBody,
       () => this.currentCollisionLayer(),
       () => this.enemies.all,
       (enemy, amount, showText) => this.enemies.damageEnemy(enemy, amount, showText),
     );
-    this.currentLevel = generateLevel(this.levelNumber);
     this.world.renderLevel(this.currentLevel);
-    this.world.player.position.copy(tileToWorld(this.currentLevel.start));
-    this.updatePlayerCollisionLayer();
+    this.player.moveTo(tileToWorld(this.currentLevel.start), this.currentCollisionLayer());
     this.resetReticle();
   }
 
@@ -150,53 +140,10 @@ export class Game {
     return this.started && !this.gameOver && !this.paused;
   }
 
-  private applyMovement(dt: number): void {
-    const input = this.getMovementInput();
-
-    this.playerMoving = input.lengthSq() > 0;
-
-    if (this.playerMoving) {
-      input.normalize();
-      this.movePlayer(input, dt);
-    }
-
-    this.checkGateTransition();
-  }
-
-  private getMovementInput(): THREE.Vector3 {
-    const strafe = (this.input.hasKey("KeyD") ? 1 : 0) - (this.input.hasKey("KeyA") ? 1 : 0);
-    const forward = (this.input.hasKey("KeyW") ? 1 : 0) - (this.input.hasKey("KeyS") ? 1 : 0);
-    return movementInputFor({
-      mode: this.ui.getMovementMode(),
-      camera: this.world.camera,
-      pointerWorld: this.input.pointerWorld,
-      playerPosition: this.world.player.position,
-      playerYaw: this.world.player.rotation.y,
-      strafe,
-      forward,
-      target: this.movementInput,
-    });
-  }
-
-  private updatePlayerAim(): void {
-    const aim = this.input.pointerWorld.clone().sub(this.world.player.position).setY(0);
-    if (aim.lengthSq() > 0.01) {
-      this.world.player.rotation.y = this.getPlayerAimYaw(aim);
-    }
-  }
-
-  private getPlayerAimYaw(aim: THREE.Vector3): number {
-    return Math.atan2(aim.x, aim.z) + PLAYER_MODEL_FORWARD_OFFSET;
-  }
-
   private updateCamera(): void {
     const offset = new THREE.Vector3(25, 26, 25);
     this.world.camera.position.copy(this.world.player.position).add(offset);
     this.world.camera.lookAt(this.world.player.position);
-  }
-
-  private movePlayer(input: THREE.Vector3, dt: number): void {
-    moveOnWalkableLevel(this.currentLevel, this.world.player.position, input, PLAYER_BALANCE.speed * dt);
   }
 
   private checkGateTransition(): void {
@@ -206,13 +153,6 @@ export class Game {
     }
   }
 
-  private regenerate(dt: number): void {
-    this.resources.energy = Math.min(
-      this.maxResources.energy,
-      this.resources.energy + PLAYER_BALANCE.energyRegenPerSecond * dt,
-    );
-  }
-
   private setPaused(paused: boolean): void {
     this.paused = paused;
     this.ui.setPaused(paused);
@@ -220,8 +160,8 @@ export class Game {
 
   private updateHud(): void {
     this.ui.updateHud({
-      resources: this.resources,
-      maxResources: this.maxResources,
+      resources: this.player.resources,
+      maxResources: this.player.maxResources,
       kills: this.kills,
       level: this.levelNumber,
       primaryReady: this.combat.primaryReady,
@@ -245,19 +185,12 @@ export class Game {
         this.pickups.maybeDropPickup(event.position, event.dropTable);
         break;
       case "playerDamaged":
-        this.setPlayerStatus("invulnerable", PLAYER_BALANCE.invulnerabilityDuration);
-        this.world.playerBody.material.color.set(
-          this.resources.health <= PLAYER_BALANCE.lowHealthThreshold ? 0xff7474 : 0xffffff,
-        );
-        if (this.resources.health <= 0) {
+        if (this.player.damage()) {
           this.endGame();
         }
         break;
       case "pickupCollected":
-        this.resources[event.kind] = Math.min(
-          this.maxResources[event.kind],
-          this.resources[event.kind] + event.amount,
-        );
+        this.player.grantResource(event.kind, event.amount);
         break;
     }
   }
@@ -293,20 +226,14 @@ export class Game {
     this.levelNumber = 1;
     this.currentLevel = generateLevel(this.levelNumber);
     this.world.renderLevel(this.currentLevel);
-    this.world.player.position.copy(tileToWorld(this.currentLevel.start));
-    this.updatePlayerCollisionLayer();
+    this.player.reset(tileToWorld(this.currentLevel.start), this.currentCollisionLayer());
     this.resetReticle();
-    this.resources.health = PLAYER_MAX.health;
-    this.resources.ammo = PLAYER_MAX.ammo;
-    this.resources.energy = PLAYER_MAX.energy;
     this.kills = 0;
     this.wave = 1;
     this.enemies.spawnLevelEnemies();
     this.combat.resetTimers();
-    this.playerStatusEffects.length = 0;
     this.gameOver = false;
     this.paused = false;
-    this.world.playerBody.material.color.set(0x9bf0df);
     this.ui.hideOverlay();
     this.ui.setHudVisible(true);
     this.ui.setPaused(false);
@@ -320,8 +247,7 @@ export class Game {
     this.wave = this.levelNumber;
     this.currentLevel = generateLevel(this.levelNumber);
     this.world.renderLevel(this.currentLevel);
-    this.world.player.position.copy(tileToWorld(this.currentLevel.start));
-    this.updatePlayerCollisionLayer();
+    this.player.moveTo(tileToWorld(this.currentLevel.start), this.currentCollisionLayer());
     this.resetReticle();
     this.enemies.spawnLevelEnemies();
     this.combat.prepareNextLevel();
@@ -343,18 +269,6 @@ export class Game {
 
   private currentCollisionLayer(): CollisionLayer {
     return this.currentLevel.id;
-  }
-
-  private updatePlayerCollisionLayer(): void {
-    this.playerCollisionBody.collisionLayer = this.currentCollisionLayer();
-  }
-
-  private playerHasStatus(kind: StatusEffect["kind"]): boolean {
-    return hasStatusEffect(this.playerStatusEffects, kind);
-  }
-
-  private setPlayerStatus(kind: StatusEffect["kind"], remaining: number): void {
-    setStatusEffect(this.playerStatusEffects, { kind, remaining });
   }
 
   private perfFrameArgs(dt: number): Record<string, number | string | boolean> {
@@ -389,29 +303,18 @@ export class Game {
       if (this.started && !this.gameOver && !this.paused) {
         this.perf.span("timers", () => {
           this.combat.updateTimers(dt);
-          tickStatusEffects(this.playerStatusEffects, dt);
-          this.world.playerBody.material.color.lerp(
-            new THREE.Color(this.resources.health <= PLAYER_BALANCE.lowHealthThreshold ? 0xff7474 : 0x9bf0df),
-            dt * 10,
-          );
+          this.player.updateTimers(dt);
         });
 
-        this.perf.span("regenerate", () => this.regenerate(dt));
-        this.perf.span("movement", () => this.applyMovement(dt));
+        this.perf.span("regenerate", () => this.player.regenerate(dt));
+        this.perf.span("movement", () => {
+          this.player.applyMovement(dt);
+          this.checkGateTransition();
+        });
         this.perf.span("camera", () => this.updateCamera());
         this.perf.span("pointer.world", () => this.updatePointerWorldFromCamera());
-        this.perf.span("player.aim", () => this.updatePlayerAim());
-        this.perf.span("player.rig", () =>
-          this.world.playerRig.update(
-            {
-              moving: this.playerMoving,
-              moveSpeed: PLAYER_BALANCE.speed,
-              damaged: this.playerHasStatus("invulnerable"),
-              lowHealth: this.resources.health <= PLAYER_BALANCE.lowHealthThreshold,
-            },
-            dt,
-          ),
-        );
+        this.perf.span("player.aim", () => this.player.updateAim());
+        this.perf.span("player.rig", () => this.player.updateRig(dt));
         this.perf.span("projectiles", () => this.combat.updateProjectiles(dt));
         this.perf.span("enemies", () => this.enemies.update(dt));
         this.perf.span("events.afterEnemies", () => this.processEvents());

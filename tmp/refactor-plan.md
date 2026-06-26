@@ -8,6 +8,7 @@ This plan continues from the current architecture after the latest refactor pass
 - Projectiles and pickups now have separate domain state and Three.js view handles.
 - Enemies, projectiles, and pickups now all keep domain state separate from runtime Three.js views.
 - Asset settings JSON is now discriminated by asset kind.
+- Player input tracking and player simulation are split from `Game` through `InputState` and `PlayerSystem`.
 - Focused Vitest coverage now protects pathfinding, movement, weapon definitions, enemy definitions, and runtime event queue behavior.
 
 ## Completed: Split Enemy Domain State From Views
@@ -89,38 +90,26 @@ Verification:
 - `npm run build` passes.
 - Browser smoke checked `/?autostart=1&seed=status-effects-smoke`; the canvas and HUD rendered and no console errors were reported.
 
-## In Progress: Split Player System
+## Completed: Split Player System
 
-Goal: move player-specific simulation out of `Game`.
-
-Current issue:
-
-- `Game` still owns movement, aim, camera follow, player resource regen, player damage state, and player rig update orchestration.
+Player-specific simulation now lives outside `Game`.
 
 Completed in this phase:
 
 - Extracted key and pointer tracking into `src/inputState.ts`.
-- `Game` now consumes `InputState` for movement input, pointer aiming, reticle reset, and firing targets.
-
-Suggested split:
-
-- `InputState`: keys, pointer screen/world, action requests.
-- `PlayerSystem`: movement, aim yaw, resources, damage/status.
-- `CameraSystem`: camera follow and resize interaction remains in scene/renderer.
-
-Remaining steps:
-
-1. Move `getMovementInput`, `applyMovement`, `updatePlayerAim`, `regenerate`, and player damage color state into `PlayerSystem`.
-2. Keep `Game` as the frame-order coordinator.
-3. Preserve UI movement mode access, or copy UI setting into input state when changed.
+- Added `src/playerSystem.ts` for player collision state, resources, status effects, movement, aim yaw, resource regeneration, damage tinting, and rig updates.
+- `Game` now keeps frame-order orchestration, camera follow, level transitions, event processing, and system coordination.
+- Combat, enemies, and pickups share the stable `PlayerSystem.resources` and `PlayerSystem.collisionBody` references.
+- UI movement mode remains sourced from `Ui.getMovementMode()` through the player system.
 
 Verification:
 
 - `npm test` passes with 6 files and 17 tests.
 - `npm run build` passes.
-- Browser smoke checked `/?autostart=1&seed=input-state-smoke`; the canvas and HUD rendered and no console errors were reported.
+- Browser smoke checked `/?autostart=1&seed=player-system-smoke-2`; the canvas and HUD rendered, primary fire and nova consumed resources, the run paused cleanly after the action window, and no console errors were reported.
+- Screenshot saved to `tmp/player-system-smoke.png`.
 
-## Phase 7: Scene/Asset Factory Cleanup
+## In Progress: Scene/Asset Factory Cleanup
 
 Goal: keep renderer/scene construction separate from gameplay asset factories.
 
@@ -197,22 +186,6 @@ Verification:
 
 - Same seed + same input sequence should produce the same early run state.
 - Snapshot should not include Three.js objects.
-
-## Suggested Next Commit
-
-Recommended next commit scope:
-
-1. Finish Phase 4 runtime data migration:
-   - Add spawn/scaling metadata to enemy asset settings.
-   - Build `EnemyDefinition` values from a small helper that accepts `EnemyAssetSettings` plus view factory.
-   - Remove duplicated spawn/health-growth constants from `enemyDefinitions.ts`.
-2. Preserve current enemy health, speed, spawn weighting, attack, and drop behavior.
-3. Verify with `npm test`, `npm run build`, and an asset editor smoke check.
-
-Reason:
-
-- Enemy attacks and drops already come from asset settings, but spawn/health-growth metadata still does not.
-- Finishing this closes the runtime half of Phase 4 before broadening the editor UI for attack/drop-table editing.
 
 ## Standard Verification Checklist
 
