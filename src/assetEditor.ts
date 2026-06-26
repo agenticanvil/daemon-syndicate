@@ -46,8 +46,9 @@ type AssetId =
   | "industrial-crate";
 type AngleId = "head-on" | "side" | "behind" | "isometric";
 type PlayerAnimationStateId = "idle" | "walk" | "fire" | "damaged" | "low-health";
-type AnimationStateId = PlayerAnimationStateId | LeanHunterAnimationId;
-type RenderModeId = "shaded" | "wireframe";
+type EditorOnlyAnimationStateId = "base-pose";
+type AnimationStateId = EditorOnlyAnimationStateId | PlayerAnimationStateId | LeanHunterAnimationId;
+type RenderModeId = "shaded" | "wireframe" | "bones";
 
 type AssetEditorState = {
   asset: AssetId;
@@ -89,6 +90,7 @@ const ASSET_DEFINITIONS = {
     targetY: 1.05,
     collision: PLAYER_SETTINGS.collision,
     animations: [
+      { id: "base-pose", label: "Base Pose" },
       { id: "idle", label: "Idle" },
       { id: "walk", label: "Walk" },
       { id: "fire", label: "Fire" },
@@ -101,6 +103,7 @@ const ASSET_DEFINITIONS = {
     targetY: 0.42,
     collision: LEAN_HUNTER_SETTINGS.collision,
     animations: [
+      { id: "base-pose", label: "Base Pose" },
       { id: "idle", label: "Idle" },
       { id: "walk", label: "Walk" },
       { id: "melee", label: "Melee" },
@@ -112,6 +115,7 @@ const ASSET_DEFINITIONS = {
     targetY: 0.42,
     collision: ELITE_ENEMY_SETTINGS.collision,
     animations: [
+      { id: "base-pose", label: "Base Pose" },
       { id: "idle", label: "Idle" },
       { id: "walk", label: "Walk" },
       { id: "melee", label: "Melee" },
@@ -186,6 +190,7 @@ const CAMERA_POSES: Record<AngleId, CameraPose> = {
 const RENDER_MODES: Array<{ id: RenderModeId; label: string }> = [
   { id: "shaded", label: "Shaded" },
   { id: "wireframe", label: "Wireframe" },
+  { id: "bones", label: "Bones" },
 ];
 
 export function startAssetEditor(app: HTMLDivElement): void {
@@ -251,6 +256,12 @@ export function startAssetEditor(app: HTMLDivElement): void {
     "industrial-crate": createIndustrialCrateAsset(loader, renderer.capabilities.getMaxAnisotropy()),
   };
   scene.add(...ASSETS.map((asset) => rigs[asset.id].root));
+  const boneHelpers: Partial<Record<AssetId, THREE.SkeletonHelper>> = {
+    player: createBoneHelper(rigs.player.root, 0xffc857),
+    "lean-hunter": createBoneHelper(rigs["lean-hunter"].root, 0xff5a8a),
+    "elite-enemy": createBoneHelper(rigs["elite-enemy"].root, 0xff5a8a),
+  };
+  scene.add(...Object.values(boneHelpers));
 
   const floor = createInspectionFloor();
   scene.add(floor);
@@ -283,6 +294,7 @@ export function startAssetEditor(app: HTMLDivElement): void {
     for (const asset of ASSETS) {
       rigs[asset.id].root.visible = state.asset === asset.id;
     }
+    applyBoneHelperVisibility();
     applyCollisionVolume();
   }
 
@@ -514,7 +526,14 @@ export function startAssetEditor(app: HTMLDivElement): void {
 
   function applyRenderMode(): void {
     for (const asset of ASSETS) {
-      setWireframe(rigs[asset.id].root, state.renderMode === "wireframe");
+      setWireframe(rigs[asset.id].root, state.renderMode === "wireframe" || state.renderMode === "bones");
+    }
+    applyBoneHelperVisibility();
+  }
+
+  function applyBoneHelperVisibility(): void {
+    for (const [asset, helper] of Object.entries(boneHelpers) as Array<[AssetId, THREE.SkeletonHelper]>) {
+      helper.visible = state.renderMode === "bones" && state.asset === asset;
     }
   }
 
@@ -576,11 +595,21 @@ export function startAssetEditor(app: HTMLDivElement): void {
     const dt = state.playing ? rawDt * state.speed : 0;
     updateCamera();
     if (state.asset === "player") {
-      rigs.player.update(playerAnimationState(dt), dt);
+      if (state.animation === "base-pose") {
+        rigs.player.applyBasePose();
+      } else {
+        rigs.player.update(playerAnimationState(dt), dt);
+      }
     } else if (state.asset === "lean-hunter" || state.asset === "elite-enemy") {
-      rigs["lean-hunter"].update(leanHunterAnimationState(), dt);
-      rigs["elite-enemy"].update(leanHunterAnimationState(), dt);
+      if (state.animation === "base-pose") {
+        rigs["lean-hunter"].applyBasePose();
+        rigs["elite-enemy"].applyBasePose();
+      } else {
+        rigs["lean-hunter"].update(leanHunterAnimationState(), dt);
+        rigs["elite-enemy"].update(leanHunterAnimationState(), dt);
+      }
     }
+    boneHelpers[state.asset]?.updateMatrixWorld(true);
     renderer.render(scene, camera);
     const assetMetrics = measureAsset(activeRig().root);
     renderCalls.textContent = assetMetrics.renderCalls.toString();
@@ -1002,6 +1031,21 @@ function setMaterialWireframe(material: THREE.Material | THREE.Material[], enabl
   material.needsUpdate = true;
 }
 
+function createBoneHelper(root: THREE.Object3D, color: THREE.ColorRepresentation): THREE.SkeletonHelper {
+  const helper = new THREE.SkeletonHelper(root);
+  helper.visible = false;
+  helper.frustumCulled = false;
+  helper.material = new THREE.LineBasicMaterial({
+    color,
+    depthTest: false,
+    depthWrite: false,
+    transparent: true,
+    opacity: 0.95,
+  });
+  helper.renderOrder = 10;
+  return helper;
+}
+
 function measureAsset(root: THREE.Object3D): AssetMetrics {
   const metrics: AssetMetrics = { renderCalls: 0, triangles: 0 };
 
@@ -1210,6 +1254,7 @@ function syncAnimationOptions(select: HTMLSelectElement, state: AssetEditorState
 
 function isAnimationStateId(value: string | null | undefined): value is AnimationStateId {
   return (
+    value === "base-pose" ||
     value === "idle" ||
     value === "walk" ||
     value === "fire" ||
@@ -1225,7 +1270,7 @@ function isLeanHunterAnimationId(animation: AnimationStateId): animation is Lean
 }
 
 function toRenderModeId(value: string | null | undefined): RenderModeId {
-  return value === "wireframe" ? value : "shaded";
+  return value === "wireframe" || value === "bones" ? value : "shaded";
 }
 
 function clamp(value: number, min: number, max: number): number {

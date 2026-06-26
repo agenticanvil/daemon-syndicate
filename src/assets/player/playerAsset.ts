@@ -26,6 +26,7 @@ export type PlayerRig = {
   handSocket: THREE.Group;
   setWeapon: (weapon: THREE.Object3D) => void;
   triggerFire: () => void;
+  applyBasePose: () => void;
   update: (state: PlayerAnimationState, dt: number) => void;
 };
 
@@ -89,6 +90,9 @@ function createProceduralPlayerRig(armorAtlas: THREE.Texture): PlayerRig {
     triggerFire() {
       recoil = 1;
     },
+    applyBasePose() {
+      applyPlayerBasePose(asset.bones, materials, weaponSocket);
+    },
     update(state: PlayerAnimationState, dt: number) {
       elapsed += dt;
       walkBlend = THREE.MathUtils.damp(walkBlend, state.moving ? 1 : 0, 12, dt);
@@ -126,6 +130,24 @@ function createProceduralPlayerRig(armorAtlas: THREE.Texture): PlayerRig {
       materials.redGlow.opacity = THREE.MathUtils.clamp(0.58 + damagePulse + lowHealthPulse, 0.4, 1);
     },
   };
+}
+
+function applyPlayerBasePose(
+  bones: Record<string, THREE.Bone>,
+  materials: PlayerMaterials,
+  weaponSocket: THREE.Group,
+): void {
+  for (const bone of Object.values(bones)) {
+    bone.rotation.set(0, 0, 0);
+  }
+
+  bones.motion.position.set(0, PLAYER_MODEL_FLOOR_OFFSET + 0.04, 0);
+  bones["left-shoulder"].rotation.z = -Math.PI * 0.5;
+  bones["right-shoulder"].rotation.z = Math.PI * 0.5;
+  weaponSocket.position.set(0.01, 0.17, -0.08);
+  weaponSocket.rotation.set(0, -0.02, 0);
+  materials.tealGlow.opacity = 0.82;
+  materials.redGlow.opacity = 0.62;
 }
 
 function createPlayerBones(): BoneDefinition[] {
