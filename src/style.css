@@ -346,7 +346,8 @@ canvas {
 }
 
 .pause-option::before,
-.movement-option.selected::before {
+.movement-option.selected::before,
+.graphics-pixel-option.selected::before {
   position: absolute;
   inset: -3px;
   content: "";
@@ -379,7 +380,8 @@ canvas {
 
 .pause-option:hover::before,
 .pause-option:focus-visible::before,
-.movement-option.selected::before {
+.movement-option.selected::before,
+.graphics-pixel-option.selected::before {
   opacity: 1;
 }
 
@@ -488,13 +490,15 @@ canvas {
   text-transform: uppercase;
 }
 
-.movement-options {
+.movement-options,
+.graphics-options {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 6px;
 }
 
-.movement-option {
+.movement-option,
+.graphics-pixel-option {
   position: relative;
   min-height: 38px;
   pointer-events: auto;
@@ -513,7 +517,10 @@ canvas {
 
 .movement-option:hover,
 .movement-option:focus-visible,
-.movement-option.selected {
+.movement-option.selected,
+.graphics-pixel-option:hover,
+.graphics-pixel-option:focus-visible,
+.graphics-pixel-option.selected {
   border-color: rgba(44, 245, 242, 0.95);
   background:
     linear-gradient(90deg, rgba(13, 245, 236, 0.3), rgba(13, 245, 236, 0.12)),
@@ -525,8 +532,17 @@ canvas {
   color: #eaffff;
 }
 
-.empty-section {
-  min-height: 38px;
+.setting-toggle {
+  grid-template-columns: minmax(120px, 0.38fr) auto;
+  align-items: center;
+  cursor: pointer;
+}
+
+.setting-toggle input {
+  justify-self: start;
+  width: 18px;
+  height: 18px;
+  accent-color: #9bf0df;
 }
 
 .pause-panel dl {
@@ -848,11 +864,13 @@ canvas {
     gap: 10px;
   }
 
-  .movement-options {
+  .movement-options,
+  .graphics-options {
     grid-template-columns: 1fr;
   }
 
-  .movement-option {
+  .movement-option,
+  .graphics-pixel-option {
     min-height: 36px;
     text-align: left;
   }

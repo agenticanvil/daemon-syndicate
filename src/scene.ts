@@ -29,19 +29,22 @@ export type GameScene = {
     gate: THREE.MeshStandardMaterial;
   };
   resize: () => void;
+  applyGraphicsSettings: (settings: GraphicsSettings) => void;
+};
+
+export type GraphicsSettings = {
+  preserveDrawingBuffer: boolean;
+  pixelRatio: 1 | 1.5 | 2;
+};
+
+const DEFAULT_GRAPHICS_SETTINGS: GraphicsSettings = {
+  preserveDrawingBuffer: true,
+  pixelRatio: 2,
 };
 
 export function createGameScene(app: HTMLDivElement): GameScene {
-  const renderer = new THREE.WebGLRenderer({
-    antialias: true,
-    powerPreference: "high-performance",
-    preserveDrawingBuffer: true,
-  });
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-  renderer.setSize(window.innerWidth, window.innerHeight);
-  renderer.shadowMap.enabled = true;
-  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-  renderer.outputColorSpace = THREE.SRGBColorSpace;
+  let graphicsSettings: GraphicsSettings = { ...DEFAULT_GRAPHICS_SETTINGS };
+  let renderer = createRenderer(graphicsSettings);
   app.prepend(renderer.domElement);
 
   const scene = new THREE.Scene();
@@ -193,6 +196,23 @@ export function createGameScene(app: HTMLDivElement): GameScene {
 
   resize();
 
+  function applyGraphicsSettings(settings: GraphicsSettings): void {
+    const shouldReplaceRenderer = settings.preserveDrawingBuffer !== graphicsSettings.preserveDrawingBuffer;
+    graphicsSettings = { ...settings };
+
+    if (shouldReplaceRenderer) {
+      const previousRenderer = renderer;
+      renderer = createRenderer(graphicsSettings);
+      previousRenderer.domElement.replaceWith(renderer.domElement);
+      previousRenderer.dispose();
+      resize();
+      return;
+    }
+
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, graphicsSettings.pixelRatio));
+    renderer.setSize(window.innerWidth, window.innerHeight);
+  }
+
   function createLeanHunterRig(): LeanHunterRig {
     return loadLeanHunterRig(loader, anisotropy);
   }
@@ -204,7 +224,9 @@ export function createGameScene(app: HTMLDivElement): GameScene {
   }
 
   return {
-    renderer,
+    get renderer() {
+      return renderer;
+    },
     scene,
     camera,
     floor,
@@ -218,7 +240,22 @@ export function createGameScene(app: HTMLDivElement): GameScene {
     createPickupAsset,
     materials,
     resize,
+    applyGraphicsSettings,
   };
+}
+
+function createRenderer(settings: GraphicsSettings): THREE.WebGLRenderer {
+  const renderer = new THREE.WebGLRenderer({
+    antialias: true,
+    powerPreference: "high-performance",
+    preserveDrawingBuffer: settings.preserveDrawingBuffer,
+  });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, settings.pixelRatio));
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  renderer.outputColorSpace = THREE.SRGBColorSpace;
+  return renderer;
 }
 
 function addLighting(scene: THREE.Scene): void {

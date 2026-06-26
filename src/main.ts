@@ -49,6 +49,7 @@ function startGame(app: HTMLDivElement): void {
   const perf = createPerfRecorder(perfEnabled);
   const ui = createUi(app);
   const world = createGameScene(app);
+  ui.onGraphicsSettingsChange((settings) => world.applyGraphicsSettings(settings));
   const game = new Game(world, ui, perf);
 
   game.bindEvents();

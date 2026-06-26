@@ -1,4 +1,5 @@
 import type { PlayerResources } from "./types";
+import type { GraphicsSettings } from "./scene";
 
 export type MovementControlMode = "isometric" | "screen" | "mouse";
 
@@ -22,6 +23,9 @@ export type Ui = {
   setHudVisible: (visible: boolean) => void;
   setPaused: (paused: boolean) => void;
   getMovementMode: () => MovementControlMode;
+  setFpsVisible: (visible: boolean) => void;
+  updateFps: (fps: number) => void;
+  onGraphicsSettingsChange: (listener: (settings: GraphicsSettings) => void) => void;
   updateHud: (state: HudState) => void;
 };
 
@@ -53,6 +57,7 @@ export function createUi(app: HTMLDivElement): Ui {
         <div class="stats">
           <div class="stat"><span>Kills</span><strong id="kills">0</strong></div>
           <div class="stat"><span>Level</span><strong id="level">1</strong></div>
+          <div class="stat fps-stat hidden" id="fpsStat"><span>FPS</span><strong id="fpsValue">0</strong></div>
         </div>
       </div>
       <div class="ability-bar">
@@ -98,7 +103,20 @@ export function createUi(app: HTMLDivElement): Ui {
           </div>
           <div class="pause-section">
             <h3>Graphics</h3>
-            <div class="empty-section" aria-hidden="true"></div>
+            <label class="setting-row setting-toggle">
+              <span class="setting-label">Preserve buffer</span>
+              <input id="preserveDrawingBuffer" type="checkbox" checked />
+            </label>
+            <div class="setting-row">
+              <div>
+                <span class="setting-label">Pixel ratio</span>
+              </div>
+              <div class="graphics-options" role="group" aria-label="Pixel ratio">
+                <button class="graphics-pixel-option" type="button" aria-pressed="false" data-pixel-ratio="1">1</button>
+                <button class="graphics-pixel-option" type="button" aria-pressed="false" data-pixel-ratio="1.5">1.5</button>
+                <button class="graphics-pixel-option selected" type="button" aria-pressed="true" data-pixel-ratio="2">2</button>
+              </div>
+            </div>
           </div>
           <div class="pause-section">
             <h3>Audio</h3>
@@ -140,10 +158,19 @@ export function createUi(app: HTMLDivElement): Ui {
   const energyMeter = document.querySelector<HTMLElement>("#energyMeter")!;
   const killsEl = document.querySelector<HTMLElement>("#kills")!;
   const levelEl = document.querySelector<HTMLElement>("#level")!;
+  const fpsStat = document.querySelector<HTMLElement>("#fpsStat")!;
+  const fpsValue = document.querySelector<HTMLElement>("#fpsValue")!;
   const primaryAbility = document.querySelector<HTMLElement>("#primaryAbility")!;
   const novaAbility = document.querySelector<HTMLElement>("#novaAbility")!;
   const movementOptions = Array.from(pausePanel.querySelectorAll<HTMLButtonElement>(".movement-option"));
+  const preserveDrawingBuffer = document.querySelector<HTMLInputElement>("#preserveDrawingBuffer")!;
+  const pixelRatioOptions = Array.from(pausePanel.querySelectorAll<HTMLButtonElement>(".graphics-pixel-option"));
   let movementMode: MovementControlMode = "screen";
+  let graphicsSettings: GraphicsSettings = {
+    preserveDrawingBuffer: preserveDrawingBuffer.checked,
+    pixelRatio: 2,
+  };
+  const graphicsSettingsListeners: Array<(settings: GraphicsSettings) => void> = [];
 
   function setMeter(el: HTMLElement, value: number, max: number): void {
     el.style.width = `${Math.max(0, Math.min(value / max, 1)) * 100}%`;
@@ -157,6 +184,13 @@ export function createUi(app: HTMLDivElement): Ui {
   helpButton.addEventListener("click", () => showPauseView("help"));
   settingsBack.addEventListener("click", () => showPauseView("main"));
   helpBack.addEventListener("click", () => showPauseView("main"));
+
+  function emitGraphicsSettings(): void {
+    for (const listener of graphicsSettingsListeners) {
+      listener({ ...graphicsSettings });
+    }
+  }
+
   movementOptions.forEach((option) => {
     option.addEventListener("click", () => {
       const nextMode = option.dataset.movementMode;
@@ -168,6 +202,30 @@ export function createUi(app: HTMLDivElement): Ui {
         button.classList.toggle("selected", selected);
         button.setAttribute("aria-pressed", selected.toString());
       });
+    });
+  });
+  preserveDrawingBuffer.addEventListener("change", () => {
+    graphicsSettings = {
+      ...graphicsSettings,
+      preserveDrawingBuffer: preserveDrawingBuffer.checked,
+    };
+    emitGraphicsSettings();
+  });
+  pixelRatioOptions.forEach((option) => {
+    option.addEventListener("click", () => {
+      const nextPixelRatio = Number(option.dataset.pixelRatio);
+      if (nextPixelRatio !== 1 && nextPixelRatio !== 1.5 && nextPixelRatio !== 2) return;
+      graphicsSettings = {
+        ...graphicsSettings,
+        pixelRatio: nextPixelRatio,
+      };
+
+      pixelRatioOptions.forEach((button) => {
+        const selected = button === option;
+        button.classList.toggle("selected", selected);
+        button.setAttribute("aria-pressed", selected.toString());
+      });
+      emitGraphicsSettings();
     });
   });
 
@@ -204,6 +262,16 @@ export function createUi(app: HTMLDivElement): Ui {
     },
     getMovementMode() {
       return movementMode;
+    },
+    setFpsVisible(visible: boolean) {
+      fpsStat.classList.toggle("hidden", !visible);
+    },
+    updateFps(fps: number) {
+      fpsValue.textContent = Math.round(fps).toString();
+    },
+    onGraphicsSettingsChange(listener: (settings: GraphicsSettings) => void) {
+      graphicsSettingsListeners.push(listener);
+      listener({ ...graphicsSettings });
     },
     updateHud(state: HudState) {
       const { resources, maxResources } = state;
