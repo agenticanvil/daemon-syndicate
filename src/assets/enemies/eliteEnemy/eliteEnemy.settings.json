@@ -1,7 +1,8 @@
 {
   "collision": {
-    "radius": 0.68,
-    "height": 1.36
+    "radius": 0.7,
+    "height": 1.1
   },
-  "health": 118
+  "health": 118,
+  "speed": 3.5
 }

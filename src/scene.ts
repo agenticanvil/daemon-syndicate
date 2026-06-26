@@ -217,6 +217,10 @@ export function createGameScene(app: HTMLDivElement): GameScene {
     return loadLeanHunterRig(loader, anisotropy);
   }
 
+  function createEliteHunterRig(): EliteEnemyAsset {
+    return createEliteEnemyAsset(loader, anisotropy);
+  }
+
   function createPickupAsset(kind: ResourceKind): AmmoPickupAsset | EnergyPickupAsset | HealthPickupAsset {
     if (kind === "ammo") return createAmmoPickupAsset();
     if (kind === "energy") return createEnergyPickupAsset();
@@ -236,7 +240,7 @@ export function createGameScene(app: HTMLDivElement): GameScene {
     reticle,
     renderLevel,
     createLeanHunterRig,
-    createEliteEnemyAsset,
+    createEliteEnemyAsset: createEliteHunterRig,
     createPickupAsset,
     materials,
     resize,

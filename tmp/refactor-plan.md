@@ -79,15 +79,54 @@ Risks:
 - Do not introduce an overly generic event bus with global subscriptions yet.
 - Avoid async events; this is still a frame simulation.
 
-## Phase 4: Add Definition-Driven Drops And Enemy Attacks
+## Phase 4: Typed Asset Data, Definition-Driven Drops, And Enemy Attacks
 
-Goal: make drops and attacks configurable per enemy type.
+Goal: make asset-authored data scalable without forcing every asset to carry the same fields.
 
 Current issue:
 
+- The asset editor currently treats settings as one shared shape.
+- That led to non-enemy assets needing placeholder movement speed values.
+- Future asset types will need different data: enemies need movement, attacks, AI, and drop tables; pickups need resource grants; players need max resources and movement/combat defaults.
 - Pickup drop odds live globally in `DROP_BALANCE`.
 - Enemy attack damage/cooldown/range is global in `ENEMY_BALANCE`.
 - Enemy definitions only describe spawn/scaling/view creation.
+
+Recommended data model:
+
+Use discriminated settings JSON with a `kind` field and type-specific sections.
+
+```ts
+type AssetSettings = EnemyAssetSettings | PickupAssetSettings | PlayerAssetSettings;
+
+type EnemyAssetSettings = {
+  kind: "enemy";
+  collision: CollisionSettings;
+  health: number;
+  movement: {
+    speed: number;
+    waveSpeedGrowth: number;
+  };
+  attacks: EnemyAttackDefinition[];
+  dropTable: DropTable;
+};
+
+type PickupAssetSettings = {
+  kind: "pickup";
+  collision: CollisionSettings;
+  resources: Partial<Record<ResourceKind, number>>;
+  lifetime?: number;
+};
+
+type PlayerAssetSettings = {
+  kind: "player";
+  collision: CollisionSettings;
+  health: number;
+  movement?: {
+    speed: number;
+  };
+};
+```
 
 Proposed additions:
 
@@ -98,25 +137,54 @@ type DropTable = {
 };
 
 type EnemyAttackDefinition = {
+  kind: "melee" | "ranged";
   damage: number;
   cooldown: number;
-  proximity: number;
+  range: number;
+  projectileSpeed?: number;
+  windup?: number;
 };
 ```
 
 Steps:
 
-1. Add `dropTable` and `attack` to `EnemyDefinition`.
-2. Move current global drop odds into a default drop table.
-3. Move current enemy attack settings into a default melee attack definition.
-4. Update `EnemySystem` and `PickupSystem` to use definitions.
-5. Preserve current behavior as the default.
+1. Add `kind` to each asset settings JSON.
+2. Replace the current universal `EditableAssetSettings` with a discriminated `AssetSettings` union.
+3. Update the Vite asset-settings middleware to dispatch validation/normalization by `kind`.
+4. Update the asset editor to render common sections plus kind-specific forms:
+   - Common: collision and preview/render controls.
+   - Enemy: health, movement speed, wave scaling, attacks, drop table.
+   - Pickup: resource grant amounts and lifetime.
+   - Player: health, collision, and player-only movement/combat fields when needed.
+5. Remove placeholder fields from unrelated assets, such as `speed: 0` on pickups.
+6. Move current global drop odds into enemy `dropTable` defaults.
+7. Move current enemy attack settings into enemy `attacks` defaults.
+8. Build runtime `EnemyDefinition` values from `EnemyAssetSettings` instead of duplicating speed/attack/drop constants.
+9. Update `PickupSystem` to read pickup resource grants from `PickupAssetSettings.resources`.
+10. Preserve current behavior as the default during migration.
 
 Future benefits:
 
+- Asset data can grow by domain without bloating every asset.
+- The editor can stay explicit and ergonomic as assets become more specialized.
 - Ranged enemies can drop ammo less often.
 - Elites can drop larger pickups or guaranteed energy.
 - Bosses can use different attack cadence/range.
+- Pickups can grant multiple resources or different amounts without hardcoded drop-balance branches.
+
+Risks:
+
+- Avoid building a generic form system too early. A small registry per `kind` is enough:
+  `enemy`, `pickup`, and `player`.
+- Keep runtime systems consuming domain-specific settings, not editor UI state.
+- Do not mix spawn weighting, drop tables, and pickup grant values into one generic "loot" abstraction until there are multiple real cases.
+
+Verification:
+
+- Asset editor can load, edit, save, and reload each asset kind.
+- Enemy speed/health behavior matches current values after migration.
+- Pickup drops grant the same resource amounts as before unless intentionally changed.
+- `npm test` and `npm run build` pass.
 
 ## Phase 5: Resource And Status Effect Model
 

@@ -18,6 +18,13 @@ export type LeanHunterAnimationState = {
   animation: LeanHunterAnimationId;
 };
 
+export type LeanHunterRigOptions = {
+  atlasUrl?: string;
+  name?: string;
+  rimColor?: THREE.ColorRepresentation;
+  rimStrength?: number;
+};
+
 export type LeanHunterRig = {
   root: THREE.Group;
   body: THREE.SkinnedMesh<THREE.BufferGeometry, THREE.MeshStandardMaterial>;
@@ -52,21 +59,25 @@ const ATLAS = {
   greenCore: [0.56, 0.58, 0.63, 0.73],
 } satisfies Record<string, AtlasRect>;
 
-export function loadLeanHunterRig(loader: THREE.TextureLoader, anisotropy: number): LeanHunterRig {
-  const atlas = loader.load(LEAN_HUNTER_ATLAS_URL);
+export function loadLeanHunterRig(
+  loader: THREE.TextureLoader,
+  anisotropy: number,
+  options: LeanHunterRigOptions = {},
+): LeanHunterRig {
+  const atlas = loader.load(options.atlasUrl ?? LEAN_HUNTER_ATLAS_URL);
   atlas.colorSpace = THREE.SRGBColorSpace;
   atlas.anisotropy = anisotropy;
   atlas.wrapS = THREE.ClampToEdgeWrapping;
   atlas.wrapT = THREE.ClampToEdgeWrapping;
 
-  return createProceduralLeanHunterRig(atlas);
+  return createProceduralLeanHunterRig(atlas, options);
 }
 
-function createProceduralLeanHunterRig(atlas: THREE.Texture): LeanHunterRig {
-  const material = createSurfaceMaterial(atlas);
+function createProceduralLeanHunterRig(atlas: THREE.Texture, options: LeanHunterRigOptions): LeanHunterRig {
+  const material = createSurfaceMaterial(atlas, options.rimColor, options.rimStrength);
   const bones = createLeanHunterBones();
   const asset = createRigidSkinnedAsset({
-    name: "lean-hunter-rig",
+    name: options.name ?? "lean-hunter-rig",
     bones,
     parts: createLeanHunterParts(),
     materials: { surface: material },
@@ -231,7 +242,11 @@ function smoothPulse(value: number, start: number, end: number): number {
   return 1 - THREE.MathUtils.smoothstep(value, midpoint, end);
 }
 
-function createSurfaceMaterial(texture: THREE.Texture): THREE.MeshStandardMaterial {
+function createSurfaceMaterial(
+  texture: THREE.Texture,
+  rimColor: THREE.ColorRepresentation = 0x32f4ff,
+  rimStrength = 0.13,
+): THREE.MeshStandardMaterial {
   const material = new THREE.MeshStandardMaterial({
     map: texture,
     vertexColors: true,
@@ -245,8 +260,8 @@ function createSurfaceMaterial(texture: THREE.Texture): THREE.MeshStandardMateri
   });
 
   material.onBeforeCompile = (shader) => {
-    shader.uniforms.hunterRimColor = { value: new THREE.Color(0x32f4ff) };
-    shader.uniforms.hunterRimStrength = { value: 0.13 };
+    shader.uniforms.hunterRimColor = { value: new THREE.Color(rimColor) };
+    shader.uniforms.hunterRimStrength = { value: rimStrength };
     shader.fragmentShader = shader.fragmentShader.replace(
       "void main() {",
       `
@@ -265,7 +280,7 @@ function createSurfaceMaterial(texture: THREE.Texture): THREE.MeshStandardMateri
       `,
     );
   };
-  material.customProgramCacheKey = () => "lean-hunter-surface";
+  material.customProgramCacheKey = () => "hunter-surface";
 
   return material;
 }

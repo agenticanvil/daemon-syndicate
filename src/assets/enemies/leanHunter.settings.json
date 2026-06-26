@@ -3,5 +3,6 @@
     "radius": 0.7,
     "height": 1.1
   },
-  "health": 70
+  "health": 70,
+  "speed": 2.8
 }

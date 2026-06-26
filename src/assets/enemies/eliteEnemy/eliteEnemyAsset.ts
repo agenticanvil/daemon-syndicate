@@ -1,24 +1,18 @@
-import * as THREE from "three";
+import type * as THREE from "three";
 import eliteEnemySettings from "./eliteEnemy.settings.json";
+import { loadLeanHunterRig, type LeanHunterRig } from "../leanHunterAsset";
+
+const ELITE_HUNTER_ATLAS_URL = "/assets/elite-hunter-atlas.png";
 
 export const ELITE_ENEMY_SETTINGS = eliteEnemySettings;
 
-export type EliteEnemyAsset = {
-  root: THREE.Mesh<THREE.DodecahedronGeometry, THREE.MeshStandardMaterial>;
-};
+export type EliteEnemyAsset = LeanHunterRig;
 
-export function createEliteEnemyAsset(): EliteEnemyAsset {
-  const root = new THREE.Mesh(new THREE.DodecahedronGeometry(0.68, 0), createEliteEnemyMaterial());
-  root.position.y = 0.72;
-  root.castShadow = true;
-  return { root };
-}
-
-function createEliteEnemyMaterial(): THREE.MeshStandardMaterial {
-  return new THREE.MeshStandardMaterial({
-    color: 0xff5f5f,
-    emissive: 0x3a0707,
-    roughness: 0.42,
-    metalness: 0.32,
+export function createEliteEnemyAsset(loader: THREE.TextureLoader, anisotropy: number): EliteEnemyAsset {
+  return loadLeanHunterRig(loader, anisotropy, {
+    atlasUrl: ELITE_HUNTER_ATLAS_URL,
+    name: "elite-hunter-rig",
+    rimColor: 0xff3434,
+    rimStrength: 0.18,
   });
 }
