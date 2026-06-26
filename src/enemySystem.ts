@@ -78,7 +78,7 @@ export class EnemySystem {
       }
 
       const distance = distance2D(enemy.position, this.world.player.position);
-      const attackDistance = PLAYER_BALANCE.radius + enemy.radius + ENEMY_BALANCE.attackProximity;
+      const attackDistance = PLAYER_BALANCE.radius + enemy.radius + enemy.attack.range;
       const pursuitDirection = this.getEnemyPursuitDirection(enemy, distance, enemy.speed * dt, dt);
       let moved = false;
 
@@ -107,10 +107,10 @@ export class EnemySystem {
         this.canDamagePlayer() &&
         !damagedPlayerThisFrame
       ) {
-        this.resources.health = Math.max(0, this.resources.health - ENEMY_BALANCE.attackDamage);
-        enemy.attackTimer = ENEMY_BALANCE.attackCooldown;
+        this.resources.health = Math.max(0, this.resources.health - enemy.attack.damage);
+        enemy.attackTimer = enemy.attack.cooldown;
         damagedPlayerThisFrame = true;
-        this.events.emit({ type: "playerDamaged", amount: ENEMY_BALANCE.attackDamage });
+        this.events.emit({ type: "playerDamaged", amount: enemy.attack.damage });
       }
     }
 
@@ -141,6 +141,8 @@ export class EnemySystem {
         hp: definition.health(wave),
         speed: definition.speed(wave),
         radius: definition.radius,
+        attack: definition.attack,
+        dropTable: definition.dropTable,
         attackTimer: 0,
         pathRefreshTimer: Math.random() * ENEMY_BALANCE.pathRefreshInterval,
       },
@@ -232,6 +234,7 @@ export class EnemySystem {
           enemyId: enemy.id,
           kind: enemy.kind,
           position: enemy.position.clone(),
+          dropTable: enemy.dropTable,
         });
         this.disposeEnemyView(enemy.id);
         this.enemies.splice(i, 1);

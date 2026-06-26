@@ -19,12 +19,16 @@ describe("ENEMY_DEFINITIONS", () => {
       LEAN_HUNTER_SETTINGS.movement.speed + 3 * LEAN_HUNTER_SETTINGS.movement.waveSpeedGrowth,
     );
     expect(leanHunter.radius).toBe(LEAN_HUNTER_SETTINGS.collision.radius);
+    expect(leanHunter.attack).toBe(LEAN_HUNTER_SETTINGS.attacks[0]);
+    expect(leanHunter.dropTable).toBe(LEAN_HUNTER_SETTINGS.dropTable);
 
     expect(elite.health(3)).toBe(ELITE_ENEMY_SETTINGS.health + 3 * 8);
     expect(elite.speed(3)).toBeCloseTo(
       ELITE_ENEMY_SETTINGS.movement.speed + 3 * ELITE_ENEMY_SETTINGS.movement.waveSpeedGrowth,
     );
     expect(elite.radius).toBe(ELITE_ENEMY_SETTINGS.collision.radius);
+    expect(elite.attack).toBe(ELITE_ENEMY_SETTINGS.attacks[0]);
+    expect(elite.dropTable).toBe(ELITE_ENEMY_SETTINGS.dropTable);
   });
 
   it("keeps spawn weights positive across expected waves", () => {

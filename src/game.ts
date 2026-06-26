@@ -255,7 +255,7 @@ export class Game {
         break;
       case "enemyKilled":
         this.kills += 1;
-        this.pickups.maybeDropPickup(event.position);
+        this.pickups.maybeDropPickup(event.position, event.dropTable);
         break;
       case "playerDamaged":
         this.invulnTimer = PLAYER_BALANCE.invulnerabilityDuration;

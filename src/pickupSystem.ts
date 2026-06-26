@@ -2,6 +2,7 @@ import * as THREE from "three";
 import { AMMO_PICKUP_SETTINGS } from "./assets/pickups/ammoPickup/ammoPickupAsset";
 import { ENERGY_PICKUP_SETTINGS } from "./assets/pickups/energyPickup/energyPickupAsset";
 import { HEALTH_PICKUP_SETTINGS } from "./assets/pickups/healthPickup/healthPickupAsset";
+import type { DropTable } from "./assetSettings";
 import { DROP_BALANCE, EFFECT_BALANCE } from "./balance";
 import { overlaps2D, type CollisionBody2D, type CollisionLayer } from "./collision";
 import { disposeMeshGeometry } from "./entityLifecycle";
@@ -25,14 +26,13 @@ export class PickupSystem {
     return this.pickups.length;
   }
 
-  maybeDropPickup(position: THREE.Vector3): void {
-    const roll = Math.random();
-    if (roll > DROP_BALANCE.dropChance) return;
+  maybeDropPickup(position: THREE.Vector3, dropTable: DropTable): void {
+    const entry = chooseDropEntry(dropTable);
+    if (!entry) return;
 
-    const kind: ResourceKind = roll < DROP_BALANCE.healthRoll ? "health" : roll < DROP_BALANCE.ammoRoll ? "ammo" : "energy";
+    const { kind, amount } = entry;
     const settings =
       kind === "health" ? HEALTH_PICKUP_SETTINGS : kind === "ammo" ? AMMO_PICKUP_SETTINGS : ENERGY_PICKUP_SETTINGS;
-    const amount = settings.resources[kind] ?? DROP_BALANCE.amount[kind];
     const mesh = this.world.createPickupAsset(kind).root;
     mesh.position.copy(position);
     mesh.position.y = 0.45;
@@ -101,4 +101,22 @@ export class PickupSystem {
     disposeMeshGeometry(view.mesh);
     this.pickupViews.delete(id);
   }
+}
+
+function chooseDropEntry(dropTable: DropTable): { kind: ResourceKind; amount: number } | null {
+  if (Math.random() > dropTable.chance) return null;
+
+  const totalWeight = dropTable.entries.reduce((sum, entry) => sum + entry.weight, 0);
+  if (totalWeight <= 0) return null;
+
+  let roll = Math.random() * totalWeight;
+  for (const entry of dropTable.entries) {
+    roll -= entry.weight;
+    if (roll <= 0) {
+      return { kind: entry.kind, amount: entry.amount };
+    }
+  }
+
+  const fallback = dropTable.entries[0];
+  return fallback ? { kind: fallback.kind, amount: fallback.amount } : null;
 }
