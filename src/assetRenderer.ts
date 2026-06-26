@@ -41,6 +41,7 @@ type EditableAssetSettings = {
     height: number;
   };
   health: number;
+  speed: number;
 };
 
 type AssetRendererState = {
@@ -100,10 +101,15 @@ const ASSET_DEFINITIONS = {
     ],
   },
   "elite-enemy": {
-    label: "Elite Enemy",
-    targetY: 0.72,
+    label: "Elite Hunter",
+    targetY: 0.42,
     collision: ELITE_ENEMY_SETTINGS.collision,
-    animations: [{ id: "idle", label: "Idle" }],
+    animations: [
+      { id: "idle", label: "Idle" },
+      { id: "walk", label: "Walk" },
+      { id: "melee", label: "Melee" },
+      { id: "death", label: "Death" },
+    ],
   },
   "health-pickup": {
     label: "Health Pickup",
@@ -141,6 +147,8 @@ const COLLISION_RADIUS_MIN = 0.1;
 const COLLISION_RADIUS_MAX = 1.4;
 const HEALTH_MIN = 1;
 const HEALTH_MAX = 999;
+const ASSET_SPEED_MIN = 0;
+const ASSET_SPEED_MAX = 8;
 const ASSET_SETTINGS_ENDPOINTS = {
   player: "/__dev/asset-settings/player",
   "lean-hunter": "/__dev/asset-settings/lean-hunter",
@@ -180,6 +188,7 @@ export function startAssetRenderer(app: HTMLDivElement): void {
   const collisionToggle = app.querySelector<HTMLInputElement>("#collisionToggle")!;
   const assetCollisionRadiusInput = app.querySelector<HTMLInputElement>("#assetCollisionRadiusInput")!;
   const assetHealthInput = app.querySelector<HTMLInputElement>("#assetHealthInput")!;
+  const assetSpeedInput = app.querySelector<HTMLInputElement>("#assetSpeedInput")!;
   const assetSettingsSaveButton = app.querySelector<HTMLButtonElement>("#assetSettingsSaveButton")!;
   const assetSettingsStatus = app.querySelector<HTMLElement>("#assetSettingsStatus")!;
   const renderCalls = app.querySelector<HTMLElement>("#renderCalls")!;
@@ -206,7 +215,7 @@ export function startAssetRenderer(app: HTMLDivElement): void {
   const rigs = {
     player: loadPlayerRig(loader, renderer.capabilities.getMaxAnisotropy()),
     "lean-hunter": loadLeanHunterRig(loader, renderer.capabilities.getMaxAnisotropy()),
-    "elite-enemy": createEliteEnemyAsset(),
+    "elite-enemy": createEliteEnemyAsset(loader, renderer.capabilities.getMaxAnisotropy()),
     "health-pickup": createHealthPickupAsset(),
     "ammo-pickup": createAmmoPickupAsset(),
     "energy-pickup": createEnergyPickupAsset(),
@@ -255,6 +264,7 @@ export function startAssetRenderer(app: HTMLDivElement): void {
     collisionToggle.checked = state.collisionVisible;
     assetCollisionRadiusInput.value = settings.collision.radius.toFixed(2);
     assetHealthInput.value = settings.health.toString();
+    assetSpeedInput.value = settings.speed.toFixed(2);
     assetSettingsSaveButton.disabled = false;
 
     for (const button of app.querySelectorAll<HTMLButtonElement>("[data-angle]")) {
@@ -327,6 +337,12 @@ export function startAssetRenderer(app: HTMLDivElement): void {
 
   function setAssetHealth(health: number): void {
     activeAssetSettings().health = Math.round(clamp(health, HEALTH_MIN, HEALTH_MAX));
+    applyStateToControls();
+    setAssetSettingsStatus("Unsaved changes");
+  }
+
+  function setAssetSpeed(speed: number): void {
+    activeAssetSettings().speed = clamp(speed, ASSET_SPEED_MIN, ASSET_SPEED_MAX);
     applyStateToControls();
     setAssetSettingsStatus("Unsaved changes");
   }
@@ -438,8 +454,9 @@ export function startAssetRenderer(app: HTMLDivElement): void {
     updateCamera();
     if (state.asset === "player") {
       rigs.player.update(playerAnimationState(dt), dt);
-    } else if (state.asset === "lean-hunter") {
+    } else if (state.asset === "lean-hunter" || state.asset === "elite-enemy") {
       rigs["lean-hunter"].update(leanHunterAnimationState(), dt);
+      rigs["elite-enemy"].update(leanHunterAnimationState(), dt);
     }
     renderer.render(scene, camera);
     const assetMetrics = measureAsset(activeRig().root);
@@ -499,6 +516,10 @@ export function startAssetRenderer(app: HTMLDivElement): void {
 
   assetHealthInput.addEventListener("input", () => {
     setAssetHealth(Number(assetHealthInput.value));
+  });
+
+  assetSpeedInput.addEventListener("input", () => {
+    setAssetSpeed(Number(assetSpeedInput.value));
   });
 
   assetSettingsSaveButton.addEventListener("click", () => {
@@ -640,6 +661,17 @@ function createAssetRendererMarkup(state: AssetRendererState): string {
               value="${state.assetSettings[state.asset].health}"
             />
           </label>
+          <label>
+            <span>Movement Speed</span>
+            <input
+              id="assetSpeedInput"
+              type="number"
+              min="${ASSET_SPEED_MIN}"
+              max="${ASSET_SPEED_MAX}"
+              step="0.01"
+              value="${state.assetSettings[state.asset].speed.toFixed(2)}"
+            />
+          </label>
           <div class="asset-settings-actions">
             <button id="assetSettingsSaveButton" type="button">Save Asset Settings</button>
             <span id="assetSettingsStatus">Loaded from code</span>
@@ -672,6 +704,7 @@ function defaultAssetSettings(): Record<AssetId, EditableAssetSettings> {
     player: cloneAssetSettings({
       collision: playerSettings.collision,
       health: playerSettings.health,
+      speed: playerSettings.speed,
     }),
     "lean-hunter": cloneAssetSettings(LEAN_HUNTER_SETTINGS),
     "elite-enemy": cloneAssetSettings(ELITE_ENEMY_SETTINGS),
@@ -688,6 +721,7 @@ function cloneAssetSettings(settings: EditableAssetSettings): EditableAssetSetti
       height: settings.collision.height,
     },
     health: settings.health,
+    speed: settings.speed,
   };
 }
 

@@ -49,6 +49,7 @@ function normalizeAssetSettings(value) {
   const radius = Number(value?.collision?.radius);
   const height = Number(value?.collision?.height);
   const health = Number(value?.health);
+  const speed = Number(value?.speed);
 
   if (!Number.isFinite(radius) || radius < 0.1 || radius > 1.4) {
     throw new Error("collision.radius must be between 0.1 and 1.4");
@@ -62,12 +63,17 @@ function normalizeAssetSettings(value) {
     throw new Error("health must be between 1 and 999");
   }
 
+  if (!Number.isFinite(speed) || speed < 0 || speed > 8) {
+    throw new Error("speed must be between 0 and 8");
+  }
+
   return {
     collision: {
       radius: round(radius, 2),
       height: round(height, 2),
     },
     health: Math.round(health),
+    speed: round(speed, 2),
   };
 }
 
