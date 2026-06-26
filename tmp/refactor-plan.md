@@ -7,7 +7,7 @@ This plan continues from the current architecture after the latest refactor pass
 - Enemy and ability behavior are definition-driven through `src/enemyDefinitions.ts` and `src/weaponDefinitions.ts`.
 - Projectiles and pickups now have separate domain state and Three.js view handles.
 - Enemies, projectiles, and pickups now all keep domain state separate from runtime Three.js views.
-- Focused Vitest coverage now protects pathfinding, movement, weapon definitions, and enemy definitions.
+- Focused Vitest coverage now protects pathfinding, movement, weapon definitions, enemy definitions, and runtime event queue behavior.
 
 ## Completed: Split Enemy Domain State From Views
 
@@ -38,48 +38,17 @@ Verification:
 - `npm run build` passes.
 - Browser smoke test used `/?autostart=1&seed=phase-2-tests-smoke`, fired primary and nova, and saved `tmp/phase-2-tests-smoke.png`.
 
-## Next: Introduce Runtime Event Hooks
+## Completed: Introduce Runtime Event Hooks
 
-Goal: reduce direct cross-system calls as gameplay expands.
-
-Current issue:
-
-- Combat directly calls `damageEnemy`.
-- Enemy deaths directly call pickup drops.
-- Enemy damage directly spawns damage text through effects.
-- These direct calls are okay now, but status effects, score bonuses, audio, screen shake, achievements, missions, and analytics will multiply coupling.
-
-Recommended minimal event model:
-
-```ts
-type GameEvent =
-  | { type: "enemyDamaged"; enemyId: number; amount: number; position: THREE.Vector3 }
-  | { type: "enemyKilled"; enemyId: number; kind: EnemyKind; position: THREE.Vector3 }
-  | { type: "playerDamaged"; amount: number }
-  | { type: "pickupCollected"; kind: ResourceKind; amount: number };
-```
-
-Steps:
-
-1. Add `eventQueue.ts` with `emit(event)` and `drain()`.
-2. Let systems emit events during updates.
-3. Let `Game` or a small `EventSystem` process events after core simulation:
-   - enemy killed -> increment kills, maybe drop pickup
-   - enemy damaged -> spawn damage text
-   - player damaged -> flash player material
-4. Keep event handling synchronous and frame-local for now.
+Runtime side effects now flow through a small synchronous `EventQueue` instead of direct cross-system calls for damage text, enemy death drops, player damage flashes/game-over checks, and pickup resource grants.
 
 Verification:
 
-- Existing gameplay behavior should remain unchanged.
-- Perf spans should still show combat/enemies/pickups/effects separately.
+- `npm test` passes with 5 files and 14 tests.
+- `npm run build` passes.
+- Browser page-load smoke against `http://127.0.0.1:5173/?autostart=1&seed=event-queue-smoke` confirmed the HUD and canvas render. Active browser input automation timed out, so no active combat screenshot was kept for this step.
 
-Risks:
-
-- Do not introduce an overly generic event bus with global subscriptions yet.
-- Avoid async events; this is still a frame simulation.
-
-## Phase 4: Typed Asset Data, Definition-Driven Drops, And Enemy Attacks
+## Next: Typed Asset Data, Definition-Driven Drops, And Enemy Attacks
 
 Goal: make asset-authored data scalable without forcing every asset to carry the same fields.
 
