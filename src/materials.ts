@@ -15,16 +15,23 @@ export type SceneMaterials = {
 
 export function createSceneMaterials(loader: THREE.TextureLoader, anisotropy: number): SceneMaterials {
   const floorTexture = loader.load("/assets/facility-floor.png");
+  const floorNormalMap = loader.load("/assets/facility-floor-normal.png");
   floorTexture.colorSpace = THREE.SRGBColorSpace;
   floorTexture.wrapS = THREE.RepeatWrapping;
   floorTexture.wrapT = THREE.RepeatWrapping;
   floorTexture.repeat.set(1, 1);
   floorTexture.anisotropy = anisotropy;
+  floorNormalMap.wrapS = THREE.RepeatWrapping;
+  floorNormalMap.wrapT = THREE.RepeatWrapping;
+  floorNormalMap.repeat.set(1, 1);
+  floorNormalMap.anisotropy = anisotropy;
 
   return {
     level: {
       floor: new THREE.MeshStandardMaterial({
         map: floorTexture,
+        normalMap: floorNormalMap,
+        normalScale: new THREE.Vector2(0.28, 0.28),
         roughness: 0.78,
         metalness: 0.42,
       }),

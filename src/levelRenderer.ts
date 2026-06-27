@@ -1,6 +1,6 @@
 import * as THREE from "three";
 import { LEVEL_HEIGHT, LEVEL_WIDTH, TILE_SIZE } from "./constants";
-import { exitGateToWorld, key, neighbors, tileToWorld, type LevelData, type TileCoord } from "./level";
+import { key, neighbors, tileToWorld, type LevelData, type TileCoord } from "./level";
 
 export type LevelRenderMaterials = {
   floor: THREE.MeshStandardMaterial;
@@ -69,39 +69,6 @@ export function renderLevel(root: THREE.Group, level: LevelData, materials: Leve
   root.add(edges, rims);
 
   addStartPad(root, level.start);
-  addGate(root, level.end, 0x9bf0df, true, level.exitDirection);
-}
-
-function addGate(
-  root: THREE.Group,
-  tile: TileCoord,
-  color: number,
-  active: boolean,
-  direction: "north" | "east" = "north",
-): void {
-  const position = exitGateToWorld(tile, direction);
-  const group = new THREE.Group();
-  const material = new THREE.MeshStandardMaterial({
-    color,
-    emissive: color,
-    emissiveIntensity: active ? 0.38 : 0.14,
-    roughness: 0.22,
-    metalness: 0.5,
-  });
-  const arch = new THREE.Mesh(new THREE.BoxGeometry(2.1, 2.4, 0.28), material);
-  const field = new THREE.Mesh(
-    new THREE.PlaneGeometry(1.45, 1.9),
-    new THREE.MeshBasicMaterial({ color, transparent: true, opacity: active ? 0.42 : 0.18, side: THREE.DoubleSide }),
-  );
-  arch.position.y = 1.2;
-  field.position.y = 1.05;
-  field.position.z = -0.02;
-  if (direction === "east") {
-    group.rotation.y = Math.PI / 2;
-  }
-  group.position.set(position.x, 0, position.z);
-  group.add(arch, field);
-  root.add(group);
 }
 
 function addStartPad(root: THREE.Group, tile: TileCoord): void {

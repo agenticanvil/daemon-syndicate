@@ -627,6 +627,32 @@ canvas {
   cursor: grabbing;
 }
 
+.asset-editor-gizmo {
+  position: absolute;
+  top: 14px;
+  left: 14px;
+  z-index: 1;
+  width: 132px;
+  height: 132px;
+  border: 1px solid rgba(142, 255, 236, 0.22);
+  border-radius: 8px;
+  background: rgba(4, 10, 12, 0.42);
+  box-shadow: 0 14px 36px rgba(0, 0, 0, 0.28);
+  backdrop-filter: blur(10px);
+  overflow: hidden;
+}
+
+.asset-editor-gizmo.is-hovering {
+  border-color: rgba(155, 240, 223, 0.72);
+}
+
+.asset-editor-gizmo canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  cursor: pointer;
+}
+
 .asset-editor-readout {
   position: absolute;
   left: 16px;
@@ -933,6 +959,13 @@ canvas {
     max-height: 45vh;
     border-top: 1px solid rgba(142, 255, 236, 0.16);
     border-left: 0;
+  }
+
+  .asset-editor-gizmo {
+    top: 10px;
+    left: 10px;
+    width: 108px;
+    height: 108px;
   }
 
   .asset-editor-title h1 {

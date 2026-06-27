@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import { RoundedBoxGeometry } from "three/examples/jsm/geometries/RoundedBoxGeometry.js";
 import {
   createRigidSkinnedAsset,
   createStaticMergedAsset,
@@ -179,7 +180,7 @@ function createPlayerBodyParts(): Array<RigidSkinnedPart<PlayerMaterialId>> {
     glowBox("chest-teal-light", "spine", [0.24, 0.035, 0.018], [0, 0.45, -0.35], "tealGlow"),
     glowBox("left-red-status", "spine", [0.06, 0.025, 0.018], [-0.25, 0.25, -0.35], "redGlow"),
     glowBox("right-red-status", "spine", [0.06, 0.025, 0.018], [0.25, 0.25, -0.35], "redGlow"),
-    surfaceBox("power-pack", "spine", [0.36, 0.62, 0.22], [0, 0.28, 0.32], SURFACE_COLORS.darkMetal),
+    surfaceRoundedBox("power-pack", "spine", [0.36, 0.62, 0.22], [0, 0.28, 0.32], SURFACE_COLORS.darkMetal),
     glowBox("backpack-teal-light", "spine", [0.08, 0.34, 0.018], [0, 0.28, 0.45], "tealGlow"),
     surfaceCylinder("neck-ring", "spine", 0.18, 0.2, 0.14, 4, [0, 0.72, 0], SURFACE_COLORS.darkMetal),
     surfaceDodecahedron("helmet", "head", 0.34, [0, 0, 0], SURFACE_COLORS.armor, [0.88, 1.05, 0.78]),
@@ -221,13 +222,27 @@ function createArmParts(side: "left" | "right"): Array<RigidSkinnedPart<PlayerMa
   const elbow = `${side}-elbow`;
 
   return [
-    surfaceBox(`${side}-shoulder-pad`, shoulder, [0.34, 0.18, 0.4], [sign * 0.03, 0.02, -0.01], SURFACE_COLORS.armor),
-    surfaceBox(`${side}-upper-arm`, shoulder, [0.16, 0.34, 0.16], [sign * 0.1, -0.24, -0.08], SURFACE_COLORS.softSuit, [
+    surfaceRoundedBox(
+      `${side}-shoulder-pad`,
+      shoulder,
+      [0.34, 0.18, 0.4],
+      [sign * 0.03, 0.02, -0.01],
+      SURFACE_COLORS.armor,
+    ),
+    surfaceCapsule(`${side}-upper-arm`, shoulder, 0.095, 0.34, [sign * 0.1, -0.275, -0.08], SURFACE_COLORS.softSuit, [
       0,
       0,
       sign * 0.12,
     ]),
-    surfaceBox(`${side}-forearm`, elbow, [0.17, 0.16, 0.46], [sign * 0.04, -0.02, -0.22], SURFACE_COLORS.armor),
+    surfaceCapsule(
+      `${side}-forearm`,
+      elbow,
+      0.1,
+      0.38,
+      [sign * 0.04, -0.02, -0.24],
+      SURFACE_COLORS.armor,
+      [Math.PI * 0.5, 0, 0],
+    ),
     glowBox(`${side}-forearm-teal-light`, elbow, [0.1, 0.024, 0.018], [sign * 0.04, 0, -0.46], "tealGlow"),
     surfaceBox(`${side}-hand`, elbow, [0.13, 0.12, 0.14], [sign * 0.07, -0.02, -0.48], SURFACE_COLORS.darkMetal),
   ];
@@ -328,6 +343,47 @@ function surfaceCylinder(
     material: "surface",
     geometry: new THREE.CylinderGeometry(radiusTop, radiusBottom, height, radialSegments),
     position,
+    color,
+  };
+}
+
+function surfaceRoundedBox(
+  name: string,
+  bone: string,
+  size: Vector3Tuple,
+  position: Vector3Tuple,
+  color: THREE.ColorRepresentation,
+  rotation?: Vector3Tuple,
+  scale?: Vector3Tuple,
+): RigidSkinnedPart<PlayerMaterialId> {
+  return {
+    name,
+    bone,
+    material: "surface",
+    geometry: new RoundedBoxGeometry(...size, 1, 0.045),
+    position,
+    rotation,
+    scale,
+    color,
+  };
+}
+
+function surfaceCapsule(
+  name: string,
+  bone: string,
+  radius: number,
+  length: number,
+  position: Vector3Tuple,
+  color: THREE.ColorRepresentation,
+  rotation?: Vector3Tuple,
+): RigidSkinnedPart<PlayerMaterialId> {
+  return {
+    name,
+    bone,
+    material: "surface",
+    geometry: new THREE.CapsuleGeometry(radius, length, 2, 6),
+    position,
+    rotation,
     color,
   };
 }

@@ -6,7 +6,15 @@ import type { GameScene } from "./scene";
 import type { Enemy, PlayerResources, Projectile, ProjectileDraft, ProjectileView } from "./types";
 import { ABILITY_DEFINITIONS, type AbilityId } from "./weaponDefinitions";
 
-const PROJECTILE_GEOMETRY = new THREE.SphereGeometry(0.16, 12, 8);
+const PROJECTILE_FORWARD = new THREE.Vector3(0, 1, 0);
+const PROJECTILE_GEOMETRY = new THREE.CylinderGeometry(
+  0.045,
+  0.014,
+  TILE_SIZE * 0.2,
+  8,
+  1,
+  false,
+);
 
 export class CombatSystem {
   private readonly projectiles: Projectile[] = [];
@@ -146,7 +154,7 @@ export class CombatSystem {
   private addProjectile(projectile: ProjectileDraft): void {
     const id = this.nextProjectileId;
     this.nextProjectileId += 1;
-    const mesh = this.acquireProjectileMesh(projectile.position);
+    const mesh = this.acquireProjectileMesh(projectile.position, projectile.velocity);
     this.projectiles.push({ id, ...projectile });
     this.projectileViews.set(id, { id, mesh });
   }
@@ -166,10 +174,11 @@ export class CombatSystem {
     this.projectileViews.delete(id);
   }
 
-  private acquireProjectileMesh(position: THREE.Vector3): THREE.Mesh {
+  private acquireProjectileMesh(position: THREE.Vector3, velocity: THREE.Vector3): THREE.Mesh {
     const mesh =
       this.projectileMeshPool.pop() ?? new THREE.Mesh(PROJECTILE_GEOMETRY, this.world.materials.projectile);
     mesh.position.copy(position);
+    mesh.quaternion.setFromUnitVectors(PROJECTILE_FORWARD, velocity.clone().normalize());
     mesh.visible = true;
     this.world.scene.add(mesh);
     return mesh;

@@ -6,6 +6,7 @@ import {
   type EnvironmentAssetKind,
   type IndustrialCrateAsset,
 } from "./assets/environment/industrialCrate/industrialCrateAsset";
+import { createExitPortalAsset, type ExitPortalAsset } from "./assets/environment/exitPortal/exitPortalAsset";
 import { createAmmoPickupAsset, type AmmoPickupAsset } from "./assets/pickups/ammoPickup/ammoPickupAsset";
 import { createEnergyPickupAsset, type EnergyPickupAsset } from "./assets/pickups/energyPickup/energyPickupAsset";
 import { createHealthPickupAsset, type HealthPickupAsset } from "./assets/pickups/healthPickup/healthPickupAsset";
@@ -21,6 +22,7 @@ export type AssetFactory = {
   createEliteEnemyAsset: () => EliteEnemyAsset;
   createPickupAsset: (kind: ResourceKind) => PickupAsset;
   createEnvironmentAsset: (kind: EnvironmentAssetKind) => EnvironmentAsset;
+  createExitPortalAsset: () => ExitPortalAsset;
 };
 
 export function createAssetFactory(loader: THREE.TextureLoader, anisotropy: number): AssetFactory {
@@ -34,7 +36,8 @@ export function createAssetFactory(loader: THREE.TextureLoader, anisotropy: numb
       return createHealthPickupAsset();
     },
     createEnvironmentAsset: () => createIndustrialCrateAsset(loader, anisotropy),
+    createExitPortalAsset: () => createExitPortalAsset(loader, anisotropy),
   };
 }
 
-export type { EliteEnemyAsset, EnvironmentAssetKind, LeanHunterRig, PlayerRig };
+export type { EliteEnemyAsset, EnvironmentAssetKind, ExitPortalAsset, LeanHunterRig, PlayerRig };

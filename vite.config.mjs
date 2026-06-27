@@ -10,6 +10,7 @@ const assetSettingsFiles = {
   "ammo-pickup": "src/assets/pickups/ammoPickup/ammoPickup.settings.json",
   "energy-pickup": "src/assets/pickups/energyPickup/energyPickup.settings.json",
   "industrial-crate": "src/assets/environment/industrialCrate/industrialCrate.settings.json",
+  "exit-portal": "src/assets/environment/exitPortal/exitPortal.settings.json",
 };
 
 export default defineConfig({
