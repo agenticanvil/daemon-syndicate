@@ -9,7 +9,7 @@ import {
   type PickupAsset,
   type PlayerRig,
 } from "./assetFactory";
-import { tileToWorld, type LevelData } from "./level";
+import { exitGateToWorld, tileToWorld, type LevelData } from "./level";
 import { renderLevel as renderLevelToRoot } from "./levelRenderer";
 import { createSceneMaterials, type GameplayMaterials } from "./materials";
 import { createRenderContext, type GraphicsSettings } from "./renderer";
@@ -31,6 +31,7 @@ export type GameScene = {
   createEliteEnemyAsset: () => EliteEnemyAsset;
   createPickupAsset: (kind: ResourceKind) => PickupAsset;
   createEnvironmentAsset: (kind: EnvironmentAssetKind) => EnvironmentAsset;
+  createExitPortalAsset: () => import("./assetFactory").ExitPortalAsset;
   materials: GameplayMaterials;
   resize: () => void;
   applyGraphicsSettings: (settings: GraphicsSettings) => void;
@@ -76,6 +77,11 @@ export function createGameScene(app: HTMLDivElement): GameScene {
 
   const renderLevel = (level: LevelData): void => {
     renderLevelToRoot(levelRoot, level, materials.level);
+    const exitPortal = assetFactory.createExitPortalAsset();
+    const exitPosition = exitGateToWorld(level.end, level.exitDirection);
+    exitPortal.root.position.set(exitPosition.x, 0, exitPosition.z);
+    exitPortal.root.rotation.y = level.exitDirection === "east" ? Math.PI / 2 : 0;
+    levelRoot.add(exitPortal.root);
     for (const object of level.environmentalObjects) {
       const asset = assetFactory.createEnvironmentAsset(object.kind);
       const position = tileToWorld(object.tile);
@@ -102,6 +108,7 @@ export function createGameScene(app: HTMLDivElement): GameScene {
     createEliteEnemyAsset: assetFactory.createEliteEnemyAsset,
     createPickupAsset: assetFactory.createPickupAsset,
     createEnvironmentAsset: assetFactory.createEnvironmentAsset,
+    createExitPortalAsset: assetFactory.createExitPortalAsset,
     materials: materials.gameplay,
     resize: renderContext.resize,
     applyGraphicsSettings: renderContext.applyGraphicsSettings,

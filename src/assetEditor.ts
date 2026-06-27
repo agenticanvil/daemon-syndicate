@@ -18,6 +18,11 @@ import {
   type IndustrialCrateAsset,
 } from "./assets/environment/industrialCrate/industrialCrateAsset";
 import {
+  EXIT_PORTAL_SETTINGS,
+  createExitPortalAsset,
+  type ExitPortalAsset,
+} from "./assets/environment/exitPortal/exitPortalAsset";
+import {
   AMMO_PICKUP_SETTINGS,
   createAmmoPickupAsset,
   type AmmoPickupAsset,
@@ -43,7 +48,8 @@ type AssetId =
   | "health-pickup"
   | "ammo-pickup"
   | "energy-pickup"
-  | "industrial-crate";
+  | "industrial-crate"
+  | "exit-portal";
 type AngleId = "head-on" | "side" | "behind" | "isometric";
 type PlayerAnimationStateId = "idle" | "walk" | "fire" | "damaged" | "low-health";
 type EditorOnlyAnimationStateId = "base-pose";
@@ -65,6 +71,19 @@ type AssetEditorState = {
 type CameraPose = {
   label: string;
   position: [number, number, number];
+};
+
+type CameraGizmo = {
+  render: (viewCamera: THREE.Camera, viewTarget: THREE.Vector3) => void;
+  resize: () => void;
+  dispose: () => void;
+};
+
+type CameraTransition = {
+  fromOffset: THREE.Vector3;
+  toOffset: THREE.Vector3;
+  elapsed: number;
+  duration: number;
 };
 
 type AssetMetrics = {
@@ -146,6 +165,12 @@ const ASSET_DEFINITIONS = {
     collision: INDUSTRIAL_CRATE_SETTINGS.collision,
     animations: [{ id: "idle", label: "Idle" }],
   },
+  "exit-portal": {
+    label: "Exit Portal",
+    targetY: 1.2,
+    collision: EXIT_PORTAL_SETTINGS.collision,
+    animations: [{ id: "idle", label: "Idle" }],
+  },
 } satisfies Record<AssetId, AssetDefinition>;
 
 const ASSETS: Array<{ id: AssetId; label: string }> = [
@@ -156,8 +181,11 @@ const ASSETS: Array<{ id: AssetId; label: string }> = [
   { id: "ammo-pickup", label: ASSET_DEFINITIONS["ammo-pickup"].label },
   { id: "energy-pickup", label: ASSET_DEFINITIONS["energy-pickup"].label },
   { id: "industrial-crate", label: ASSET_DEFINITIONS["industrial-crate"].label },
+  { id: "exit-portal", label: ASSET_DEFINITIONS["exit-portal"].label },
 ];
 const STANDARD_CAMERA_DISTANCE = 1;
+const CAMERA_VIEW_RADIUS = 5.2;
+const CAMERA_TRANSITION_SECONDS = 0.5;
 const CAMERA_DISTANCE_STEP = 0.15;
 const CAMERA_DISTANCE_MIN = 0.65;
 const CAMERA_DISTANCE_MAX = 1.6;
@@ -178,6 +206,7 @@ const ASSET_SETTINGS_ENDPOINTS = {
   "ammo-pickup": "/__dev/asset-settings/ammo-pickup",
   "energy-pickup": "/__dev/asset-settings/energy-pickup",
   "industrial-crate": "/__dev/asset-settings/industrial-crate",
+  "exit-portal": "/__dev/asset-settings/exit-portal",
 } satisfies Record<AssetId, string>;
 
 const CAMERA_POSES: Record<AngleId, CameraPose> = {
@@ -227,6 +256,7 @@ export function startAssetEditor(app: HTMLDivElement): void {
   const assetSettingsStatus = app.querySelector<HTMLElement>("#assetSettingsStatus")!;
   const renderCalls = app.querySelector<HTMLElement>("#renderCalls")!;
   const triangleCount = app.querySelector<HTMLElement>("#triangleCount")!;
+  const gizmoHost = app.querySelector<HTMLDivElement>("#assetEditorGizmo")!;
 
   const renderer = new THREE.WebGLRenderer({
     antialias: true,
@@ -245,6 +275,7 @@ export function startAssetEditor(app: HTMLDivElement): void {
 
   const camera = new THREE.PerspectiveCamera(38, 1, 0.1, 100);
   const target = new THREE.Vector3(0, ASSET_DEFINITIONS[state.asset].targetY, 0);
+  const cameraGizmo = createCameraGizmo(gizmoHost, setCameraDirection);
   const loader = new THREE.TextureLoader();
   const rigs = {
     player: loadPlayerRig(loader, renderer.capabilities.getMaxAnisotropy()),
@@ -254,6 +285,7 @@ export function startAssetEditor(app: HTMLDivElement): void {
     "ammo-pickup": createAmmoPickupAsset(),
     "energy-pickup": createEnergyPickupAsset(),
     "industrial-crate": createIndustrialCrateAsset(loader, renderer.capabilities.getMaxAnisotropy()),
+    "exit-portal": createExitPortalAsset(loader, renderer.capabilities.getMaxAnisotropy()),
   };
   scene.add(...ASSETS.map((asset) => rigs[asset.id].root));
   const boneHelpers: Partial<Record<AssetId, THREE.SkeletonHelper>> = {
@@ -277,6 +309,8 @@ export function startAssetEditor(app: HTMLDivElement): void {
   let customOrbitAngle = 0;
   let customOrbitRadius = 5.2;
   let usingCustomOrbit = false;
+  let customCameraDirection: THREE.Vector3 | null = null;
+  let cameraTransition: CameraTransition | null = null;
 
   function activeRig():
     | typeof rigs.player
@@ -285,7 +319,8 @@ export function startAssetEditor(app: HTMLDivElement): void {
     | HealthPickupAsset
     | AmmoPickupAsset
     | EnergyPickupAsset
-    | IndustrialCrateAsset {
+    | IndustrialCrateAsset
+    | ExitPortalAsset {
     return rigs[state.asset];
   }
 
@@ -308,7 +343,8 @@ export function startAssetEditor(app: HTMLDivElement): void {
     speedValue.textContent = `${state.speed.toFixed(1)}x`;
     cameraDistanceValue.textContent = `${state.cameraDistance.toFixed(2)}x`;
     cameraCloserButton.disabled = state.cameraDistance <= CAMERA_DISTANCE_MIN;
-    cameraResetButton.disabled = state.cameraDistance === STANDARD_CAMERA_DISTANCE && !usingCustomOrbit;
+    cameraResetButton.disabled =
+      state.cameraDistance === STANDARD_CAMERA_DISTANCE && !usingCustomOrbit && customCameraDirection === null;
     cameraAwayButton.disabled = state.cameraDistance >= CAMERA_DISTANCE_MAX;
     collisionToggle.checked = state.collisionVisible;
     assetCollisionRadiusInput.value = settings.collision.radius.toFixed(2);
@@ -342,8 +378,9 @@ export function startAssetEditor(app: HTMLDivElement): void {
     }
     assetSettingsSaveButton.disabled = false;
 
+    const usingCustomCamera = usingCustomOrbit || customCameraDirection !== null;
     for (const button of app.querySelectorAll<HTMLButtonElement>("[data-angle]")) {
-      button.classList.toggle("selected", button.dataset.angle === state.angle && !usingCustomOrbit);
+      button.classList.toggle("selected", button.dataset.angle === state.angle && !usingCustomCamera);
     }
     for (const button of app.querySelectorAll<HTMLButtonElement>("[data-render-mode]")) {
       button.classList.toggle("selected", button.dataset.renderMode === state.renderMode);
@@ -371,6 +408,22 @@ export function startAssetEditor(app: HTMLDivElement): void {
   function setAngle(angle: AngleId): void {
     state.angle = angle;
     usingCustomOrbit = false;
+    customCameraDirection = null;
+    startCameraTransition();
+    applyStateToControls();
+    syncUrl();
+  }
+
+  function setCameraDirection(direction: THREE.Vector3): void {
+    const snappedAngle = angleForCameraDirection(direction);
+    if (snappedAngle) {
+      setAngle(snappedAngle);
+      return;
+    }
+
+    customCameraDirection = direction.clone().normalize();
+    usingCustomOrbit = false;
+    startCameraTransition();
     applyStateToControls();
     syncUrl();
   }
@@ -381,6 +434,7 @@ export function startAssetEditor(app: HTMLDivElement): void {
       CAMERA_DISTANCE_MIN,
       CAMERA_DISTANCE_MAX,
     );
+    startCameraTransition();
     applyStateToControls();
     syncUrl();
   }
@@ -388,6 +442,8 @@ export function startAssetEditor(app: HTMLDivElement): void {
   function resetCameraPosition(): void {
     state.cameraDistance = STANDARD_CAMERA_DISTANCE;
     usingCustomOrbit = false;
+    customCameraDirection = null;
+    startCameraTransition();
     applyStateToControls();
     syncUrl();
   }
@@ -537,19 +593,63 @@ export function startAssetEditor(app: HTMLDivElement): void {
     }
   }
 
-  function updateCamera(): void {
-    const cameraPosition = new THREE.Vector3();
+  function cameraAnchorPosition(): THREE.Vector3 {
+    if (customCameraDirection) {
+      return cameraPositionForDirection(customCameraDirection, target);
+    }
+
     if (usingCustomOrbit) {
-      cameraPosition.set(
+      return new THREE.Vector3(
         Math.sin(customOrbitAngle) * customOrbitRadius,
         state.angle === "isometric" ? 4.2 : 1.65,
         Math.cos(customOrbitAngle) * customOrbitRadius,
       );
-    } else {
-      cameraPosition.fromArray(CAMERA_POSES[state.angle].position);
     }
-    camera.position.copy(target).add(cameraPosition.sub(target).multiplyScalar(state.cameraDistance));
-    camera.lookAt(target);
+
+    return new THREE.Vector3().fromArray(CAMERA_POSES[state.angle].position);
+  }
+
+  function desiredCameraOffset(): THREE.Vector3 {
+    return cameraAnchorPosition().sub(target).multiplyScalar(state.cameraDistance);
+  }
+
+  function applyCameraOffset(offset: THREE.Vector3): void {
+    camera.position.copy(target).add(offset);
+    lookAtWithStableVerticalUp(camera, target);
+  }
+
+  function startCameraTransition(): void {
+    const fromOffset = camera.position.clone().sub(target);
+    const toOffset = desiredCameraOffset();
+
+    if (fromOffset.distanceTo(toOffset) < 0.001) {
+      cameraTransition = null;
+      applyCameraOffset(toOffset);
+      return;
+    }
+
+    cameraTransition = {
+      fromOffset,
+      toOffset,
+      elapsed: 0,
+      duration: CAMERA_TRANSITION_SECONDS,
+    };
+  }
+
+  function updateCamera(dt: number): void {
+    if (!cameraTransition) {
+      applyCameraOffset(desiredCameraOffset());
+      return;
+    }
+
+    cameraTransition.elapsed += dt;
+    const progress = clamp(cameraTransition.elapsed / cameraTransition.duration, 0, 1);
+    const easedProgress = easeInOutCubic(progress);
+    applyCameraOffset(cameraTransition.fromOffset.clone().lerp(cameraTransition.toOffset, easedProgress));
+
+    if (progress >= 1) {
+      cameraTransition = null;
+    }
   }
 
   function resize(): void {
@@ -558,6 +658,7 @@ export function startAssetEditor(app: HTMLDivElement): void {
     renderer.setSize(width, height);
     camera.aspect = width / height;
     camera.updateProjectionMatrix();
+    cameraGizmo.resize();
   }
 
   function playerAnimationState(dt: number): PlayerAnimationState {
@@ -593,7 +694,7 @@ export function startAssetEditor(app: HTMLDivElement): void {
 
     const rawDt = Math.min(clock.getDelta(), 0.033);
     const dt = state.playing ? rawDt * state.speed : 0;
-    updateCamera();
+    updateCamera(rawDt);
     if (state.asset === "player") {
       if (state.animation === "base-pose") {
         rigs.player.applyBasePose();
@@ -611,6 +712,7 @@ export function startAssetEditor(app: HTMLDivElement): void {
     }
     boneHelpers[state.asset]?.updateMatrixWorld(true);
     renderer.render(scene, camera);
+    cameraGizmo.render(camera, target);
     const assetMetrics = measureAsset(activeRig().root);
     renderCalls.textContent = assetMetrics.renderCalls.toString();
     triangleCount.textContent = assetMetrics.triangles.toLocaleString();
@@ -706,17 +808,17 @@ export function startAssetEditor(app: HTMLDivElement): void {
 
   renderer.domElement.addEventListener("pointerdown", (event) => {
     renderer.domElement.setPointerCapture(event.pointerId);
-    const pose = usingCustomOrbit ? null : CAMERA_POSES[state.angle].position;
-    if (pose) {
-      customOrbitAngle = Math.atan2(pose[0], pose[2]);
-      customOrbitRadius = Math.hypot(pose[0], pose[2]);
-    }
+    cameraTransition = null;
+    const cameraOffset = camera.position.clone().sub(target).divideScalar(state.cameraDistance);
+    customOrbitAngle = Math.atan2(cameraOffset.x, cameraOffset.z);
+    customOrbitRadius = Math.max(Math.hypot(cameraOffset.x, cameraOffset.z), CAMERA_VIEW_RADIUS);
     dragStart = { x: event.clientX, angle: customOrbitAngle };
   });
 
   renderer.domElement.addEventListener("pointermove", (event) => {
     if (!dragStart) return;
     usingCustomOrbit = true;
+    customCameraDirection = null;
     customOrbitAngle = dragStart.angle + (event.clientX - dragStart.x) * 0.01;
     applyStateToControls();
   });
@@ -729,6 +831,7 @@ export function startAssetEditor(app: HTMLDivElement): void {
   window.addEventListener("resize", resize);
   window.addEventListener("pagehide", () => {
     disposed = true;
+    cameraGizmo.dispose();
     renderer.dispose();
   });
 
@@ -767,6 +870,7 @@ function createAssetEditorMarkup(state: AssetEditorState): string {
     <main class="asset-editor-shell">
       <section class="asset-editor-stage" aria-label="Asset preview">
         <div id="assetEditorCanvas" class="asset-editor-canvas"></div>
+        <div id="assetEditorGizmo" class="asset-editor-gizmo" aria-label="Camera orientation gizmo"></div>
         <div class="asset-editor-readout">
           <div><span>Render Calls</span><strong id="renderCalls">0</strong></div>
           <div><span>Triangles</span><strong id="triangleCount">0</strong></div>
@@ -936,6 +1040,7 @@ function defaultAssetSettings(): Record<AssetId, AssetSettings> {
     "ammo-pickup": cloneAssetSettings(AMMO_PICKUP_SETTINGS),
     "energy-pickup": cloneAssetSettings(ENERGY_PICKUP_SETTINGS),
     "industrial-crate": cloneAssetSettings(INDUSTRIAL_CRATE_SETTINGS),
+    "exit-portal": cloneAssetSettings(EXIT_PORTAL_SETTINGS),
   };
 }
 
@@ -1102,6 +1207,289 @@ function isGroupMaterialVisible(material: THREE.Material | THREE.Material[], mat
   return material[materialIndex]?.visible ?? true;
 }
 
+function createCameraGizmo(host: HTMLElement, onDirectionSelected: (direction: THREE.Vector3) => void): CameraGizmo {
+  const renderer = new THREE.WebGLRenderer({
+    alpha: true,
+    antialias: true,
+    powerPreference: "low-power",
+    preserveDrawingBuffer: true,
+  });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  renderer.setClearColor(0x000000, 0);
+  renderer.outputColorSpace = THREE.SRGBColorSpace;
+  host.append(renderer.domElement);
+
+  const scene = new THREE.Scene();
+  const camera = new THREE.PerspectiveCamera(32, 1, 0.1, 20);
+  const root = new THREE.Group();
+  scene.add(root);
+  scene.add(new THREE.HemisphereLight(0xffffff, 0x172222, 2.4));
+
+  const keyLight = new THREE.DirectionalLight(0xffffff, 2.8);
+  keyLight.position.set(2.5, 3.5, 2);
+  scene.add(keyLight);
+
+  const raycaster = new THREE.Raycaster();
+  const pointer = new THREE.Vector2();
+  const pickables: Array<THREE.Mesh<THREE.BufferGeometry, THREE.MeshStandardMaterial>> = [];
+  let hovered: THREE.Mesh<THREE.BufferGeometry, THREE.MeshStandardMaterial> | null = null;
+
+  const halfSize = 0.58;
+  const faceGeometry = new THREE.PlaneGeometry(1.08, 1.08);
+  const edgeThickness = 0.13;
+  const edgeLength = 1.16;
+  const cornerGeometry = new THREE.SphereGeometry(0.105, 18, 12);
+  const faceColorByAxis = {
+    x: 0xff7b73,
+    y: 0x8bffb5,
+    z: 0x7c95ff,
+  };
+
+  const faceDirections = [
+    { label: "RIGHT", direction: new THREE.Vector3(1, 0, 0), color: faceColorByAxis.x },
+    { label: "LEFT", direction: new THREE.Vector3(-1, 0, 0), color: faceColorByAxis.x },
+    { label: "TOP", direction: new THREE.Vector3(0, 1, 0), color: faceColorByAxis.y },
+    { label: "BOTTOM", direction: new THREE.Vector3(0, -1, 0), color: faceColorByAxis.y },
+    { label: "BACK", direction: new THREE.Vector3(0, 0, 1), color: faceColorByAxis.z },
+    { label: "FRONT", direction: new THREE.Vector3(0, 0, -1), color: faceColorByAxis.z },
+  ];
+
+  for (const face of faceDirections) {
+    const material = createGizmoFaceMaterial(face.label, face.color);
+    const mesh = new THREE.Mesh(faceGeometry, material);
+    mesh.position.copy(face.direction).multiplyScalar(halfSize);
+    orientObjectTowardDirection(mesh, face.direction);
+    addGizmoPickable(root, pickables, mesh, face.direction);
+  }
+
+  for (const x of [-1, 1]) {
+    for (const y of [-1, 1]) {
+      for (const z of [-1, 1]) {
+        const direction = new THREE.Vector3(x, y, z);
+        const material = createGizmoHandleMaterial(0xf4fbff, 0.98);
+        const corner = new THREE.Mesh(cornerGeometry, material);
+        corner.position.set(x * halfSize, y * halfSize, z * halfSize);
+        addGizmoPickable(root, pickables, corner, direction);
+      }
+    }
+  }
+
+  for (const axis of ["x", "y", "z"] as const) {
+    const geometry =
+      axis === "x"
+        ? new THREE.BoxGeometry(edgeLength, edgeThickness, edgeThickness)
+        : axis === "y"
+          ? new THREE.BoxGeometry(edgeThickness, edgeLength, edgeThickness)
+          : new THREE.BoxGeometry(edgeThickness, edgeThickness, edgeLength);
+
+    for (const a of [-1, 1]) {
+      for (const b of [-1, 1]) {
+        const direction =
+          axis === "x" ? new THREE.Vector3(0, a, b) : axis === "y" ? new THREE.Vector3(a, 0, b) : new THREE.Vector3(a, b, 0);
+        const edge = new THREE.Mesh(geometry, createGizmoHandleMaterial(0x1b2b2d, 0.95));
+        edge.position.set(
+          axis === "x" ? 0 : a * halfSize,
+          axis === "y" ? 0 : (axis === "x" ? a : b) * halfSize,
+          axis === "z" ? 0 : b * halfSize,
+        );
+        addGizmoPickable(root, pickables, edge, direction);
+      }
+    }
+  }
+
+  const outline = new THREE.LineSegments(
+    new THREE.EdgesGeometry(new THREE.BoxGeometry(1.18, 1.18, 1.18)),
+    new THREE.LineBasicMaterial({ color: 0xd7f5ff, transparent: true, opacity: 0.72 }),
+  );
+  root.add(outline);
+
+  function setHovered(nextHovered: THREE.Mesh<THREE.BufferGeometry, THREE.MeshStandardMaterial> | null): void {
+    if (hovered === nextHovered) return;
+    if (hovered) applyGizmoHover(hovered, false);
+    hovered = nextHovered;
+    if (hovered) applyGizmoHover(hovered, true);
+    host.classList.toggle("is-hovering", hovered !== null);
+  }
+
+  function pickGizmoObject(event: PointerEvent | MouseEvent): THREE.Mesh<THREE.BufferGeometry, THREE.MeshStandardMaterial> | null {
+    const rect = renderer.domElement.getBoundingClientRect();
+    pointer.set(((event.clientX - rect.left) / rect.width) * 2 - 1, -(((event.clientY - rect.top) / rect.height) * 2 - 1));
+    raycaster.setFromCamera(pointer, camera);
+    const hit = raycaster.intersectObjects(pickables, false)[0]?.object;
+    return hit instanceof THREE.Mesh ? hit : null;
+  }
+
+  renderer.domElement.addEventListener("pointermove", (event) => {
+    setHovered(pickGizmoObject(event));
+  });
+
+  renderer.domElement.addEventListener("pointerleave", () => {
+    setHovered(null);
+  });
+
+  renderer.domElement.addEventListener("pointerdown", (event) => {
+    event.preventDefault();
+  });
+
+  renderer.domElement.addEventListener("click", (event) => {
+    const hit = pickGizmoObject(event);
+    const direction = hit?.userData.cameraDirection;
+    if (!(direction instanceof THREE.Vector3)) return;
+    onDirectionSelected(direction);
+  });
+
+  function resize(): void {
+    const width = Math.max(host.clientWidth, 1);
+    const height = Math.max(host.clientHeight, 1);
+    renderer.setSize(width, height, false);
+    camera.aspect = width / height;
+    camera.updateProjectionMatrix();
+  }
+
+  function render(viewCamera: THREE.Camera, viewTarget: THREE.Vector3): void {
+    const viewDirection = viewCamera.position.clone().sub(viewTarget);
+    if (viewDirection.lengthSq() < 0.001) viewDirection.set(1, 1, 1);
+    camera.position.copy(viewDirection.normalize().multiplyScalar(4.2));
+    lookAtWithStableVerticalUp(camera, new THREE.Vector3());
+    renderer.render(scene, camera);
+  }
+
+  function dispose(): void {
+    host.classList.remove("is-hovering");
+    root.traverse((object) => {
+      if (object instanceof THREE.Mesh || object instanceof THREE.LineSegments) {
+        object.geometry.dispose();
+        disposeGizmoMaterial(object.material);
+      } else if (object instanceof THREE.Sprite) {
+        disposeGizmoMaterial(object.material);
+      }
+    });
+    renderer.dispose();
+  }
+
+  resize();
+
+  return { render, resize, dispose };
+}
+
+function addGizmoPickable(
+  root: THREE.Group,
+  pickables: Array<THREE.Mesh<THREE.BufferGeometry, THREE.MeshStandardMaterial>>,
+  mesh: THREE.Mesh<THREE.BufferGeometry, THREE.MeshStandardMaterial>,
+  direction: THREE.Vector3,
+): void {
+  mesh.userData.cameraDirection = direction.clone();
+  mesh.userData.baseColor = mesh.material.color.clone();
+  mesh.userData.baseOpacity = mesh.material.opacity;
+  pickables.push(mesh);
+  root.add(mesh);
+}
+
+function createGizmoHandleMaterial(color: THREE.ColorRepresentation, opacity: number): THREE.MeshStandardMaterial {
+  return new THREE.MeshStandardMaterial({
+    color,
+    emissive: 0x06100f,
+    roughness: 0.52,
+    metalness: 0.14,
+    transparent: true,
+    opacity,
+  });
+}
+
+function createGizmoFaceMaterial(label: string, color: THREE.ColorRepresentation): THREE.MeshStandardMaterial {
+  const canvas = document.createElement("canvas");
+  canvas.width = 256;
+  canvas.height = 256;
+  const context = canvas.getContext("2d")!;
+  const baseColor = new THREE.Color(color);
+  const gradient = context.createLinearGradient(0, 0, canvas.width, canvas.height);
+  gradient.addColorStop(
+    0,
+    `rgba(${Math.round(baseColor.r * 255)}, ${Math.round(baseColor.g * 255)}, ${Math.round(baseColor.b * 255)}, 0.86)`,
+  );
+  gradient.addColorStop(1, "rgba(238, 255, 252, 0.72)");
+  context.fillStyle = gradient;
+  context.fillRect(0, 0, canvas.width, canvas.height);
+  context.strokeStyle = "rgba(255, 255, 255, 0.42)";
+  context.lineWidth = 8;
+  context.strokeRect(4, 4, canvas.width - 8, canvas.height - 8);
+  context.fillStyle = "rgba(244, 251, 255, 0.92)";
+  context.font = "800 38px ui-sans-serif, system-ui, sans-serif";
+  context.textAlign = "center";
+  context.textBaseline = "middle";
+  context.fillText(label, canvas.width / 2, canvas.height / 2);
+
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  texture.minFilter = THREE.LinearFilter;
+  texture.magFilter = THREE.LinearFilter;
+
+  return new THREE.MeshStandardMaterial({
+    map: texture,
+    color: 0xffffff,
+    roughness: 0.62,
+    metalness: 0.08,
+    transparent: true,
+    opacity: 0.78,
+    side: THREE.DoubleSide,
+  });
+}
+
+function applyGizmoHover(mesh: THREE.Mesh<THREE.BufferGeometry, THREE.MeshStandardMaterial>, hovered: boolean): void {
+  const baseColor = mesh.userData.baseColor;
+  const baseOpacity = mesh.userData.baseOpacity;
+  if (baseColor instanceof THREE.Color) {
+    mesh.material.color.copy(hovered ? new THREE.Color(0xffffff) : baseColor);
+  }
+  mesh.material.emissive.setHex(hovered ? 0x9bf0df : 0x06100f);
+  mesh.material.opacity = hovered ? 1 : typeof baseOpacity === "number" ? baseOpacity : mesh.material.opacity;
+}
+
+function disposeGizmoMaterial(material: THREE.Material | THREE.Material[]): void {
+  if (Array.isArray(material)) {
+    material.forEach(disposeGizmoMaterial);
+    return;
+  }
+  const mappedMaterial = material as THREE.Material & { map?: THREE.Texture };
+  mappedMaterial.map?.dispose();
+  material.dispose();
+}
+
+function orientObjectTowardDirection(object: THREE.Object3D, direction: THREE.Vector3): void {
+  object.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), direction.clone().normalize());
+}
+
+function cameraPositionForDirection(direction: THREE.Vector3, target: THREE.Vector3): THREE.Vector3 {
+  const normalized = direction.clone().normalize();
+  const position = target.clone().add(normalized.multiplyScalar(CAMERA_VIEW_RADIUS));
+  if (Math.abs(direction.y) < 0.001) {
+    position.y = 1.65;
+  }
+  return position;
+}
+
+function angleForCameraDirection(direction: THREE.Vector3): AngleId | null {
+  if (directionMatches(direction, new THREE.Vector3(0, 0, -1))) return "head-on";
+  if (directionMatches(direction, new THREE.Vector3(1, 0, 0))) return "side";
+  if (directionMatches(direction, new THREE.Vector3(0, 0, 1))) return "behind";
+  if (directionMatches(direction, new THREE.Vector3(1, 1, -1))) return "isometric";
+  return null;
+}
+
+function directionMatches(a: THREE.Vector3, b: THREE.Vector3): boolean {
+  return a.clone().normalize().distanceTo(b.clone().normalize()) < 0.001;
+}
+
+function lookAtWithStableVerticalUp(camera: THREE.Camera, target: THREE.Vector3): void {
+  const horizontalDistance = Math.hypot(camera.position.x - target.x, camera.position.z - target.z);
+  if (horizontalDistance < 0.001) {
+    camera.up.set(0, 0, camera.position.y >= target.y ? -1 : 1);
+  } else {
+    camera.up.set(0, 1, 0);
+  }
+  camera.lookAt(target);
+}
+
 function createInspectionFloor(): THREE.Group {
   const root = new THREE.Group();
   const grid = new THREE.GridHelper(5, 10, 0x2ddbd2, 0x263235);
@@ -1221,7 +1609,8 @@ function isAssetId(value: string | null | undefined): value is AssetId {
     value === "health-pickup" ||
     value === "ammo-pickup" ||
     value === "energy-pickup" ||
-    value === "industrial-crate"
+    value === "industrial-crate" ||
+    value === "exit-portal"
   );
 }
 
@@ -1276,4 +1665,8 @@ function toRenderModeId(value: string | null | undefined): RenderModeId {
 function clamp(value: number, min: number, max: number): number {
   if (!Number.isFinite(value)) return min;
   return Math.min(Math.max(value, min), max);
+}
+
+function easeInOutCubic(value: number): number {
+  return value < 0.5 ? 4 * value * value * value : 1 - Math.pow(-2 * value + 2, 3) / 2;
 }
