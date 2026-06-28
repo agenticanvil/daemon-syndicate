@@ -8,6 +8,8 @@ export class InputState {
   private readonly pointer = new THREE.Vector2();
   private readonly raycaster = new THREE.Raycaster();
   private hasPointerPosition = false;
+  private primaryFireRequested = false;
+  private novaFireRequested = false;
 
   addKey(code: string): void {
     this.keys.add(code);
@@ -19,6 +21,26 @@ export class InputState {
 
   hasKey(code: string): boolean {
     return this.keys.has(code);
+  }
+
+  requestPrimaryFire(): void {
+    this.primaryFireRequested = true;
+  }
+
+  requestNovaFire(): void {
+    this.novaFireRequested = true;
+  }
+
+  consumePrimaryFire(): boolean {
+    const requested = this.primaryFireRequested;
+    this.primaryFireRequested = false;
+    return requested;
+  }
+
+  consumeNovaFire(): boolean {
+    const requested = this.novaFireRequested;
+    this.novaFireRequested = false;
+    return requested;
   }
 
   updatePointerFromEvent(

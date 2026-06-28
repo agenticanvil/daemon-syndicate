@@ -8,6 +8,7 @@
     "build": "tsc && vite build",
     "test": "vitest run",
     "perf": "node scripts/perf-run.mjs",
+    "sim": "node scripts/sim-run.mjs",
     "preview": "vite preview --host 127.0.0.1"
   },
   "dependencies": {

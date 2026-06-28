@@ -3,25 +3,20 @@ import { AMMO_PICKUP_SETTINGS } from "./assets/pickups/ammoPickup/ammoPickupAsse
 import { ENERGY_PICKUP_SETTINGS } from "./assets/pickups/energyPickup/energyPickupAsset";
 import { HEALTH_PICKUP_SETTINGS } from "./assets/pickups/healthPickup/healthPickupAsset";
 import type { DropTable } from "./assetSettings";
-import { DROP_BALANCE, EFFECT_BALANCE } from "./balance";
+import { DROP_BALANCE } from "./balance";
 import { overlaps2D, type CollisionBody2D, type CollisionLayer } from "./collision";
 import type { EventQueue } from "./eventQueue";
+import type { GameplayView, PickupViewHandle } from "./gameView";
 import type { Rng } from "./rng";
-import type { GameScene } from "./scene";
-import type { Pickup, PickupDraft, PickupView, ResourceKind } from "./types";
+import type { Pickup, PickupDraft, ResourceKind } from "./types";
 
 export class PickupSystem {
   private readonly pickups: Pickup[] = [];
-  private readonly pickupViews = new Map<number, PickupView>();
-  private readonly pickupMeshPools: Record<ResourceKind, THREE.Mesh[]> = {
-    health: [],
-    ammo: [],
-    energy: [],
-  };
+  private readonly pickupViews = new Map<number, PickupViewHandle>();
   private nextPickupId = 1;
 
   constructor(
-    private readonly world: GameScene,
+    private readonly view: GameplayView,
     private readonly events: EventQueue,
     private readonly playerCollisionBody: CollisionBody2D,
     private readonly getCollisionLayer: () => CollisionLayer,
@@ -94,37 +89,24 @@ export class PickupSystem {
   private addPickup(pickup: PickupDraft): void {
     const id = this.nextPickupId;
     this.nextPickupId += 1;
-    const mesh = this.acquirePickupMesh(pickup.kind, pickup.position);
+    const view = this.view.createPickupView(pickup.kind, pickup.position);
     this.pickups.push({ id, ...pickup });
-    this.pickupViews.set(id, { id, mesh });
+    this.pickupViews.set(id, view);
   }
 
   private syncPickupViews(dt: number): void {
     for (const pickup of this.pickups) {
       const view = this.pickupViews.get(pickup.id);
       if (!view) continue;
-      view.mesh.position.copy(pickup.position);
-      view.mesh.position.y = 0.45 + Math.sin(performance.now() * EFFECT_BALANCE.pickupBobSpeed + view.mesh.id) * EFFECT_BALANCE.pickupBobHeight;
-      view.mesh.rotation.y += dt * EFFECT_BALANCE.pickupSpinSpeed;
+      view.sync(pickup.position, dt);
     }
   }
 
   private disposePickupView(id: number): void {
     const view = this.pickupViews.get(id);
     if (!view) return;
-    this.world.scene.remove(view.mesh);
-    const pickup = this.pickups.find((candidate) => candidate.id === id);
-    if (pickup) this.pickupMeshPools[pickup.kind].push(view.mesh);
+    view.dispose();
     this.pickupViews.delete(id);
-  }
-
-  private acquirePickupMesh(kind: ResourceKind, position: THREE.Vector3): THREE.Mesh {
-    const mesh = this.pickupMeshPools[kind].pop() ?? this.world.createPickupAsset(kind).root;
-    mesh.position.copy(position);
-    mesh.position.y = 0.45;
-    mesh.rotation.set(0, 0, 0);
-    this.world.scene.add(mesh);
-    return mesh;
   }
 }
 
