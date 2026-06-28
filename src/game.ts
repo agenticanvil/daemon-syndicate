@@ -9,6 +9,7 @@ import type { Rng } from "./rng";
 import type { GameScene } from "./scene";
 import type { PlayerResources } from "./types";
 import type { Ui } from "./ui";
+import type { UpgradeId } from "./upgrades";
 
 type GameOptions = {
   rng?: Rng;
@@ -26,6 +27,7 @@ export class Game {
 
   private fpsVisible = false;
   private nextFpsHudUpdateAt = 0;
+  private selectingUpgrade = false;
 
   constructor(
     private readonly world: GameScene,
@@ -54,7 +56,9 @@ export class Game {
 
   startNewRun(): void {
     this.simulation.startNewRun();
+    this.selectingUpgrade = false;
     this.ui.hideOverlay();
+    this.ui.hideUpgradeSelection();
     this.ui.setHudVisible(true);
     this.ui.setPaused(false);
     this.updateHud();
@@ -100,6 +104,7 @@ export class Game {
 
     if (event.code === "Escape") {
       event.preventDefault();
+      if (this.selectingUpgrade) return;
       if (this.simulation.isStarted && !this.simulation.isGameOver) {
         this.setPaused(!this.simulation.isPaused);
       }
@@ -107,6 +112,10 @@ export class Game {
     }
 
     this.input.addKey(event.code);
+    if (event.code === "ShiftLeft" || event.code === "ShiftRight") {
+      event.preventDefault();
+      if (this.canAct()) this.input.requestDash();
+    }
     if (event.code === "Space") {
       event.preventDefault();
       if (this.canAct()) this.input.requestNovaFire();
@@ -121,6 +130,34 @@ export class Game {
     this.simulation.setPaused(paused);
     this.ui.setPaused(paused);
   }
+
+  private presentUpgradeSelection(): void {
+    const snapshot = this.simulation.snapshot();
+    if (snapshot.progression.unspentUpgradePoints <= 0 || this.simulation.availableUpgrades.length === 0) {
+      this.selectingUpgrade = false;
+      this.ui.hideUpgradeSelection();
+      this.simulation.setPaused(false);
+      return;
+    }
+
+    this.selectingUpgrade = true;
+    this.simulation.setPaused(true);
+    this.ui.showUpgradeSelection(
+      {
+        points: snapshot.progression.unspentUpgradePoints,
+        options: this.simulation.availableUpgrades,
+      },
+      this.handleUpgradeSelected,
+    );
+  }
+
+  private readonly handleUpgradeSelected = (id: UpgradeId): void => {
+    if (!this.selectingUpgrade) return;
+    if (this.simulation.spendUpgrade(id)) {
+      this.updateHud();
+    }
+    this.presentUpgradeSelection();
+  };
 
   private buildPlayerCommand(): PlayerCommand {
     if (!this.canAct()) {
@@ -142,6 +179,7 @@ export class Game {
       aimWorld: this.input.pointerWorld.clone(),
       firePrimary: this.input.consumePrimaryFire(),
       fireNova: this.input.consumeNovaFire(),
+      dash: this.input.consumeDash(),
     };
   }
 
@@ -156,9 +194,12 @@ export class Game {
       resources: this.simulation.resources,
       maxResources: this.simulation.maxResources,
       kills: this.simulation.killCount,
-      level: this.simulation.currentLevelNumber,
+      mapLevel: this.simulation.currentLevelNumber,
+      progression: this.simulation.snapshot().progression,
       primaryReady: this.simulation.primaryReady,
       novaReady: this.simulation.novaReady,
+      dashUnlocked: this.simulation.dashUnlocked,
+      dashReady: this.simulation.dashReady,
     });
   }
 
@@ -194,7 +235,6 @@ export class Game {
       damageTexts: this.simulation.damageTextCount,
       novaMeshes: this.simulation.novaCount,
       level: this.simulation.currentLevelNumber,
-      wave: this.simulation.currentWave,
       kills: this.simulation.killCount,
       renderCalls: this.world.renderer.info.render.calls,
       triangles: this.world.renderer.info.render.triangles,
@@ -213,12 +253,14 @@ export class Game {
     this.perf.frame(this.perfFrameArgs(dt), () => {
       const command = this.buildPlayerCommand();
       if (this.simulation.isStarted && !this.simulation.isGameOver && !this.simulation.isPaused) {
-        this.perf.span("simulation.step", () => this.simulation.step(dt, command));
+        const result = this.perf.span("simulation.step", () => this.simulation.step(dt, command));
         this.perf.span("camera", () => this.updateCamera());
         this.perf.span("pointer.world", () => this.updatePointerWorldFromCamera());
         this.perf.span("hud/dom", () => this.updateHud());
         if (this.simulation.isGameOver) {
           this.ui.showGameOver(this.simulation.killCount);
+        } else if (result.levelChanged) {
+          this.presentUpgradeSelection();
         }
       }
 

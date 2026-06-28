@@ -16,11 +16,13 @@ export type PlayerResources = {
 export type Enemy = {
   id: number;
   kind: EnemyKind;
+  enemyLevel: number;
   position: THREE.Vector3;
   facingYaw: number;
   collisionLayer: CollisionLayer;
   hp: number;
   speed: number;
+  xpReward: number;
   radius: number;
   attack: EnemyAttackDefinition;
   dropTable: DropTable;
@@ -49,6 +51,8 @@ export type Projectile = {
   life: number;
   damage: number;
   radius: number;
+  pierceRemaining?: number;
+  hitEnemyIds?: Set<number>;
 };
 
 export type ProjectileDraft = Omit<Projectile, "id">;

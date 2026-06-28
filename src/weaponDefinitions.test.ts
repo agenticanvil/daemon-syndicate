@@ -4,16 +4,19 @@ import { WEAPON_BALANCE } from "./balance";
 import type { GameplayView } from "./gameView";
 import { ABILITY_DEFINITIONS, type CombatContext } from "./weaponDefinitions";
 import type { Enemy, PlayerResources, ProjectileDraft } from "./types";
+import { createUpgradeRanks, derivePlayerStats } from "./upgrades";
 
 function enemyAt(id: number, x: number, z: number, collisionLayer: number): Enemy {
   return {
     id,
     kind: "leanHunter",
+    enemyLevel: 1,
     position: new THREE.Vector3(x, 0, z),
     facingYaw: 0,
     collisionLayer,
     hp: 100,
     speed: 1,
+    xpReward: 10,
     radius: 0.5,
     attack: { kind: "melee", damage: 9, cooldown: 0.72, range: 0.42 },
     dropTable: { chance: 0, entries: [{ kind: "ammo", weight: 1, amount: 1 }] },
@@ -52,6 +55,7 @@ function combatContext(overrides: Partial<CombatContext> = {}): CombatContext {
     },
     collisionLayer: 1,
     enemies: [],
+    stats: derivePlayerStats(createUpgradeRanks()),
     damageEnemy: vi.fn(),
     addProjectile: vi.fn(),
     ...overrides,
@@ -74,6 +78,10 @@ describe("ABILITY_DEFINITIONS", () => {
       addProjectile: (draft) => {
         projectile = draft;
       },
+      stats: {
+        ...derivePlayerStats(createUpgradeRanks()),
+        primaryDamage: WEAPON_BALANCE.primary.damage + 10,
+      },
     });
 
     const fired = ABILITY_DEFINITIONS.primary.fire(context, new THREE.Vector3(10, 0, 0));
@@ -82,8 +90,9 @@ describe("ABILITY_DEFINITIONS", () => {
     expect(projectile).toMatchObject({
       collisionLayer: 1,
       life: WEAPON_BALANCE.primary.projectileLife,
-      damage: WEAPON_BALANCE.primary.damage,
+      damage: WEAPON_BALANCE.primary.damage + 10,
       radius: WEAPON_BALANCE.primary.projectileRadius,
+      pierceRemaining: 0,
     });
     expect(projectile?.position.x).toBeCloseTo(WEAPON_BALANCE.primary.spawnOffset);
     expect(projectile?.position.y).toBeCloseTo(WEAPON_BALANCE.primary.spawnHeight);

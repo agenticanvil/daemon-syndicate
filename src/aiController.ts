@@ -48,6 +48,7 @@ export class BasicPlayerAi {
       ? hasClearWorldPath(level, playerPosition, vectorFromSnapshot(nearestEnemy.position))
       : false;
     const targetDistance = nearestEnemy ? distance2D(playerPosition, vectorFromSnapshot(nearestEnemy.position)) : Infinity;
+    const dashUnlocked = snapshot.progression.upgrades.dash > 0;
 
     return {
       movement,
@@ -60,6 +61,11 @@ export class BasicPlayerAi {
       fireNova:
         snapshot.player.resources.energy >= WEAPON_BALANCE.nova.energyCost &&
         (nearbyEnemyCount >= 2 || targetDistance <= TOO_CLOSE * 0.72),
+      dash:
+        dashUnlocked &&
+        snapshot.player.dashTimer <= 0 &&
+        snapshot.player.resources.energy >= 18 &&
+        targetDistance <= TOO_CLOSE * 0.9,
     };
   }
 

@@ -6,15 +6,15 @@
   },
   "health": {
     "base": 118,
-    "waveGrowth": 8
+    "levelGrowth": 36
   },
   "movement": {
     "speed": 3.5,
-    "waveSpeedGrowth": 0.05
+    "levelSpeedGrowth": 0.05
   },
   "spawnWeight": {
     "base": 0.08,
-    "waveGrowth": 0.015,
+    "levelGrowth": 0.015,
     "max": 0.26
   },
   "attacks": [

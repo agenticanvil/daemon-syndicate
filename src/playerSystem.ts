@@ -8,6 +8,7 @@ import { moveOnWalkableLevel } from "./movement";
 import type { PlayerCommand } from "./playerCommand";
 import { hasStatusEffect, setStatusEffect, tickStatusEffects, type StatusEffect } from "./statusEffects";
 import type { PlayerResources, ResourceKind } from "./types";
+import type { PlayerDerivedStats } from "./upgrades";
 
 const PLAYER_MODEL_FORWARD_OFFSET = Math.PI;
 const PLAYER_BASE_COLOR = 0x9bf0df;
@@ -15,17 +16,19 @@ const PLAYER_FLASH_COLOR = 0xffffff;
 const PLAYER_LOW_HEALTH_COLOR = 0xff7474;
 
 export class PlayerSystem {
-  readonly maxResources: PlayerResources = { ...PLAYER_MAX };
   readonly resources: PlayerResources = { ...PLAYER_MAX };
   readonly collisionBody: CollisionBody2D;
 
   private readonly movementInput = new THREE.Vector3();
   private readonly statusEffects: StatusEffect[] = [];
   private moving = false;
+  private dashTimer = 0;
+  private emergencyShieldReady = true;
 
   constructor(
     private readonly view: GameplayView,
     private readonly getLevel: () => LevelData,
+    private readonly getStats: () => PlayerDerivedStats,
   ) {
     this.collisionBody = {
       position: this.view.player.position,
@@ -38,6 +41,14 @@ export class PlayerSystem {
     return this.moving;
   }
 
+  get maxResources(): PlayerResources {
+    return this.getStats().maxResources;
+  }
+
+  get currentDashTimer(): number {
+    return this.dashTimer;
+  }
+
   reset(position: THREE.Vector3, collisionLayer: CollisionLayer): void {
     this.view.player.position.copy(position);
     this.collisionBody.collisionLayer = collisionLayer;
@@ -46,6 +57,8 @@ export class PlayerSystem {
     this.resources.energy = this.maxResources.energy;
     this.statusEffects.length = 0;
     this.moving = false;
+    this.dashTimer = 0;
+    this.emergencyShieldReady = true;
     this.view.player.setBodyColor(PLAYER_BASE_COLOR);
   }
 
@@ -60,6 +73,7 @@ export class PlayerSystem {
   }
 
   updateTimers(dt: number): void {
+    this.dashTimer = Math.max(0, this.dashTimer - dt);
     tickStatusEffects(this.statusEffects, dt);
     this.view.player.lerpBodyColor(this.targetBodyColor(), dt * 10);
   }
@@ -77,7 +91,7 @@ export class PlayerSystem {
 
     if (this.moving) {
       input.normalize();
-      moveOnWalkableLevel(this.getLevel(), this.view.player.position, input, PLAYER_BALANCE.speed * dt);
+      moveOnWalkableLevel(this.getLevel(), this.view.player.position, input, this.getStats().movementSpeed * dt);
     }
   }
 
@@ -92,7 +106,7 @@ export class PlayerSystem {
     this.view.player.updateRig(
       {
         moving: this.moving,
-        moveSpeed: PLAYER_BALANCE.speed,
+        moveSpeed: this.getStats().movementSpeed,
         damaged: this.hasStatus("invulnerable"),
         lowHealth: this.resources.health <= PLAYER_BALANCE.lowHealthThreshold,
       },
@@ -101,6 +115,20 @@ export class PlayerSystem {
   }
 
   damage(): boolean {
+    const stats = this.getStats();
+    if (
+      stats.emergencyShieldUnlocked &&
+      this.emergencyShieldReady &&
+      this.resources.health <= PLAYER_BALANCE.lowHealthThreshold
+    ) {
+      this.emergencyShieldReady = false;
+      this.resources.health = Math.max(1, this.resources.health);
+      this.setStatus("shield", 1.2);
+      this.setStatus("invulnerable", 1.2);
+      this.view.player.setBodyColor(PLAYER_FLASH_COLOR);
+      return false;
+    }
+
     this.setStatus("invulnerable", PLAYER_BALANCE.invulnerabilityDuration);
     this.view.player.setBodyColor(
       this.resources.health <= PLAYER_BALANCE.lowHealthThreshold ? PLAYER_LOW_HEALTH_COLOR : PLAYER_FLASH_COLOR,
@@ -108,8 +136,36 @@ export class PlayerSystem {
     return this.resources.health <= 0;
   }
 
+  tryDash(command: PlayerCommand): boolean {
+    const stats = this.getStats();
+    if (!stats.dashUnlocked || this.dashTimer > 0 || this.resources.energy < stats.dashEnergyCost) return false;
+
+    const direction = command.movement.clone().setY(0);
+    if (direction.lengthSq() <= 0.001) {
+      direction.copy(command.aimWorld).sub(this.view.player.position).setY(0);
+    }
+    if (direction.lengthSq() <= 0.001) return false;
+
+    direction.normalize();
+    this.resources.energy -= stats.dashEnergyCost;
+    this.dashTimer = stats.dashCooldown;
+    this.setStatus("invulnerable", Math.max(0.18, stats.dashCooldown * 0.18));
+    return moveOnWalkableLevel(this.getLevel(), this.view.player.position, direction, stats.dashDistance);
+  }
+
   grantResource(kind: ResourceKind, amount: number): void {
     this.resources[kind] = Math.min(this.maxResources[kind], this.resources[kind] + amount);
+  }
+
+  applyDerivedStatsChange(previous: PlayerDerivedStats, next: PlayerDerivedStats): void {
+    for (const kind of ["health", "ammo", "energy"] as const) {
+      const delta = next.maxResources[kind] - previous.maxResources[kind];
+      if (delta > 0) {
+        this.resources[kind] = Math.min(next.maxResources[kind], this.resources[kind] + delta);
+      } else {
+        this.resources[kind] = Math.min(this.resources[kind], next.maxResources[kind]);
+      }
+    }
   }
 
   hasStatus(kind: StatusEffect["kind"]): boolean {
@@ -125,6 +181,8 @@ export class PlayerSystem {
       maxResources: { ...this.maxResources },
       statusEffects: this.statusEffects.map((status) => ({ ...status })),
       moving: this.moving,
+      dashTimer: this.dashTimer,
+      emergencyShieldReady: this.emergencyShieldReady,
     };
   }
 

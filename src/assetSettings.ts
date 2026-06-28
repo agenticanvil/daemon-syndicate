@@ -21,12 +21,12 @@ export type EnemyAttackDefinition = {
 
 export type EnemyHealthSettings = {
   base: number;
-  waveGrowth: number;
+  levelGrowth: number;
 };
 
 export type EnemySpawnWeightSettings = {
   base: number;
-  waveGrowth: number;
+  levelGrowth: number;
   min?: number;
   max?: number;
 };
@@ -37,7 +37,7 @@ export type EnemyAssetSettings = {
   health: EnemyHealthSettings;
   movement: {
     speed: number;
-    waveSpeedGrowth: number;
+    levelSpeedGrowth: number;
   };
   spawnWeight: EnemySpawnWeightSettings;
   attacks: EnemyAttackDefinition[];

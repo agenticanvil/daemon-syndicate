@@ -12,6 +12,9 @@ describe("headless simulation", () => {
     expect(first.finalHealth).toBe(second.finalHealth);
     expect(first.primaryShots).toBe(second.primaryShots);
     expect(first.novaUses).toBe(second.novaUses);
+    expect(first.playerLevelReached).toBe(second.playerLevelReached);
+    expect(first.xpEarned).toBe(second.xpEarned);
+    expect(first.enemyKindKills).toEqual(second.enemyKindKills);
   });
 
   it("can batch multiple seeds for balance smoke coverage", () => {
@@ -21,5 +24,12 @@ describe("headless simulation", () => {
     expect(summary.results.every((result) => result.frames > 0)).toBe(true);
     expect(summary.averageKills).toBeGreaterThan(0);
     expect(summary.averageLevelReached).toBeGreaterThanOrEqual(1);
+    expect(summary.averagePlayerLevelReached).toBeGreaterThanOrEqual(1);
+    expect(summary.averageXpEarned).toBeGreaterThan(0);
+    expect(summary.averageUpgradePointsSpent).toBeGreaterThanOrEqual(0);
+    expect(summary.averageEnemyLevelKilled).toBeGreaterThanOrEqual(1);
+    expect(Object.values(summary.enemyKindKills).reduce((sum, count) => sum + count, 0)).toBeGreaterThan(0);
+    expect(summary.survivalOverTime.length).toBeGreaterThan(0);
+    expect(summary.survivalOverTime.at(-1)?.seconds).toBe(30);
   });
 });

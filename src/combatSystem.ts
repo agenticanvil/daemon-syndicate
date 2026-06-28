@@ -3,6 +3,7 @@ import { LEVEL_HEIGHT, LEVEL_WIDTH, TILE_SIZE } from "./constants";
 import { overlaps2D, type CollisionBody2D, type CollisionLayer } from "./collision";
 import type { GameplayView, ProjectileViewHandle } from "./gameView";
 import type { Enemy, PlayerResources, Projectile, ProjectileDraft } from "./types";
+import type { PlayerDerivedStats } from "./upgrades";
 import { ABILITY_DEFINITIONS, type AbilityId } from "./weaponDefinitions";
 
 export class CombatSystem {
@@ -19,6 +20,7 @@ export class CombatSystem {
     private readonly resources: PlayerResources,
     private readonly playerCollisionBody: CollisionBody2D,
     private readonly getCollisionLayer: () => CollisionLayer,
+    private readonly getStats: () => PlayerDerivedStats,
     private readonly enemies: () => Enemy[],
     private readonly damageEnemy: (enemy: Enemy, amount: number, showText: boolean) => void,
   ) {}
@@ -66,9 +68,15 @@ export class CombatSystem {
 
       for (const enemy of this.enemies()) {
         if (enemy.deathTimer !== undefined) continue;
+        if (projectile.hitEnemyIds?.has(enemy.id)) continue;
         if (overlaps2D(projectile, enemy)) {
           this.damageEnemy(enemy, projectile.damage, true);
-          projectile.life = 0;
+          projectile.hitEnemyIds?.add(enemy.id);
+          if ((projectile.pierceRemaining ?? 0) > 0) {
+            projectile.pierceRemaining = (projectile.pierceRemaining ?? 0) - 1;
+          } else {
+            projectile.life = 0;
+          }
           break;
         }
       }
@@ -106,6 +114,7 @@ export class CombatSystem {
         life: projectile.life,
         damage: projectile.damage,
         radius: projectile.radius,
+        pierceRemaining: projectile.pierceRemaining,
       })),
     };
   }
@@ -126,6 +135,7 @@ export class CombatSystem {
         playerCollisionBody: this.playerCollisionBody,
         collisionLayer: this.getCollisionLayer(),
         enemies: this.enemies(),
+        stats: this.getStats(),
         damageEnemy: this.damageEnemy,
         addProjectile: (projectile) => this.addProjectile(projectile),
       },
@@ -133,7 +143,7 @@ export class CombatSystem {
     );
 
     if (fired) {
-      this.abilityTimers[id] = ability.cooldown;
+      this.abilityTimers[id] = id === "nova" ? this.getStats().novaCooldown : ability.cooldown;
     }
     return fired;
   }

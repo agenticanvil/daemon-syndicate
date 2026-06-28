@@ -3,6 +3,7 @@ import { WEAPON_BALANCE } from "./balance";
 import { withinRadius2D, type CollisionBody2D, type CollisionLayer } from "./collision";
 import type { GameplayView } from "./gameView";
 import type { Enemy, PlayerResources, ProjectileDraft, ResourceKind } from "./types";
+import type { PlayerDerivedStats } from "./upgrades";
 
 export type AbilityId = "primary" | "nova";
 
@@ -12,6 +13,7 @@ export type CombatContext = {
   playerCollisionBody: CollisionBody2D;
   collisionLayer: CollisionLayer;
   enemies: Enemy[];
+  stats: PlayerDerivedStats;
   damageEnemy: (enemy: Enemy, amount: number, showText: boolean) => void;
   addProjectile: (projectile: ProjectileDraft) => void;
 };
@@ -46,8 +48,10 @@ export const ABILITY_DEFINITIONS: Record<AbilityId, AbilityDefinition> = {
         velocity: direction.multiplyScalar(WEAPON_BALANCE.primary.projectileSpeed),
         collisionLayer: context.collisionLayer,
         life: WEAPON_BALANCE.primary.projectileLife,
-        damage: WEAPON_BALANCE.primary.damage,
+        damage: context.stats.primaryDamage,
         radius: WEAPON_BALANCE.primary.projectileRadius,
+        pierceRemaining: context.stats.projectilePierce,
+        hitEnemyIds: new Set(),
       });
       context.view.player.triggerFire();
       context.resources.ammo -= WEAPON_BALANCE.primary.ammoCost;
@@ -64,8 +68,8 @@ export const ABILITY_DEFINITIONS: Record<AbilityId, AbilityDefinition> = {
 
       for (const enemy of context.enemies) {
         if (enemy.deathTimer !== undefined) continue;
-        if (withinRadius2D(enemy, context.playerCollisionBody, WEAPON_BALANCE.nova.radius)) {
-          context.damageEnemy(enemy, WEAPON_BALANCE.nova.damage, true);
+        if (withinRadius2D(enemy, context.playerCollisionBody, context.stats.novaRadius)) {
+          context.damageEnemy(enemy, context.stats.novaDamage, true);
           const push = enemy.position.clone().sub(context.view.player.position).setY(0).normalize();
           enemy.position.addScaledVector(push, WEAPON_BALANCE.nova.pushDistance);
         }
