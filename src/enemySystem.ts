@@ -1,25 +1,24 @@
 import * as THREE from "three";
 import { ENEMY_BALANCE, PLAYER_BALANCE } from "./balance";
 import { distance2D, withinRadius2D, type CollisionBody2D, type CollisionLayer } from "./collision";
-import { disposeObject3D } from "./entityLifecycle";
 import { chooseEnemyDefinition, ENEMY_DEFINITIONS, type EnemyKind } from "./enemyDefinitions";
+import type { EnemyViewHandle, GameplayView } from "./gameView";
 import { key, tileToWorld, worldToTile, type LevelData } from "./level";
 import { canMoveDirectlyOnWalkableLevel, moveOnWalkableLevel } from "./movement";
 import { findWorldPath, hasClearWorldPath, pathDirection } from "./pathfinding";
 import type { EventQueue } from "./eventQueue";
 import type { Rng } from "./rng";
-import type { GameScene } from "./scene";
-import type { Enemy, EnemyDraft, EnemyView, PlayerResources } from "./types";
+import type { Enemy, EnemyDraft, PlayerResources } from "./types";
 
 const MOVEMENT_EPSILON = 0.0001;
 
 export class EnemySystem {
   private readonly enemies: Enemy[] = [];
-  private readonly enemyViews = new Map<number, EnemyView>();
+  private readonly enemyViews = new Map<number, EnemyViewHandle>();
   private nextEnemyId = 1;
 
   constructor(
-    private readonly world: GameScene,
+    private readonly view: GameplayView,
     private readonly events: EventQueue,
     private readonly playerCollisionBody: CollisionBody2D,
     private readonly resources: PlayerResources,
@@ -41,7 +40,7 @@ export class EnemySystem {
   spawnLevelEnemies(): void {
     const candidates = this.getLevel().spawnPoints
       .map(tileToWorld)
-      .filter((position) => distance2D(position, this.world.player.position) >= ENEMY_BALANCE.minSpawnDistance);
+      .filter((position) => distance2D(position, this.view.player.position) >= ENEMY_BALANCE.minSpawnDistance);
     const targetCount = Math.min(this.levelEnemyCount(), candidates.length);
 
     for (let i = 0; i < targetCount; i += 1) {
@@ -83,7 +82,7 @@ export class EnemySystem {
         continue;
       }
 
-      const distance = distance2D(enemy.position, this.world.player.position);
+      const distance = distance2D(enemy.position, this.view.player.position);
       const attackDistance = PLAYER_BALANCE.radius + enemy.radius + enemy.attack.range;
       const pursuitDirection = this.getEnemyPursuitDirection(enemy, distance, enemy.speed * dt, dt);
       let moved = false;
@@ -158,16 +157,13 @@ export class EnemySystem {
     const definition = kind
       ? ENEMY_DEFINITIONS.find((candidate) => candidate.kind === kind) ?? chooseEnemyDefinition(wave, this.rng)
       : chooseEnemyDefinition(wave, this.rng);
-    const view = definition.createView(this.world);
-    const mesh = view.root;
-    mesh.position.set(spawn.x, view.height, spawn.z);
-    this.world.scene.add(mesh);
+    const facingYaw = 0;
 
     this.addEnemy(
       {
         kind: definition.kind,
         position: new THREE.Vector3(spawn.x, 0, spawn.z),
-        facingYaw: mesh.rotation.y,
+        facingYaw,
         collisionLayer: this.getCollisionLayer(),
         hp: definition.health(wave),
         speed: definition.speed(wave),
@@ -177,36 +173,29 @@ export class EnemySystem {
         attackTimer: 0,
         pathRefreshTimer: this.rng() * ENEMY_BALANCE.pathRefreshInterval,
       },
-      {
-        root: mesh,
-        height: view.height,
-        updateRig: view.updateRig,
-        disposeMaterials: view.disposeMaterials,
-      },
+      this.view.createEnemyView(definition.kind, spawn, facingYaw),
     );
   }
 
-  private addEnemy(enemy: EnemyDraft, view: Omit<EnemyView, "id">): void {
+  private addEnemy(enemy: EnemyDraft, view: EnemyViewHandle): void {
     const id = this.nextEnemyId;
     this.nextEnemyId += 1;
     this.enemies.push({ id, ...enemy });
-    this.enemyViews.set(id, { id, ...view });
+    this.enemyViews.set(id, view);
   }
 
   private syncEnemyViews(): void {
     for (const enemy of this.enemies) {
       const view = this.enemyViews.get(enemy.id);
       if (!view) continue;
-      view.root.position.set(enemy.position.x, view.height, enemy.position.z);
-      view.root.rotation.y = enemy.facingYaw;
+      view.sync(enemy.position, enemy.facingYaw);
     }
   }
 
   private disposeEnemyView(id: number): void {
     const view = this.enemyViews.get(id);
     if (!view) return;
-    this.world.scene.remove(view.root);
-    disposeObject3D(view.root, view.disposeMaterials);
+    view.dispose();
     this.enemyViews.delete(id);
   }
 
@@ -220,7 +209,7 @@ export class EnemySystem {
     moveDistance: number,
     dt: number,
   ): THREE.Vector3 {
-    const direct = this.world.player.position.clone().sub(enemy.position).setY(0);
+    const direct = this.view.player.position.clone().sub(enemy.position).setY(0);
     if (direct.lengthSq() <= MOVEMENT_EPSILON) return direct;
     direct.normalize();
 
@@ -232,7 +221,7 @@ export class EnemySystem {
 
     if (
       playerDistance <= ENEMY_BALANCE.directApproachRadius &&
-      hasClearWorldPath(this.getLevel(), enemy.position, this.world.player.position) &&
+      hasClearWorldPath(this.getLevel(), enemy.position, this.view.player.position) &&
       this.canEnemyMoveDirectly(enemy, direct, moveDistance)
     ) {
       enemy.path = undefined;
@@ -240,10 +229,10 @@ export class EnemySystem {
       return direct;
     }
 
-    const playerKey = key(worldToTile(this.world.player.position));
+    const playerKey = key(worldToTile(this.view.player.position));
     enemy.pathRefreshTimer = (enemy.pathRefreshTimer ?? 0) - dt;
     if (!enemy.path || enemy.pathTarget !== playerKey || enemy.pathRefreshTimer <= 0) {
-      enemy.path = findWorldPath(this.getLevel(), enemy.position, this.world.player.position);
+      enemy.path = findWorldPath(this.getLevel(), enemy.position, this.view.player.position);
       enemy.pathTarget = playerKey;
       enemy.pathRefreshTimer = ENEMY_BALANCE.pathRefreshInterval + this.rng() * ENEMY_BALANCE.pathRefreshJitter;
     }

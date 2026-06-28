@@ -1,6 +1,7 @@
 import * as THREE from "three";
 import { describe, expect, it, vi } from "vitest";
 import { WEAPON_BALANCE } from "./balance";
+import type { GameplayView } from "./gameView";
 import { ABILITY_DEFINITIONS, type CombatContext } from "./weaponDefinitions";
 import type { Enemy, PlayerResources, ProjectileDraft } from "./types";
 
@@ -22,17 +23,27 @@ function enemyAt(id: number, x: number, z: number, collisionLayer: number): Enem
 
 function combatContext(overrides: Partial<CombatContext> = {}): CombatContext {
   const resources: PlayerResources = { health: 100, ammo: 80, energy: 100 };
-  const scene = new THREE.Scene();
   return {
-    world: {
-      player: { position: new THREE.Vector3(0, 0, 0) },
-      playerRig: { triggerFire: vi.fn() },
-      materials: { projectile: new THREE.MeshBasicMaterial() },
-      scene,
-    } as unknown as CombatContext["world"],
-    effects: {
+    view: {
+      player: {
+        position: new THREE.Vector3(0, 0, 0),
+        rotation: new THREE.Euler(),
+        setBodyColor: vi.fn(),
+        lerpBodyColor: vi.fn(),
+        updateRig: vi.fn(),
+        triggerFire: vi.fn(),
+      },
+      renderLevel: vi.fn(),
+      resetReticle: vi.fn(),
+      createEnemyView: vi.fn(),
+      createProjectileView: vi.fn(),
+      createPickupView: vi.fn(),
+      spawnDamageText: vi.fn(),
       spawnNova: vi.fn(),
-    } as unknown as CombatContext["effects"],
+      updateEffects: vi.fn(),
+      clearEffects: vi.fn(),
+      snapshotEffects: vi.fn(() => ({ damageTexts: [], novaMeshes: [] })),
+    } as unknown as GameplayView,
     resources,
     playerCollisionBody: {
       position: new THREE.Vector3(0, 0, 0),
@@ -77,7 +88,7 @@ describe("ABILITY_DEFINITIONS", () => {
     expect(projectile?.position.x).toBeCloseTo(WEAPON_BALANCE.primary.spawnOffset);
     expect(projectile?.position.y).toBeCloseTo(WEAPON_BALANCE.primary.spawnHeight);
     expect(projectile?.velocity.length()).toBeCloseTo(WEAPON_BALANCE.primary.projectileSpeed);
-    expect(context.world.scene.children).toHaveLength(0);
+    expect(context.view.createProjectileView).not.toHaveBeenCalled();
     expect(context.resources.ammo).toBe(80 - WEAPON_BALANCE.primary.ammoCost);
   });
 

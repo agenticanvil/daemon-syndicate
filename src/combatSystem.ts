@@ -1,25 +1,13 @@
 import * as THREE from "three";
 import { LEVEL_HEIGHT, LEVEL_WIDTH, TILE_SIZE } from "./constants";
 import { overlaps2D, type CollisionBody2D, type CollisionLayer } from "./collision";
-import type { EffectsSystem } from "./effectsSystem";
-import type { GameScene } from "./scene";
-import type { Enemy, PlayerResources, Projectile, ProjectileDraft, ProjectileView } from "./types";
+import type { GameplayView, ProjectileViewHandle } from "./gameView";
+import type { Enemy, PlayerResources, Projectile, ProjectileDraft } from "./types";
 import { ABILITY_DEFINITIONS, type AbilityId } from "./weaponDefinitions";
-
-const PROJECTILE_FORWARD = new THREE.Vector3(0, 1, 0);
-const PROJECTILE_GEOMETRY = new THREE.CylinderGeometry(
-  0.045,
-  0.014,
-  TILE_SIZE * 0.2,
-  8,
-  1,
-  false,
-);
 
 export class CombatSystem {
   private readonly projectiles: Projectile[] = [];
-  private readonly projectileViews = new Map<number, ProjectileView>();
-  private readonly projectileMeshPool: THREE.Mesh[] = [];
+  private readonly projectileViews = new Map<number, ProjectileViewHandle>();
   private readonly abilityTimers: Record<AbilityId, number> = {
     primary: 0,
     nova: 0,
@@ -27,8 +15,7 @@ export class CombatSystem {
   private nextProjectileId = 1;
 
   constructor(
-    private readonly world: GameScene,
-    private readonly effects: EffectsSystem,
+    private readonly view: GameplayView,
     private readonly resources: PlayerResources,
     private readonly playerCollisionBody: CollisionBody2D,
     private readonly getCollisionLayer: () => CollisionLayer,
@@ -64,12 +51,12 @@ export class CombatSystem {
     }
   }
 
-  firePrimary(pointerWorld: THREE.Vector3): void {
-    this.fireAbility("primary", pointerWorld);
+  firePrimary(pointerWorld: THREE.Vector3): boolean {
+    return this.fireAbility("primary", pointerWorld);
   }
 
-  fireNova(): void {
-    this.fireAbility("nova", this.world.player.position);
+  fireNova(): boolean {
+    return this.fireAbility("nova", this.view.player.position);
   }
 
   updateProjectiles(dt: number): void {
@@ -128,14 +115,13 @@ export class CombatSystem {
     return this.abilityTimers[id] <= 0 && this.resources[ability.resource] >= ability.cost;
   }
 
-  private fireAbility(id: AbilityId, aimWorld: THREE.Vector3): void {
+  private fireAbility(id: AbilityId, aimWorld: THREE.Vector3): boolean {
     const ability = ABILITY_DEFINITIONS[id];
-    if (!this.isAbilityReady(id)) return;
+    if (!this.isAbilityReady(id)) return false;
 
     const fired = ability.fire(
       {
-        world: this.world,
-        effects: this.effects,
+        view: this.view,
         resources: this.resources,
         playerCollisionBody: this.playerCollisionBody,
         collisionLayer: this.getCollisionLayer(),
@@ -149,39 +135,29 @@ export class CombatSystem {
     if (fired) {
       this.abilityTimers[id] = ability.cooldown;
     }
+    return fired;
   }
 
   private addProjectile(projectile: ProjectileDraft): void {
     const id = this.nextProjectileId;
     this.nextProjectileId += 1;
-    const mesh = this.acquireProjectileMesh(projectile.position, projectile.velocity);
+    const view = this.view.createProjectileView(projectile.position, projectile.velocity);
     this.projectiles.push({ id, ...projectile });
-    this.projectileViews.set(id, { id, mesh });
+    this.projectileViews.set(id, view);
   }
 
   private syncProjectileViews(): void {
     for (const projectile of this.projectiles) {
       const view = this.projectileViews.get(projectile.id);
-      view?.mesh.position.copy(projectile.position);
+      view?.sync(projectile.position);
     }
   }
 
   private disposeProjectileView(id: number): void {
     const view = this.projectileViews.get(id);
     if (!view) return;
-    this.world.scene.remove(view.mesh);
-    this.projectileMeshPool.push(view.mesh);
+    view.dispose();
     this.projectileViews.delete(id);
-  }
-
-  private acquireProjectileMesh(position: THREE.Vector3, velocity: THREE.Vector3): THREE.Mesh {
-    const mesh =
-      this.projectileMeshPool.pop() ?? new THREE.Mesh(PROJECTILE_GEOMETRY, this.world.materials.projectile);
-    mesh.position.copy(position);
-    mesh.quaternion.setFromUnitVectors(PROJECTILE_FORWARD, velocity.clone().normalize());
-    mesh.visible = true;
-    this.world.scene.add(mesh);
-    return mesh;
   }
 }
 
