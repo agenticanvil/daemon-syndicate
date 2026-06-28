@@ -42,6 +42,7 @@ export type PickupViewHandle = {
 export type EffectsSnapshot = {
   damageTexts: Array<{ world: { x: number; y: number; z: number }; life: number; text: string }>;
   novaMeshes: Array<{ position: { x: number; y: number; z: number }; opacity: number; scale: { x: number; y: number; z: number } }>;
+  projectileImpacts: Array<{ position: { x: number; y: number; z: number }; life: number }>;
 };
 
 export type GameplayView = {
@@ -53,6 +54,7 @@ export type GameplayView = {
   createPickupView: (kind: ResourceKind, position: THREE.Vector3) => PickupViewHandle;
   spawnDamageText: (position: THREE.Vector3, text: string) => void;
   spawnNova: (position: THREE.Vector3) => void;
+  spawnProjectileImpact: (position: THREE.Vector3, incomingVelocity: THREE.Vector3) => void;
   updateEffects: (dt: number) => void;
   clearEffects: () => void;
   snapshotEffects: () => EffectsSnapshot;
@@ -67,18 +69,52 @@ const PROJECTILE_GEOMETRY = new THREE.CylinderGeometry(
   1,
   false,
 );
+const IMPACT_SPARK_COUNT = 7;
+const MAX_IMPACT_SPARKS = 112;
+const IMPACT_SPARK_LIFE = 0.22;
+const IMPACT_SPARK_GEOMETRY = new THREE.BoxGeometry(0.035, 0.035, 0.42);
+const HIDDEN_MATRIX = new THREE.Matrix4().makeScale(0, 0, 0);
 
 export function createThreeGameplayView(world: GameScene): GameplayView {
   const damageTexts: Array<{ el: HTMLDivElement; world: THREE.Vector3; life: number }> = [];
   const damageTextPool: HTMLDivElement[] = [];
   const novaMeshes: THREE.Mesh[] = [];
   const projectileMeshPool: THREE.Mesh[] = [];
+  const impactSparkMesh = new THREE.InstancedMesh(
+    IMPACT_SPARK_GEOMETRY,
+    new THREE.MeshBasicMaterial({
+      color: 0x9bf0df,
+      transparent: true,
+      opacity: 0.82,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+      toneMapped: false,
+    }),
+    MAX_IMPACT_SPARKS,
+  );
+  const impactSparkSlots = Array.from({ length: MAX_IMPACT_SPARKS }, (_, index) => index);
+  const impactSparks: Array<{
+    slot: number;
+    position: THREE.Vector3;
+    velocity: THREE.Vector3;
+    rotation: THREE.Quaternion;
+    scale: THREE.Vector3;
+    life: number;
+  }> = [];
+  const impactSparkMatrix = new THREE.Matrix4();
   const pickupMeshPools: Record<ResourceKind, THREE.Mesh[]> = {
     health: [],
     ammo: [],
     energy: [],
   };
   let elapsed = 0;
+
+  impactSparkMesh.frustumCulled = false;
+  impactSparkMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+  for (let i = 0; i < MAX_IMPACT_SPARKS; i += 1) {
+    impactSparkMesh.setMatrixAt(i, HIDDEN_MATRIX);
+  }
+  world.scene.add(impactSparkMesh);
 
   function acquireDamageTextElement(): HTMLDivElement {
     const el = damageTextPool.pop() ?? document.createElement("div");
@@ -126,6 +162,39 @@ export function createThreeGameplayView(world: GameScene): GameplayView {
         damageTexts.splice(i, 1);
       }
     }
+  }
+
+  function updateImpactSparks(dt: number): void {
+    for (let i = impactSparks.length - 1; i >= 0; i -= 1) {
+      const spark = impactSparks[i];
+      spark.life -= dt;
+      if (spark.life <= 0) {
+        impactSparkMesh.setMatrixAt(spark.slot, HIDDEN_MATRIX);
+        impactSparkSlots.push(spark.slot);
+        impactSparks.splice(i, 1);
+        continue;
+      }
+
+      spark.position.addScaledVector(spark.velocity, dt);
+      spark.velocity.multiplyScalar(Math.max(1 - dt * 4.8, 0));
+      spark.velocity.y -= dt * 2.4;
+      const fade = THREE.MathUtils.clamp(spark.life / IMPACT_SPARK_LIFE, 0, 1);
+      impactSparkMatrix.compose(
+        spark.position,
+        spark.rotation,
+        spark.scale.clone().multiplyScalar(0.35 + fade * 0.9),
+      );
+      impactSparkMesh.setMatrixAt(spark.slot, impactSparkMatrix);
+    }
+    if (impactSparks.length > 0) {
+      impactSparkMesh.instanceMatrix.needsUpdate = true;
+    }
+  }
+
+  function acquireImpactSparkSlot(): number | undefined {
+    if (impactSparkSlots.length > 0) return impactSparkSlots.pop();
+    const recycled = impactSparks.shift();
+    return recycled?.slot;
   }
 
   return {
@@ -213,10 +282,45 @@ export function createThreeGameplayView(world: GameScene): GameplayView {
       world.scene.add(mesh);
       novaMeshes.push(mesh);
     },
+    spawnProjectileImpact(position, incomingVelocity) {
+      const incoming = incomingVelocity.clone();
+      incoming.y = 0;
+      if (incoming.lengthSq() === 0) return;
+      const normal = incoming.normalize().multiplyScalar(-1);
+      const tangent = new THREE.Vector3(-normal.z, 0, normal.x);
+      const origin = position.clone();
+      origin.y = 0.34;
+
+      for (let i = 0; i < IMPACT_SPARK_COUNT; i += 1) {
+        const slot = acquireImpactSparkSlot();
+        if (slot === undefined) break;
+        const spread = (i - (IMPACT_SPARK_COUNT - 1) / 2) / ((IMPACT_SPARK_COUNT - 1) / 2);
+        const direction = normal
+          .clone()
+          .multiplyScalar(2.7 + (i % 3) * 0.45)
+          .addScaledVector(tangent, spread * 2.2)
+          .add(new THREE.Vector3(0, 1.25 + (i % 2) * 0.35, 0));
+        const sparkPosition = origin.clone().addScaledVector(tangent, spread * 0.08);
+        const rotation = new THREE.Quaternion().setFromUnitVectors(PROJECTILE_FORWARD, direction.clone().normalize());
+        const scale = new THREE.Vector3(0.7, 0.7, 0.72 + Math.abs(spread) * 0.35);
+        impactSparks.push({
+          slot,
+          position: sparkPosition,
+          velocity: direction,
+          rotation,
+          scale,
+          life: IMPACT_SPARK_LIFE * (0.72 + (i % 4) * 0.09),
+        });
+        impactSparkMatrix.compose(sparkPosition, rotation, scale);
+        impactSparkMesh.setMatrixAt(slot, impactSparkMatrix);
+      }
+      impactSparkMesh.instanceMatrix.needsUpdate = true;
+    },
     updateEffects(dt) {
       elapsed += dt;
       updateNovaMeshes(dt);
       updateDamageTexts(dt);
+      updateImpactSparks(dt);
     },
     clearEffects() {
       for (const damageText of damageTexts.splice(0)) {
@@ -226,6 +330,11 @@ export function createThreeGameplayView(world: GameScene): GameplayView {
         world.scene.remove(mesh);
         disposeMesh(mesh);
       }
+      for (const spark of impactSparks.splice(0)) {
+        impactSparkMesh.setMatrixAt(spark.slot, HIDDEN_MATRIX);
+        impactSparkSlots.push(spark.slot);
+      }
+      impactSparkMesh.instanceMatrix.needsUpdate = true;
     },
     snapshotEffects() {
       return {
@@ -238,6 +347,10 @@ export function createThreeGameplayView(world: GameScene): GameplayView {
           position: vectorSnapshot(mesh.position),
           opacity: (mesh.material as THREE.MeshBasicMaterial).opacity,
           scale: vectorSnapshot(mesh.scale),
+        })),
+        projectileImpacts: impactSparks.map((spark) => ({
+          position: vectorSnapshot(spark.position),
+          life: spark.life,
         })),
       };
     },
@@ -277,9 +390,10 @@ export function createHeadlessGameplayView(): GameplayView {
     createPickupView: noPickupView,
     spawnDamageText: () => {},
     spawnNova: () => {},
+    spawnProjectileImpact: () => {},
     updateEffects: () => {},
     clearEffects: () => {},
-    snapshotEffects: () => ({ damageTexts: [], novaMeshes: [] }),
+    snapshotEffects: () => ({ damageTexts: [], novaMeshes: [], projectileImpacts: [] }),
   };
 }
 

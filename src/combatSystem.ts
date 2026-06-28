@@ -1,10 +1,15 @@
 import * as THREE from "three";
-import { LEVEL_HEIGHT, LEVEL_WIDTH, TILE_SIZE } from "./constants";
+import { TILE_SIZE } from "./constants";
 import { overlaps2D, type CollisionBody2D, type CollisionLayer } from "./collision";
 import type { GameplayView, ProjectileViewHandle } from "./gameView";
+import { key, worldToTile, type LevelData } from "./level";
 import type { Enemy, PlayerResources, Projectile, ProjectileDraft } from "./types";
 import type { PlayerDerivedStats } from "./upgrades";
 import { ABILITY_DEFINITIONS, type AbilityId } from "./weaponDefinitions";
+
+export type ProjectileWallImpact = {
+  position: THREE.Vector3;
+};
 
 export class CombatSystem {
   private readonly projectiles: Projectile[] = [];
@@ -20,6 +25,7 @@ export class CombatSystem {
     private readonly resources: PlayerResources,
     private readonly playerCollisionBody: CollisionBody2D,
     private readonly getCollisionLayer: () => CollisionLayer,
+    private readonly getLevel: () => LevelData,
     private readonly getStats: () => PlayerDerivedStats,
     private readonly enemies: () => Enemy[],
     private readonly damageEnemy: (enemy: Enemy, amount: number, showText: boolean) => void,
@@ -63,14 +69,24 @@ export class CombatSystem {
 
   updateProjectiles(dt: number): void {
     for (const projectile of this.projectiles) {
+      const previousPosition = projectile.position.clone();
       projectile.position.addScaledVector(projectile.velocity, dt);
       projectile.life -= dt;
+
+      const wallImpact = findProjectileWallImpact(this.getLevel(), previousPosition, projectile.position);
+      if (wallImpact) {
+        projectile.position.copy(wallImpact.position);
+        projectile.life = 0;
+        this.view.spawnProjectileImpact(wallImpact.position, projectile.velocity);
+        continue;
+      }
 
       for (const enemy of this.enemies()) {
         if (enemy.deathTimer !== undefined) continue;
         if (projectile.hitEnemyIds?.has(enemy.id)) continue;
         if (overlaps2D(projectile, enemy)) {
           this.damageEnemy(enemy, projectile.damage, true);
+          this.view.spawnProjectileImpact(projectile.position, projectile.velocity);
           projectile.hitEnemyIds?.add(enemy.id);
           if ((projectile.pierceRemaining ?? 0) > 0) {
             projectile.pierceRemaining = (projectile.pierceRemaining ?? 0) - 1;
@@ -84,11 +100,7 @@ export class CombatSystem {
 
     for (let i = this.projectiles.length - 1; i >= 0; i -= 1) {
       const projectile = this.projectiles[i];
-      if (
-        projectile.life <= 0 ||
-        Math.abs(projectile.position.x) > (LEVEL_WIDTH * TILE_SIZE) / 2 ||
-        Math.abs(projectile.position.z) > (LEVEL_HEIGHT * TILE_SIZE) / 2
-      ) {
+      if (projectile.life <= 0) {
         this.disposeProjectileView(projectile.id);
         this.projectiles.splice(i, 1);
       }
@@ -173,4 +185,44 @@ export class CombatSystem {
 
 function vectorSnapshot(vector: THREE.Vector3): { x: number; y: number; z: number } {
   return { x: vector.x, y: vector.y, z: vector.z };
+}
+
+export function findProjectileWallImpact(
+  level: Pick<LevelData, "walkable">,
+  previousPosition: THREE.Vector3,
+  nextPosition: THREE.Vector3,
+): ProjectileWallImpact | undefined {
+  if (!isWorldPointOnPlatform(level, previousPosition)) return { position: previousPosition.clone() };
+
+  let lastInside = previousPosition.clone();
+  let firstOutside = nextPosition.clone();
+  let foundOutside = !isWorldPointOnPlatform(level, nextPosition);
+  const distance = previousPosition.distanceTo(nextPosition);
+  const steps = Math.max(Math.ceil(distance / (TILE_SIZE * 0.22)), 1);
+
+  for (let i = 1; i <= steps; i += 1) {
+    const sample = previousPosition.clone().lerp(nextPosition, i / steps);
+    if (!isWorldPointOnPlatform(level, sample)) {
+      firstOutside = sample;
+      foundOutside = true;
+      break;
+    }
+    lastInside = sample;
+  }
+  if (!foundOutside) return undefined;
+
+  for (let i = 0; i < 5; i += 1) {
+    const midpoint = lastInside.clone().lerp(firstOutside, 0.5);
+    if (isWorldPointOnPlatform(level, midpoint)) {
+      lastInside = midpoint;
+    } else {
+      firstOutside = midpoint;
+    }
+  }
+
+  return { position: lastInside };
+}
+
+function isWorldPointOnPlatform(level: Pick<LevelData, "walkable">, position: THREE.Vector3): boolean {
+  return level.walkable.has(key(worldToTile(position)));
 }

@@ -36,6 +36,13 @@ const CARDINALS: TileCoord[] = [
   { x: 0, y: -1 },
 ];
 
+const DIAGONALS: TileCoord[] = [
+  { x: 1, y: 1 },
+  { x: 1, y: -1 },
+  { x: -1, y: 1 },
+  { x: -1, y: -1 },
+];
+
 export function generateLevel(id: number, rng: Rng = Math.random): LevelData {
   const width = LEVEL_WIDTH;
   const height = LEVEL_HEIGHT;
@@ -50,16 +57,18 @@ export function generateLevel(id: number, rng: Rng = Math.random): LevelData {
     carveCorridor(walkable, path[i - 1], path[i], width, height);
   }
 
-  const branchCount = 3 + Math.min(Math.floor(id / 2), 4);
+  const branchCount = 14 + Math.min(Math.floor(id / 2), 10);
   for (let i = 0; i < branchCount; i += 1) {
     const anchor = path[3 + Math.floor(rng() * Math.max(path.length - 6, 1))];
-    carveBranch(walkable, anchor, width, height, 4 + Math.floor(rng() * 5), rng);
+    carveBranch(walkable, anchor, width, height, 7 + Math.floor(rng() * 10), rng);
   }
+  carveDeadEndAlcoves(walkable, width, height, 10 + Math.min(id, 8), rng);
 
   carveRoom(walkable, start, width, height, 2);
   carveRoom(walkable, end, width, height, 1);
   walkable.add(key(start));
   walkable.add(key(end));
+  normalizePlatformSpacing(walkable, width, height);
 
   const blocked = new Set<string>();
   const environmentalObjects = placeEnvironmentalObjects(walkable, blocked, start, end, rng);
@@ -130,13 +139,13 @@ function buildMainPath(
   const current = { ...start };
   let guard = 0;
 
-  while ((current.x !== end.x || current.y !== end.y) && guard < 140) {
+  while ((current.x !== end.x || current.y !== end.y) && guard < width * height) {
     guard += 1;
     const options: TileCoord[] = [];
     if (current.x < end.x) options.push({ x: current.x + 1, y: current.y });
     if (current.y > end.y) options.push({ x: current.x, y: current.y - 1 });
-    if (rng() < 0.24 && current.y < height - 4) options.push({ x: current.x, y: current.y + 1 });
-    if (rng() < 0.2 && current.x > 3) options.push({ x: current.x - 1, y: current.y });
+    if (rng() < 0.36 && current.y < height - 4) options.push({ x: current.x, y: current.y + 1 });
+    if (rng() < 0.32 && current.x > 3) options.push({ x: current.x - 1, y: current.y });
 
     const preferred =
       exitDirection === "east"
@@ -170,16 +179,141 @@ function carveBranch(
   rng: Rng,
 ): void {
   const current = { ...anchor };
-  const dir = CARDINALS[Math.floor(rng() * CARDINALS.length)];
+  let dir = CARDINALS[Math.floor(rng() * CARDINALS.length)];
   for (let i = 0; i < length; i += 1) {
+    if (rng() < 0.42) {
+      dir = turnDirection(dir, rng);
+    }
+
     const previous = { ...current };
-    current.x = THREE.MathUtils.clamp(current.x + dir.x, 2, width - 3);
-    current.y = THREE.MathUtils.clamp(current.y + dir.y, 2, height - 3);
+    const step = chooseBranchStep(walkable, current, previous, dir, width, height, rng);
+    if (!step) break;
+
+    dir = step.direction;
+    current.x = step.tile.x;
+    current.y = step.tile.y;
     carveCorridor(walkable, previous, current, width, height);
-    if (rng() < 0.25) {
+
+    if (rng() < 0.45 && i > 1) {
+      carveDeadEndOffshoot(walkable, current, dir, width, height, 2 + Math.floor(rng() * 5), rng);
+    }
+
+    if (rng() < 0.1) {
       carveRoom(walkable, current, width, height, 1);
     }
   }
+}
+
+function carveDeadEndOffshoot(
+  walkable: Set<string>,
+  anchor: TileCoord,
+  mainDirection: TileCoord,
+  width: number,
+  height: number,
+  length: number,
+  rng: Rng,
+): void {
+  const current = { ...anchor };
+  let dir = turnDirection(mainDirection, rng);
+
+  for (let i = 0; i < length; i += 1) {
+    if (rng() < 0.24) {
+      dir = turnDirection(dir, rng);
+    }
+
+    const previous = { ...current };
+    const step = chooseBranchStep(walkable, current, previous, dir, width, height, rng);
+    if (!step) break;
+
+    dir = step.direction;
+    current.x = step.tile.x;
+    current.y = step.tile.y;
+    carveCorridor(walkable, previous, current, width, height);
+  }
+}
+
+function carveDeadEndAlcoves(
+  walkable: Set<string>,
+  width: number,
+  height: number,
+  targetCount: number,
+  rng: Rng,
+): void {
+  let carved = 0;
+  const anchors = shuffle([...walkable].map(fromKey), rng);
+
+  for (const anchor of anchors) {
+    if (carved >= targetCount) break;
+
+    for (const direction of shuffle([...CARDINALS], rng)) {
+      if (carved >= targetCount) break;
+
+      const first = nextBranchTile(anchor, direction, width, height);
+      if (walkable.has(key(first)) || walkableNeighborCountExcept(walkable, first, anchor) > 0) continue;
+
+      let previous = anchor;
+      let current = first;
+      const length = 2 + Math.floor(rng() * 4);
+      for (let step = 0; step < length; step += 1) {
+        carveCorridor(walkable, previous, current, width, height);
+
+        const next = nextBranchTile(current, direction, width, height);
+        if (walkable.has(key(next)) || walkableNeighborCountExcept(walkable, next, current) > 0) break;
+
+        previous = current;
+        current = next;
+      }
+
+      carved += 1;
+    }
+  }
+}
+
+function chooseBranchStep(
+  walkable: Set<string>,
+  current: TileCoord,
+  previous: TileCoord,
+  preferredDirection: TileCoord,
+  width: number,
+  height: number,
+  rng: Rng,
+): { tile: TileCoord; direction: TileCoord } | undefined {
+  const directions = [
+    preferredDirection,
+    ...shuffle(CARDINALS.filter((direction) => direction !== preferredDirection), rng),
+  ];
+
+  for (const direction of directions) {
+    const tile = nextBranchTile(current, direction, width, height);
+    if (tile.x === current.x && tile.y === current.y) continue;
+    if (walkable.has(key(tile))) continue;
+    if (walkableNeighborCountExcept(walkable, tile, previous) > 0) continue;
+    return { tile, direction };
+  }
+
+  return undefined;
+}
+
+function nextBranchTile(tile: TileCoord, direction: TileCoord, width: number, height: number): TileCoord {
+  return {
+    x: THREE.MathUtils.clamp(tile.x + direction.x, 2, width - 3),
+    y: THREE.MathUtils.clamp(tile.y + direction.y, 2, height - 3),
+  };
+}
+
+function turnDirection(direction: TileCoord, rng: Rng): TileCoord {
+  const turns =
+    direction.x !== 0
+      ? [
+          { x: 0, y: 1 },
+          { x: 0, y: -1 },
+        ]
+      : [
+          { x: 1, y: 0 },
+          { x: -1, y: 0 },
+        ];
+
+  return turns[Math.floor(rng() * turns.length)];
 }
 
 function carveCorridor(
@@ -208,6 +342,53 @@ function carveRoom(walkable: Set<string>, center: TileCoord, width: number, heig
       addWalkable(walkable, { x, y }, width, height);
     }
   }
+}
+
+function normalizePlatformSpacing(walkable: Set<string>, width: number, height: number): void {
+  let changed = true;
+
+  while (changed) {
+    changed = false;
+
+    for (const tile of [...walkable].map(fromKey)) {
+      if (!hasHorizontalNeighbor(walkable, tile)) {
+        const xOffset = perpendicularOffset(tile.x, width);
+        const before = walkable.size;
+        addWalkable(walkable, { x: tile.x + xOffset, y: tile.y }, width, height);
+        changed ||= walkable.size !== before;
+      }
+
+      if (!hasVerticalNeighbor(walkable, tile)) {
+        const yOffset = perpendicularOffset(tile.y, height);
+        const before = walkable.size;
+        addWalkable(walkable, { x: tile.x, y: tile.y + yOffset }, width, height);
+        changed ||= walkable.size !== before;
+      }
+    }
+
+    for (const tile of [...walkable].map(fromKey)) {
+      for (const diagonal of DIAGONALS) {
+        const other = { x: tile.x + diagonal.x, y: tile.y + diagonal.y };
+        if (!walkable.has(key(other))) continue;
+
+        const firstBridge = { x: tile.x + diagonal.x, y: tile.y };
+        const secondBridge = { x: tile.x, y: tile.y + diagonal.y };
+        if (walkable.has(key(firstBridge)) || walkable.has(key(secondBridge))) continue;
+
+        const before = walkable.size;
+        addWalkable(walkable, firstBridge, width, height);
+        changed ||= walkable.size !== before;
+      }
+    }
+  }
+}
+
+function hasHorizontalNeighbor(walkable: Set<string>, tile: TileCoord): boolean {
+  return walkable.has(key({ x: tile.x - 1, y: tile.y })) || walkable.has(key({ x: tile.x + 1, y: tile.y }));
+}
+
+function hasVerticalNeighbor(walkable: Set<string>, tile: TileCoord): boolean {
+  return walkable.has(key({ x: tile.x, y: tile.y - 1 })) || walkable.has(key({ x: tile.x, y: tile.y + 1 }));
 }
 
 function addWalkable(walkable: Set<string>, tile: TileCoord, width: number, height: number): void {
@@ -274,6 +455,14 @@ function isConnectedAfterBlocking(walkable: Set<string>, blocked: Set<string>, s
 
 function walkableNeighborCount(walkable: Set<string>, tile: TileCoord): number {
   return neighbors(tile).filter((neighbor) => walkable.has(key(neighbor))).length;
+}
+
+function walkableNeighborCountExcept(walkable: Set<string>, tile: TileCoord, except: TileCoord): number {
+  const exceptKey = key(except);
+  return neighbors(tile).filter((neighbor) => {
+    const neighborKey = key(neighbor);
+    return neighborKey !== exceptKey && walkable.has(neighborKey);
+  }).length;
 }
 
 function shuffle<T>(items: T[], rng: Rng): T[] {

@@ -156,6 +156,7 @@ export class GameSimulation {
       this.player.resources,
       this.player.collisionBody,
       () => this.currentCollisionLayer(),
+      () => this.currentLevel,
       () => this.derivedStats(),
       () => this.enemies.all,
       (enemy, amount, showText) => this.enemies.damageEnemy(enemy, amount, showText),
