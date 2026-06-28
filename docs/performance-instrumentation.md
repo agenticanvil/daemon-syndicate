@@ -75,7 +75,7 @@ The recorder wraps the main animation frame and selected gameplay systems in `sr
 - `hud/dom`
 - `three.render.cpu`
 
-Frame trace events also include useful context such as `dtMs`, paused/started state, enemy and projectile counts, level, wave, kills, render calls, triangles, geometries, and textures.
+Frame trace events also include useful context such as `dtMs`, paused/started state, enemy and projectile counts, level, kills, render calls, triangles, geometries, and textures.
 
 ## Reading Results
 

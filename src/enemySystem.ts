@@ -1,7 +1,14 @@
 import * as THREE from "three";
 import { ENEMY_BALANCE, PLAYER_BALANCE } from "./balance";
 import { distance2D, withinRadius2D, type CollisionBody2D, type CollisionLayer } from "./collision";
-import { chooseEnemyDefinition, ENEMY_DEFINITIONS, type EnemyKind } from "./enemyDefinitions";
+import {
+  chooseEnemyDefinition,
+  encounterBudgetForMapLevel,
+  enemyLevelForMapLevel,
+  ENEMY_DEFINITIONS,
+  type EnemyDefinition,
+  type EnemyKind,
+} from "./enemyDefinitions";
 import type { EnemyViewHandle, GameplayView } from "./gameView";
 import { key, tileToWorld, worldToTile, type LevelData } from "./level";
 import { canMoveDirectlyOnWalkableLevel, moveOnWalkableLevel } from "./movement";
@@ -23,7 +30,6 @@ export class EnemySystem {
     private readonly playerCollisionBody: CollisionBody2D,
     private readonly resources: PlayerResources,
     private readonly getLevel: () => LevelData,
-    private readonly getWave: () => number,
     private readonly getCollisionLayer: () => CollisionLayer,
     private readonly canDamagePlayer: () => boolean,
     private readonly rng: Rng = Math.random,
@@ -41,17 +47,22 @@ export class EnemySystem {
     const candidates = this.getLevel().spawnPoints
       .map(tileToWorld)
       .filter((position) => distance2D(position, this.view.player.position) >= ENEMY_BALANCE.minSpawnDistance);
-    const targetCount = Math.min(this.levelEnemyCount(), candidates.length);
+    const mapLevel = this.getLevel().id;
+    let remainingBudget = encounterBudgetForMapLevel(mapLevel);
+    const maxCount = Math.min(ENEMY_BALANCE.maxLevelEnemyCount, candidates.length);
 
-    for (let i = 0; i < targetCount; i += 1) {
+    for (let i = 0; i < maxCount && remainingBudget >= this.minimumBudgetCost(mapLevel); i += 1) {
+      const definition = chooseEnemyDefinition(mapLevel, this.rng, { maxBudgetCost: remainingBudget });
       const index = Math.floor(this.rng() * candidates.length);
       const [spawn] = candidates.splice(index, 1);
-      this.spawnEnemy(spawn);
+      this.spawnEnemy(spawn, definition);
+      remainingBudget -= definition.budgetCost;
     }
   }
 
   spawnEnemyAt(kind: EnemyKind, spawn: THREE.Vector3): void {
-    this.spawnEnemy(spawn, kind);
+    const definition = ENEMY_DEFINITIONS.find((candidate) => candidate.kind === kind);
+    this.spawnEnemy(spawn, definition);
   }
 
   damageEnemy(enemy: Enemy, amount: number, showText: boolean): void {
@@ -133,11 +144,13 @@ export class EnemySystem {
     return this.enemies.map((enemy) => ({
       id: enemy.id,
       kind: enemy.kind,
+      enemyLevel: enemy.enemyLevel,
       position: vectorSnapshot(enemy.position),
       facingYaw: enemy.facingYaw,
       collisionLayer: enemy.collisionLayer,
       hp: enemy.hp,
       speed: enemy.speed,
+      xpReward: enemy.xpReward,
       radius: enemy.radius,
       attack: { ...enemy.attack },
       dropTable: {
@@ -152,23 +165,24 @@ export class EnemySystem {
     }));
   }
 
-  private spawnEnemy(spawn: THREE.Vector3, kind?: EnemyKind): void {
-    const wave = this.getWave();
-    const definition = kind
-      ? ENEMY_DEFINITIONS.find((candidate) => candidate.kind === kind) ?? chooseEnemyDefinition(wave, this.rng)
-      : chooseEnemyDefinition(wave, this.rng);
+  private spawnEnemy(spawn: THREE.Vector3, providedDefinition?: EnemyDefinition): void {
+    const mapLevel = this.getLevel().id;
+    const enemyLevel = enemyLevelForMapLevel(mapLevel, this.rng);
+    const definition = providedDefinition ?? chooseEnemyDefinition(mapLevel, this.rng);
     const facingYaw = 0;
 
     this.addEnemy(
       {
         kind: definition.kind,
+        enemyLevel,
         position: new THREE.Vector3(spawn.x, 0, spawn.z),
         facingYaw,
         collisionLayer: this.getCollisionLayer(),
-        hp: definition.health(wave),
-        speed: definition.speed(wave),
+        hp: definition.health(enemyLevel),
+        speed: definition.speed(enemyLevel),
+        xpReward: definition.xpReward(enemyLevel),
         radius: definition.radius,
-        attack: definition.attack,
+        attack: { ...definition.attack, damage: definition.attackDamage(enemyLevel) },
         dropTable: definition.dropTable,
         attackTimer: 0,
         pathRefreshTimer: this.rng() * ENEMY_BALANCE.pathRefreshInterval,
@@ -199,8 +213,12 @@ export class EnemySystem {
     this.enemyViews.delete(id);
   }
 
-  private levelEnemyCount(): number {
-    return Math.min(10 + this.getLevel().id * 3, ENEMY_BALANCE.maxLevelEnemyCount);
+  private minimumBudgetCost(mapLevel: number): number {
+    return ENEMY_DEFINITIONS.reduce((minimum, definition) => {
+      const weight = definition.spawnWeight(mapLevel);
+      if (weight <= 0) return minimum;
+      return Math.min(minimum, definition.budgetCost);
+    }, Infinity);
   }
 
   private getEnemyPursuitDirection(
@@ -257,6 +275,8 @@ export class EnemySystem {
           type: "enemyKilled",
           enemyId: enemy.id,
           kind: enemy.kind,
+          enemyLevel: enemy.enemyLevel,
+          xpReward: enemy.xpReward,
           position: enemy.position.clone(),
           dropTable: enemy.dropTable,
         });

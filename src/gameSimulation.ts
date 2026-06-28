@@ -10,8 +10,10 @@ import { exitGateToWorld, generateLevel, tileToWorld, type ExitDirection, type L
 import { PickupSystem } from "./pickupSystem";
 import { PlayerSystem } from "./playerSystem";
 import { idlePlayerCommand, type PlayerCommand } from "./playerCommand";
+import { PlayerProgression, type PlayerProgressionSnapshot } from "./progression";
 import type { Rng } from "./rng";
 import type { PlayerResources, ResourceKind } from "./types";
+import { availableUpgradeOptions, derivePlayerStats, type PlayerDerivedStats, type UpgradeId, type UpgradeOption } from "./upgrades";
 
 type GameSimulationOptions = {
   rng?: Rng;
@@ -28,8 +30,8 @@ export type GameSimulationSnapshot = {
   paused: boolean;
   gameOver: boolean;
   kills: number;
-  wave: number;
   levelNumber: number;
+  progression: PlayerProgressionSnapshot;
   level: {
     id: number;
     width: number;
@@ -50,15 +52,19 @@ export type GameSimulationSnapshot = {
     maxResources: PlayerResources;
     statusEffects: Array<{ kind: string; remaining: number }>;
     moving: boolean;
+    dashTimer: number;
+    emergencyShieldReady: boolean;
   };
   enemies: Array<{
     id: number;
     kind: EnemyKind;
+    enemyLevel: number;
     position: VectorSnapshot;
     facingYaw: number;
     collisionLayer: CollisionLayer;
     hp: number;
     speed: number;
+    xpReward: number;
     radius: number;
     attack: { kind: string; range: number; damage: number; cooldown: number };
     attackTimer: number;
@@ -77,6 +83,7 @@ export type GameSimulationSnapshot = {
       life: number;
       damage: number;
       radius: number;
+      pierceRemaining?: number;
     }>;
   };
   pickups: Array<{
@@ -95,6 +102,7 @@ export type GameStepResult = {
   primaryFired: boolean;
   novaFired: boolean;
   kills: number;
+  killedEnemies: Array<{ kind: EnemyKind; enemyLevel: number; xpReward: number }>;
   damageTaken: number;
   pickupsCollected: Partial<Record<ResourceKind, number>>;
   levelChanged: boolean;
@@ -107,12 +115,12 @@ export class GameSimulation {
   private readonly pickups: PickupSystem;
   private readonly enemies: EnemySystem;
   private readonly combat: CombatSystem;
+  private readonly progression = new PlayerProgression();
 
   private started = false;
   private paused = false;
   private gameOver = false;
   private kills = 0;
-  private wave = 1;
   private levelNumber = 1;
   private currentLevel: LevelData;
   private readonly rng: Rng;
@@ -125,7 +133,7 @@ export class GameSimulation {
     this.rng = options.rng ?? Math.random;
     this.seed = options.seed;
     this.currentLevel = generateLevel(this.levelNumber, this.rng);
-    this.player = new PlayerSystem(this.view, () => this.currentLevel);
+    this.player = new PlayerSystem(this.view, () => this.currentLevel, () => this.derivedStats());
     this.pickups = new PickupSystem(
       this.view,
       this.events,
@@ -139,7 +147,6 @@ export class GameSimulation {
       this.player.collisionBody,
       this.player.resources,
       () => this.currentLevel,
-      () => this.wave,
       () => this.currentCollisionLayer(),
       () => !this.player.hasStatus("invulnerable"),
       this.rng,
@@ -149,6 +156,7 @@ export class GameSimulation {
       this.player.resources,
       this.player.collisionBody,
       () => this.currentCollisionLayer(),
+      () => this.derivedStats(),
       () => this.enemies.all,
       (enemy, amount, showText) => this.enemies.damageEnemy(enemy, amount, showText),
     );
@@ -171,10 +179,6 @@ export class GameSimulation {
 
   get killCount(): number {
     return this.kills;
-  }
-
-  get currentWave(): number {
-    return this.wave;
   }
 
   get currentLevelNumber(): number {
@@ -211,12 +215,25 @@ export class GameSimulation {
     return this.combat.novaReady;
   }
 
+  get dashUnlocked(): boolean {
+    return this.derivedStats().dashUnlocked;
+  }
+
+  get dashReady(): boolean {
+    const stats = this.derivedStats();
+    return stats.dashUnlocked && this.player.currentDashTimer <= 0 && this.player.resources.energy >= stats.dashEnergyCost;
+  }
+
   get resources(): PlayerResources {
     return this.player.resources;
   }
 
   get maxResources(): PlayerResources {
     return this.player.maxResources;
+  }
+
+  get availableUpgrades(): UpgradeOption[] {
+    return availableUpgradeOptions(this.progression.upgrades, this.progression.level);
   }
 
   get playerPosition(): THREE.Vector3 {
@@ -240,6 +257,7 @@ export class GameSimulation {
       primaryFired: false,
       novaFired: false,
       kills: 0,
+      killedEnemies: [],
       damageTaken: 0,
       pickupsCollected: {},
       levelChanged: false,
@@ -260,6 +278,9 @@ export class GameSimulation {
       if (command.fireNova) {
         result.novaFired = this.combat.fireNova();
       }
+      if (command.dash) {
+        this.player.tryDash(command);
+      }
       this.combat.updateProjectiles(dt);
       this.enemies.update(dt);
       this.processEvents(result);
@@ -279,8 +300,8 @@ export class GameSimulation {
       paused: this.paused,
       gameOver: this.gameOver,
       kills: this.kills,
-      wave: this.wave,
       levelNumber: this.levelNumber,
+      progression: this.progression.snapshot(),
       level: {
         id: this.currentLevel.id,
         width: this.currentLevel.width,
@@ -318,6 +339,15 @@ export class GameSimulation {
     }
   }
 
+  spendUpgrade(id: UpgradeId): boolean {
+    const previous = this.derivedStats();
+    const spent = this.progression.spendUpgrade(id);
+    if (!spent) return false;
+
+    this.player.applyDerivedStatsChange(previous, this.derivedStats());
+    return true;
+  }
+
   private checkGateTransition(): boolean {
     const end = exitGateToWorld(this.currentLevel.end, this.currentLevel.exitDirection);
     if (distance2D(this.view.player.position, end) < 1.15) {
@@ -341,6 +371,9 @@ export class GameSimulation {
       case "enemyKilled":
         this.kills += 1;
         result.kills += 1;
+        result.killedEnemies.push({ kind: event.kind, enemyLevel: event.enemyLevel, xpReward: event.xpReward });
+        this.progression.grantXp(event.xpReward);
+        this.maybeRefundAmmo();
         this.pickups.maybeDropPickup(event.position, event.dropTable);
         break;
       case "playerDamaged":
@@ -369,7 +402,7 @@ export class GameSimulation {
     this.player.reset(tileToWorld(this.currentLevel.start), this.currentCollisionLayer());
     this.resetReticle();
     this.kills = 0;
-    this.wave = 1;
+    this.progression.reset();
     this.enemies.spawnLevelEnemies();
     this.combat.resetTimers();
     this.gameOver = false;
@@ -380,7 +413,6 @@ export class GameSimulation {
   private loadNextLevel(): void {
     this.clearEntities();
     this.levelNumber += 1;
-    this.wave = this.levelNumber;
     this.currentLevel = generateLevel(this.levelNumber, this.rng);
     this.view.renderLevel(this.currentLevel);
     this.player.moveTo(tileToWorld(this.currentLevel.start), this.currentCollisionLayer());
@@ -403,6 +435,17 @@ export class GameSimulation {
 
   private currentCollisionLayer(): CollisionLayer {
     return this.currentLevel.id;
+  }
+
+  private derivedStats(): PlayerDerivedStats {
+    return derivePlayerStats(this.progression.upgrades);
+  }
+
+  private maybeRefundAmmo(): void {
+    const chance = this.derivedStats().ammoRefundChance;
+    if (chance > 0 && this.rng() < chance) {
+      this.player.grantResource("ammo", 1);
+    }
   }
 }
 

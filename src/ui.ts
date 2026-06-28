@@ -1,5 +1,6 @@
 import type { PlayerResources } from "./types";
 import type { GraphicsSettings } from "./scene";
+import type { UpgradeId, UpgradeOption } from "./upgrades";
 
 export type MovementControlMode = "isometric" | "screen" | "mouse";
 
@@ -7,9 +8,17 @@ export type HudState = {
   resources: PlayerResources;
   maxResources: PlayerResources;
   kills: number;
-  level: number;
+  mapLevel: number;
+  progression: {
+    level: number;
+    xp: number;
+    xpToNextLevel: number;
+    unspentUpgradePoints: number;
+  };
   primaryReady: boolean;
   novaReady: boolean;
+  dashUnlocked: boolean;
+  dashReady: boolean;
 };
 
 export type Ui = {
@@ -27,6 +36,8 @@ export type Ui = {
   updateFps: (fps: number) => void;
   onGraphicsSettingsChange: (listener: (settings: GraphicsSettings) => void) => void;
   updateHud: (state: HudState) => void;
+  showUpgradeSelection: (state: { points: number; options: UpgradeOption[] }, onSelect: (id: UpgradeId) => void) => void;
+  hideUpgradeSelection: () => void;
 };
 
 export function createUi(app: HTMLDivElement): Ui {
@@ -56,13 +67,16 @@ export function createUi(app: HTMLDivElement): Ui {
         </div>
         <div class="stats">
           <div class="stat"><span>Kills</span><strong id="kills">0</strong></div>
-          <div class="stat"><span>Level</span><strong id="level">1</strong></div>
+          <div class="stat"><span>Map</span><strong id="mapLevel">1</strong></div>
+          <div class="stat"><span>Rank</span><strong id="playerLevel">1</strong></div>
+          <div class="stat"><span>XP</span><strong id="playerXp">0/100</strong></div>
           <div class="stat fps-stat hidden" id="fpsStat"><span>FPS</span><strong id="fpsValue">0</strong></div>
         </div>
       </div>
       <div class="ability-bar">
         <div class="ability" id="primaryAbility"><strong>LMB</strong><span>Bolt</span><em>Ammo</em></div>
         <div class="ability" id="novaAbility"><strong>RMB</strong><span>Nova</span><em>Energy</em></div>
+        <div class="ability hidden" id="dashAbility"><strong>Shift</strong><span>Dash</span><em>Energy</em></div>
       </div>
     </div>
     <div class="pause-menu hidden" id="pauseMenu" role="dialog" aria-modal="true" aria-labelledby="pauseTitle">
@@ -138,11 +152,23 @@ export function createUi(app: HTMLDivElement): Ui {
         </section>
       </div>
     </div>
+    <div class="upgrade-menu hidden" id="upgradeMenu" role="dialog" aria-modal="true" aria-labelledby="upgradeTitle">
+      <div class="upgrade-panel">
+        <div class="upgrade-head">
+          <h2 id="upgradeTitle">Upgrade</h2>
+          <strong id="upgradePoints">1 point</strong>
+        </div>
+        <div class="upgrade-options" id="upgradeOptions"></div>
+      </div>
+    </div>
   `;
 
   const overlay = document.querySelector<HTMLDivElement>("#overlay")!;
   const hud = document.querySelector<HTMLDivElement>(".hud")!;
   const pauseMenu = document.querySelector<HTMLDivElement>("#pauseMenu")!;
+  const upgradeMenu = document.querySelector<HTMLDivElement>("#upgradeMenu")!;
+  const upgradePoints = document.querySelector<HTMLElement>("#upgradePoints")!;
+  const upgradeOptions = document.querySelector<HTMLDivElement>("#upgradeOptions")!;
   const pausePanel = document.querySelector<HTMLDivElement>(".pause-panel")!;
   const startButton = document.querySelector<HTMLButtonElement>("#start")!;
   const resumeButton = document.querySelector<HTMLButtonElement>("#resume")!;
@@ -157,11 +183,14 @@ export function createUi(app: HTMLDivElement): Ui {
   const ammoMeter = document.querySelector<HTMLElement>("#ammoMeter")!;
   const energyMeter = document.querySelector<HTMLElement>("#energyMeter")!;
   const killsEl = document.querySelector<HTMLElement>("#kills")!;
-  const levelEl = document.querySelector<HTMLElement>("#level")!;
+  const mapLevelEl = document.querySelector<HTMLElement>("#mapLevel")!;
+  const playerLevelEl = document.querySelector<HTMLElement>("#playerLevel")!;
+  const playerXpEl = document.querySelector<HTMLElement>("#playerXp")!;
   const fpsStat = document.querySelector<HTMLElement>("#fpsStat")!;
   const fpsValue = document.querySelector<HTMLElement>("#fpsValue")!;
   const primaryAbility = document.querySelector<HTMLElement>("#primaryAbility")!;
   const novaAbility = document.querySelector<HTMLElement>("#novaAbility")!;
+  const dashAbility = document.querySelector<HTMLElement>("#dashAbility")!;
   const movementOptions = Array.from(pausePanel.querySelectorAll<HTMLButtonElement>(".movement-option"));
   const preserveDrawingBuffer = document.querySelector<HTMLInputElement>("#preserveDrawingBuffer")!;
   const pixelRatioOptions = Array.from(pausePanel.querySelectorAll<HTMLButtonElement>(".graphics-pixel-option"));
@@ -282,9 +311,38 @@ export function createUi(app: HTMLDivElement): Ui {
       setMeter(ammoMeter, resources.ammo, maxResources.ammo);
       setMeter(energyMeter, resources.energy, maxResources.energy);
       killsEl.textContent = state.kills.toString();
-      levelEl.textContent = state.level.toString();
+      mapLevelEl.textContent = state.mapLevel.toString();
+      playerLevelEl.textContent = state.progression.level.toString();
+      playerXpEl.textContent = `${state.progression.xp}/${state.progression.xpToNextLevel}`;
       primaryAbility.classList.toggle("disabled", !state.primaryReady);
       novaAbility.classList.toggle("disabled", !state.novaReady);
+      dashAbility.classList.toggle("hidden", !state.dashUnlocked);
+      dashAbility.classList.toggle("disabled", !state.dashReady);
+    },
+    showUpgradeSelection(state, onSelect) {
+      upgradeMenu.classList.remove("hidden");
+      upgradePoints.textContent = `${state.points} ${state.points === 1 ? "point" : "points"}`;
+      upgradeOptions.replaceChildren(
+        ...state.options.map((option) => {
+          const button = document.createElement("button");
+          button.className = "upgrade-option";
+          button.type = "button";
+          button.dataset.upgradeId = option.id;
+          button.innerHTML = `
+            <span>
+              <strong>${option.label}</strong>
+              <em>Rank ${option.rank}/${option.maxRanks}</em>
+            </span>
+            <small>${option.description}</small>
+          `;
+          button.addEventListener("click", () => onSelect(option.id));
+          return button;
+        }),
+      );
+    },
+    hideUpgradeSelection() {
+      upgradeMenu.classList.add("hidden");
+      upgradeOptions.replaceChildren();
     },
   };
 }

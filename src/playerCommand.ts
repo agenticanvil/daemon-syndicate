@@ -5,6 +5,7 @@ export type PlayerCommand = {
   aimWorld: THREE.Vector3;
   firePrimary: boolean;
   fireNova: boolean;
+  dash: boolean;
 };
 
 export function idlePlayerCommand(position = new THREE.Vector3()): PlayerCommand {
@@ -13,5 +14,6 @@ export function idlePlayerCommand(position = new THREE.Vector3()): PlayerCommand
     aimWorld: position.clone().add(new THREE.Vector3(0, 0, -1)),
     firePrimary: false,
     fireNova: false,
+    dash: false,
   };
 }

@@ -10,6 +10,7 @@ export class InputState {
   private hasPointerPosition = false;
   private primaryFireRequested = false;
   private novaFireRequested = false;
+  private dashRequested = false;
 
   addKey(code: string): void {
     this.keys.add(code);
@@ -31,6 +32,10 @@ export class InputState {
     this.novaFireRequested = true;
   }
 
+  requestDash(): void {
+    this.dashRequested = true;
+  }
+
   consumePrimaryFire(): boolean {
     const requested = this.primaryFireRequested;
     this.primaryFireRequested = false;
@@ -40,6 +45,12 @@ export class InputState {
   consumeNovaFire(): boolean {
     const requested = this.novaFireRequested;
     this.novaFireRequested = false;
+    return requested;
+  }
+
+  consumeDash(): boolean {
+    const requested = this.dashRequested;
+    this.dashRequested = false;
     return requested;
   }
 

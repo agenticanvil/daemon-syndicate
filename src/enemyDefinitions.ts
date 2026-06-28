@@ -1,15 +1,20 @@
 import { ELITE_ENEMY_SETTINGS } from "./assets/enemies/eliteEnemy/eliteEnemyAsset";
 import { LEAN_HUNTER_SETTINGS } from "./assets/enemies/leanHunterAsset";
 import type { DropTable, EnemyAssetSettings, EnemyAttackDefinition, EnemySpawnWeightSettings } from "./assetSettings";
+import type { Rng } from "./rng";
 
 export type EnemyKind = "leanHunter" | "elite";
 
 export type EnemyDefinition = {
   kind: EnemyKind;
   radius: number;
-  spawnWeight: (wave: number) => number;
-  health: (wave: number) => number;
-  speed: (wave: number) => number;
+  unlockMapLevel: number;
+  budgetCost: number;
+  spawnWeight: (mapLevel: number) => number;
+  health: (enemyLevel: number) => number;
+  speed: (enemyLevel: number) => number;
+  attackDamage: (enemyLevel: number) => number;
+  xpReward: (enemyLevel: number) => number;
   attack: EnemyAttackDefinition;
   dropTable: DropTable;
 };
@@ -18,33 +23,61 @@ export const ENEMY_DEFINITIONS: EnemyDefinition[] = [
   {
     kind: "leanHunter",
     radius: LEAN_HUNTER_SETTINGS.collision.radius,
-    spawnWeight: spawnWeightFromSettings(LEAN_HUNTER_SETTINGS.spawnWeight),
-    health: (wave) => LEAN_HUNTER_SETTINGS.health.base + wave * LEAN_HUNTER_SETTINGS.health.waveGrowth,
-    speed: (wave) => LEAN_HUNTER_SETTINGS.movement.speed + wave * LEAN_HUNTER_SETTINGS.movement.waveSpeedGrowth,
+    unlockMapLevel: 1,
+    budgetCost: 1,
+    spawnWeight: spawnWeightFromSettings(LEAN_HUNTER_SETTINGS.spawnWeight, 1),
+    health: (enemyLevel) => LEAN_HUNTER_SETTINGS.health.base + enemyLevel * LEAN_HUNTER_SETTINGS.health.levelGrowth,
+    speed: (enemyLevel) =>
+      LEAN_HUNTER_SETTINGS.movement.speed + enemyLevel * LEAN_HUNTER_SETTINGS.movement.levelSpeedGrowth,
+    attackDamage: (enemyLevel) => scaledAttackDamage(LEAN_HUNTER_SETTINGS, enemyLevel, 3),
+    xpReward: (enemyLevel) => Math.round(6 + enemyLevel * 1.5),
     attack: primaryEnemyAttack(LEAN_HUNTER_SETTINGS),
     dropTable: LEAN_HUNTER_SETTINGS.dropTable,
   },
   {
     kind: "elite",
     radius: ELITE_ENEMY_SETTINGS.collision.radius,
-    spawnWeight: spawnWeightFromSettings(ELITE_ENEMY_SETTINGS.spawnWeight),
-    health: (wave) => ELITE_ENEMY_SETTINGS.health.base + wave * ELITE_ENEMY_SETTINGS.health.waveGrowth,
-    speed: (wave) => ELITE_ENEMY_SETTINGS.movement.speed + wave * ELITE_ENEMY_SETTINGS.movement.waveSpeedGrowth,
+    unlockMapLevel: 3,
+    budgetCost: 2.4,
+    spawnWeight: spawnWeightFromSettings(ELITE_ENEMY_SETTINGS.spawnWeight, 3),
+    health: (enemyLevel) => ELITE_ENEMY_SETTINGS.health.base + enemyLevel * ELITE_ENEMY_SETTINGS.health.levelGrowth,
+    speed: (enemyLevel) =>
+      ELITE_ENEMY_SETTINGS.movement.speed + enemyLevel * ELITE_ENEMY_SETTINGS.movement.levelSpeedGrowth,
+    attackDamage: (enemyLevel) => scaledAttackDamage(ELITE_ENEMY_SETTINGS, enemyLevel, 4),
+    xpReward: (enemyLevel) => Math.round(14 + enemyLevel * 3),
     attack: primaryEnemyAttack(ELITE_ENEMY_SETTINGS),
     dropTable: ELITE_ENEMY_SETTINGS.dropTable,
   },
 ];
 
-export function chooseEnemyDefinition(wave: number, rng: () => number = Math.random): EnemyDefinition {
-  const totalWeight = ENEMY_DEFINITIONS.reduce((sum, definition) => sum + definition.spawnWeight(wave), 0);
+export function chooseEnemyDefinition(
+  mapLevel: number,
+  rng: () => number = Math.random,
+  options: { maxBudgetCost?: number } = {},
+): EnemyDefinition {
+  const definitions = ENEMY_DEFINITIONS.filter(
+    (definition) => options.maxBudgetCost === undefined || definition.budgetCost <= options.maxBudgetCost,
+  );
+  const totalWeight = definitions.reduce((sum, definition) => sum + definition.spawnWeight(mapLevel), 0);
   let roll = rng() * totalWeight;
 
-  for (const definition of ENEMY_DEFINITIONS) {
-    roll -= definition.spawnWeight(wave);
+  for (const definition of definitions) {
+    roll -= definition.spawnWeight(mapLevel);
     if (roll <= 0) return definition;
   }
 
-  return ENEMY_DEFINITIONS[0];
+  return definitions[0] ?? ENEMY_DEFINITIONS[0];
+}
+
+export function enemyLevelForMapLevel(mapLevel: number, rng: Rng = Math.random): number {
+  const roll = rng();
+  if (roll < 0.2) return Math.max(1, mapLevel - 1);
+  if (roll < 0.95) return Math.max(1, mapLevel);
+  return Math.max(1, mapLevel + 1);
+}
+
+export function encounterBudgetForMapLevel(mapLevel: number): number {
+  return 10 + mapLevel * 3;
 }
 
 function primaryEnemyAttack(settings: EnemyAssetSettings): EnemyAttackDefinition {
@@ -52,9 +85,15 @@ function primaryEnemyAttack(settings: EnemyAssetSettings): EnemyAttackDefinition
   return melee ?? settings.attacks[0];
 }
 
-function spawnWeightFromSettings(settings: EnemySpawnWeightSettings): (wave: number) => number {
-  return (wave) => {
-    const scaled = settings.base + wave * settings.waveGrowth;
+function scaledAttackDamage(settings: EnemyAssetSettings, enemyLevel: number, levelGrowth: number): number {
+  return Math.round(primaryEnemyAttack(settings).damage + enemyLevel * levelGrowth);
+}
+
+function spawnWeightFromSettings(settings: EnemySpawnWeightSettings, unlockMapLevel: number): (mapLevel: number) => number {
+  return (mapLevel) => {
+    if (mapLevel < unlockMapLevel) return 0;
+    const unlockedLevel = mapLevel - unlockMapLevel + 1;
+    const scaled = settings.base + unlockedLevel * settings.levelGrowth;
     const withMin = settings.min === undefined ? scaled : Math.max(settings.min, scaled);
     return settings.max === undefined ? withMin : Math.min(settings.max, withMin);
   };
