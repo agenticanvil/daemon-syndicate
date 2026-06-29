@@ -48,7 +48,6 @@ type BucketGeometryInput = {
   geometry: THREE.BufferGeometry;
   transform: THREE.Matrix4;
   boneIndex?: number;
-  color?: THREE.ColorRepresentation;
 };
 
 export function createRigidSkinnedAsset<TMaterial extends string>(definition: {
@@ -102,7 +101,7 @@ export function createRigidSkinnedAsset<TMaterial extends string>(definition: {
 
     const transform = bone.matrixWorld.clone().multiply(localMatrix(part));
     const inputs = inputsByMaterial.get(part.material) ?? [];
-    inputs.push({ geometry: part.geometry, transform, boneIndex, color: part.color });
+    inputs.push({ geometry: part.geometry, transform, boneIndex });
     inputsByMaterial.set(part.material, inputs);
   }
 
@@ -136,7 +135,7 @@ export function createStaticMergedAsset<TMaterial extends string>(definition: {
   const inputsByMaterial = new Map<TMaterial, BucketGeometryInput[]>();
   for (const part of definition.parts) {
     const inputs = inputsByMaterial.get(part.material) ?? [];
-    inputs.push({ geometry: part.geometry, transform: localMatrix(part), color: part.color });
+    inputs.push({ geometry: part.geometry, transform: localMatrix(part) });
     inputsByMaterial.set(part.material, inputs);
   }
 
@@ -171,7 +170,6 @@ function mergeGeometryInputs(inputs: BucketGeometryInput[], boneCount = 0): THRE
   const positions: number[] = [];
   const normals: number[] = [];
   const uvs: number[] = [];
-  const colors: number[] = [];
   const skinIndices: number[] = [];
   const skinWeights: number[] = [];
 
@@ -182,7 +180,6 @@ function mergeGeometryInputs(inputs: BucketGeometryInput[], boneCount = 0): THRE
     const position = geometry.getAttribute("position");
     const normal = geometry.getAttribute("normal");
     const uv = geometry.getAttribute("uv");
-    const color = new THREE.Color(input.color ?? 0xffffff);
 
     for (let index = 0; index < position.count; index += 1) {
       positions.push(position.getX(index), position.getY(index), position.getZ(index));
@@ -196,7 +193,6 @@ function mergeGeometryInputs(inputs: BucketGeometryInput[], boneCount = 0): THRE
       } else {
         uvs.push(0, 0);
       }
-      colors.push(color.r, color.g, color.b);
 
       if (boneCount > 0) {
         skinIndices.push(input.boneIndex ?? 0, 0, 0, 0);
@@ -211,7 +207,6 @@ function mergeGeometryInputs(inputs: BucketGeometryInput[], boneCount = 0): THRE
   merged.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
   merged.setAttribute("normal", new THREE.Float32BufferAttribute(normals, 3));
   merged.setAttribute("uv", new THREE.Float32BufferAttribute(uvs, 2));
-  merged.setAttribute("color", new THREE.Float32BufferAttribute(colors, 3));
 
   if (boneCount > 0) {
     merged.setAttribute("skinIndex", new THREE.Uint16BufferAttribute(skinIndices, 4));

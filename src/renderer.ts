@@ -66,7 +66,7 @@ export function createRenderContext(app: HTMLDivElement): RenderContext {
   };
 }
 
-function createRenderer(settings: GraphicsSettings): THREE.WebGLRenderer {
+export function createRenderer(settings: GraphicsSettings): THREE.WebGLRenderer {
   const renderer = new THREE.WebGLRenderer({
     antialias: true,
     powerPreference: "high-performance",

@@ -41,12 +41,14 @@ export const ENEMY_BALANCE = {
   stopProximity: 0.18,
   deathDuration: 0.5,
   minSpawnDistance: TILE_SIZE * 5,
+  spawnSpreadDistance: TILE_SIZE * 7,
+  activationDistance: TILE_SIZE * 9,
   pathfindingRadius: TILE_SIZE * 13,
   directApproachRadius: TILE_SIZE * 3,
   pathRefreshInterval: 0.24,
   pathRefreshJitter: 0.08,
   waypointReachedDistance: 0.35,
-  maxLevelEnemyCount: 32,
+  maxLevelEnemyCount: 48,
 } as const;
 
 export const DROP_BALANCE = {

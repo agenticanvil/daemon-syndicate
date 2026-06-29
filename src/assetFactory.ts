@@ -1,6 +1,7 @@
 import * as THREE from "three";
+import { createBruteAsset, type BruteAsset } from "./assets/enemies/brute/bruteAsset";
 import { createEliteEnemyAsset, type EliteEnemyAsset } from "./assets/enemies/eliteEnemy/eliteEnemyAsset";
-import { loadLeanHunterRig, type LeanHunterRig } from "./assets/enemies/leanHunterAsset";
+import { loadLeanHunterRig, type LeanHunterRig } from "./assets/enemies/leanHunter/leanHunterAsset";
 import { createVenomSpitterAsset, type VenomSpitterAsset } from "./assets/enemies/venomSpitter/venomSpitterAsset";
 import {
   createIndustrialCrateAsset,
@@ -22,6 +23,7 @@ export type AssetFactory = {
   createLeanHunterRig: () => LeanHunterRig;
   createEliteEnemyAsset: () => EliteEnemyAsset;
   createVenomSpitterAsset: () => VenomSpitterAsset;
+  createBruteAsset: () => BruteAsset;
   createPickupAsset: (kind: ResourceKind) => PickupAsset;
   createEnvironmentAsset: (kind: EnvironmentAssetKind) => EnvironmentAsset;
   createExitPortalAsset: () => ExitPortalAsset;
@@ -33,6 +35,7 @@ export function createAssetFactory(loader: THREE.TextureLoader, anisotropy: numb
     createLeanHunterRig: () => loadLeanHunterRig(loader, anisotropy),
     createEliteEnemyAsset: () => createEliteEnemyAsset(loader, anisotropy),
     createVenomSpitterAsset: () => createVenomSpitterAsset(loader, anisotropy),
+    createBruteAsset: () => createBruteAsset(loader, anisotropy),
     createPickupAsset: (kind) => {
       if (kind === "ammo") return createAmmoPickupAsset();
       if (kind === "energy") return createEnergyPickupAsset();
@@ -43,4 +46,4 @@ export function createAssetFactory(loader: THREE.TextureLoader, anisotropy: numb
   };
 }
 
-export type { EliteEnemyAsset, EnvironmentAssetKind, ExitPortalAsset, LeanHunterRig, PlayerRig, VenomSpitterAsset };
+export type { BruteAsset, EliteEnemyAsset, EnvironmentAssetKind, ExitPortalAsset, LeanHunterRig, PlayerRig, VenomSpitterAsset };

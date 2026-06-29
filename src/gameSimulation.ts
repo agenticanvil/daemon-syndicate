@@ -20,6 +20,10 @@ type GameSimulationOptions = {
   seed?: string;
 };
 
+type StartRunOptions = {
+  mapLevel?: number;
+};
+
 export type DebugSpawnPosition = TileCoord | { x: number; y?: number; z: number };
 
 export type VectorSnapshot = { x: number; y: number; z: number };
@@ -262,8 +266,8 @@ export class GameSimulation {
     this.paused = paused;
   }
 
-  startNewRun(): void {
-    this.reset();
+  startNewRun(options: StartRunOptions = {}): void {
+    this.reset(options);
   }
 
   step(dt: number, command = idlePlayerCommand(this.view.player.position)): GameStepResult {
@@ -414,9 +418,9 @@ export class GameSimulation {
     this.setPaused(false);
   }
 
-  private reset(): void {
+  private reset(options: StartRunOptions = {}): void {
     this.clearEntities();
-    this.levelNumber = 1;
+    this.levelNumber = sanitizeStartMapLevel(options.mapLevel);
     this.currentLevel = generateLevel(this.levelNumber, this.rng);
     this.view.renderLevel(this.currentLevel);
     this.player.reset(tileToWorld(this.currentLevel.start), this.currentCollisionLayer());
@@ -469,6 +473,11 @@ export class GameSimulation {
       this.player.grantResource("ammo", 1);
     }
   }
+}
+
+function sanitizeStartMapLevel(mapLevel: number | undefined): number {
+  if (mapLevel === undefined || !Number.isFinite(mapLevel)) return 1;
+  return Math.max(1, Math.floor(mapLevel));
 }
 
 function debugPositionToWorld(position: DebugSpawnPosition): THREE.Vector3 {

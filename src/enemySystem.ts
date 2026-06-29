@@ -60,11 +60,13 @@ export class EnemySystem {
     const mapLevel = this.getLevel().id;
     let remainingBudget = encounterBudgetForMapLevel(mapLevel);
     const maxCount = Math.min(ENEMY_BALANCE.maxLevelEnemyCount, candidates.length);
+    const selectedSpawns: THREE.Vector3[] = [];
 
     for (let i = 0; i < maxCount && remainingBudget >= this.minimumBudgetCost(mapLevel); i += 1) {
       const definition = chooseEnemyDefinition(mapLevel, this.rng, { maxBudgetCost: remainingBudget });
-      const index = Math.floor(this.rng() * candidates.length);
-      const [spawn] = candidates.splice(index, 1);
+      const spawn = this.takeSpreadSpawn(candidates, selectedSpawns);
+      if (!spawn) break;
+      selectedSpawns.push(spawn);
       this.spawnEnemy(spawn, definition);
       remainingBudget -= definition.budgetCost;
     }
@@ -104,6 +106,14 @@ export class EnemySystem {
       }
 
       const distance = distance2D(enemy.position, this.view.player.position);
+      if (distance > ENEMY_BALANCE.activationDistance && enemy.attackWindupTimer === undefined) {
+        enemy.path = undefined;
+        enemy.pathTarget = undefined;
+        enemy.attackTimer -= dt;
+        this.enemyViews.get(enemy.id)?.updateRig?.("idle", dt);
+        continue;
+      }
+
       const attackDistance = PLAYER_BALANCE.radius + enemy.radius + enemy.attack.range;
       const pursuitDirection = this.getEnemyPursuitDirection(enemy, distance, enemy.speed * dt, dt);
       const isRanged = enemy.attack.kind === "ranged";
@@ -294,6 +304,32 @@ export class EnemySystem {
       if (weight <= 0) return minimum;
       return Math.min(minimum, definition.budgetCost);
     }, Infinity);
+  }
+
+  private takeSpreadSpawn(candidates: THREE.Vector3[], selectedSpawns: THREE.Vector3[]): THREE.Vector3 | undefined {
+    if (candidates.length === 0) return undefined;
+
+    let bestIndex = 0;
+    let bestScore = -Infinity;
+
+    for (let index = 0; index < candidates.length; index += 1) {
+      const candidate = candidates[index];
+      const playerDistance = distance2D(candidate, this.view.player.position);
+      const nearestSpawnDistance =
+        selectedSpawns.length === 0
+          ? ENEMY_BALANCE.spawnSpreadDistance
+          : Math.min(...selectedSpawns.map((spawn) => distance2D(candidate, spawn)));
+      const spreadScore = Math.min(nearestSpawnDistance, ENEMY_BALANCE.spawnSpreadDistance);
+      const score = spreadScore * 2 + playerDistance * 0.35 + this.rng() * ENEMY_BALANCE.spawnSpreadDistance;
+
+      if (score > bestScore) {
+        bestScore = score;
+        bestIndex = index;
+      }
+    }
+
+    const [spawn] = candidates.splice(bestIndex, 1);
+    return spawn;
   }
 
   private getEnemyPursuitDirection(

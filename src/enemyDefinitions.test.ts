@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
+import { BRUTE_SETTINGS } from "./assets/enemies/brute/bruteAsset";
 import { ELITE_ENEMY_SETTINGS } from "./assets/enemies/eliteEnemy/eliteEnemyAsset";
-import { LEAN_HUNTER_SETTINGS } from "./assets/enemies/leanHunterAsset";
+import { LEAN_HUNTER_SETTINGS } from "./assets/enemies/leanHunter/leanHunterAsset";
 import { VENOM_SPITTER_SETTINGS } from "./assets/enemies/venomSpitter/venomSpitterAsset";
 import {
   chooseEnemyDefinition,
@@ -16,13 +17,21 @@ function definition(kind: EnemyKind) {
   return found;
 }
 
+const health = (base: number, levelGrowth: number, enemyLevel: number) =>
+  Math.round((base + enemyLevel * levelGrowth) * 1.2);
+const speed = (base: number, levelGrowth: number, enemyLevel: number) =>
+  (base + enemyLevel * levelGrowth * 1.5) * 1.375;
+
 describe("ENEMY_DEFINITIONS", () => {
   it("preserves current lean hunter and elite scaling formulas", () => {
     const leanHunter = definition("leanHunter");
     const venomSpitter = definition("venomSpitter");
     const elite = definition("elite");
+    const brute = definition("brute");
 
-    expect(leanHunter.health(3)).toBe(LEAN_HUNTER_SETTINGS.health.base + 3 * LEAN_HUNTER_SETTINGS.health.levelGrowth);
+    expect(leanHunter.health(3)).toBe(
+      health(LEAN_HUNTER_SETTINGS.health.base, LEAN_HUNTER_SETTINGS.health.levelGrowth, 3),
+    );
     expect(leanHunter.spawnWeight(3)).toBeCloseTo(
       Math.max(
         LEAN_HUNTER_SETTINGS.spawnWeight.min ?? -Infinity,
@@ -30,9 +39,9 @@ describe("ENEMY_DEFINITIONS", () => {
       ),
     );
     expect(leanHunter.speed(3)).toBeCloseTo(
-      LEAN_HUNTER_SETTINGS.movement.speed + 3 * LEAN_HUNTER_SETTINGS.movement.levelSpeedGrowth,
+      speed(LEAN_HUNTER_SETTINGS.movement.speed, LEAN_HUNTER_SETTINGS.movement.levelSpeedGrowth, 3),
     );
-    expect(leanHunter.attackDamage(3)).toBe(18);
+    expect(leanHunter.attackDamage(3)).toBe(22);
     expect(leanHunter.xpReward(3)).toBe(11);
     expect(leanHunter.radius).toBe(LEAN_HUNTER_SETTINGS.collision.radius);
     expect(leanHunter.unlockMapLevel).toBe(1);
@@ -41,7 +50,7 @@ describe("ENEMY_DEFINITIONS", () => {
     expect(leanHunter.dropTable).toBe(LEAN_HUNTER_SETTINGS.dropTable);
 
     expect(venomSpitter.health(3)).toBe(
-      VENOM_SPITTER_SETTINGS.health.base + 3 * VENOM_SPITTER_SETTINGS.health.levelGrowth,
+      health(VENOM_SPITTER_SETTINGS.health.base, VENOM_SPITTER_SETTINGS.health.levelGrowth, 3),
     );
     expect(venomSpitter.spawnWeight(3)).toBeCloseTo(
       Math.min(
@@ -50,9 +59,9 @@ describe("ENEMY_DEFINITIONS", () => {
       ),
     );
     expect(venomSpitter.speed(3)).toBeCloseTo(
-      VENOM_SPITTER_SETTINGS.movement.speed + 3 * VENOM_SPITTER_SETTINGS.movement.levelSpeedGrowth,
+      speed(VENOM_SPITTER_SETTINGS.movement.speed, VENOM_SPITTER_SETTINGS.movement.levelSpeedGrowth, 3),
     );
-    expect(venomSpitter.attackDamage(3)).toBe(13);
+    expect(venomSpitter.attackDamage(3)).toBe(16);
     expect(venomSpitter.xpReward(3)).toBe(17);
     expect(venomSpitter.radius).toBe(VENOM_SPITTER_SETTINGS.collision.radius);
     expect(venomSpitter.unlockMapLevel).toBe(2);
@@ -60,7 +69,9 @@ describe("ENEMY_DEFINITIONS", () => {
     expect(venomSpitter.attack).toBe(VENOM_SPITTER_SETTINGS.attacks[0]);
     expect(venomSpitter.dropTable).toBe(VENOM_SPITTER_SETTINGS.dropTable);
 
-    expect(elite.health(3)).toBe(ELITE_ENEMY_SETTINGS.health.base + 3 * ELITE_ENEMY_SETTINGS.health.levelGrowth);
+    expect(elite.health(3)).toBe(
+      health(ELITE_ENEMY_SETTINGS.health.base, ELITE_ENEMY_SETTINGS.health.levelGrowth, 3),
+    );
     expect(elite.spawnWeight(3)).toBeCloseTo(
       Math.min(
         ELITE_ENEMY_SETTINGS.spawnWeight.max ?? Infinity,
@@ -68,15 +79,33 @@ describe("ENEMY_DEFINITIONS", () => {
       ),
     );
     expect(elite.speed(3)).toBeCloseTo(
-      ELITE_ENEMY_SETTINGS.movement.speed + 3 * ELITE_ENEMY_SETTINGS.movement.levelSpeedGrowth,
+      speed(ELITE_ENEMY_SETTINGS.movement.speed, ELITE_ENEMY_SETTINGS.movement.levelSpeedGrowth, 3),
     );
-    expect(elite.attackDamage(3)).toBe(21);
+    expect(elite.attackDamage(3)).toBe(25);
     expect(elite.xpReward(3)).toBe(23);
     expect(elite.radius).toBe(ELITE_ENEMY_SETTINGS.collision.radius);
     expect(elite.unlockMapLevel).toBe(3);
     expect(elite.budgetCost).toBe(2.4);
     expect(elite.attack).toBe(ELITE_ENEMY_SETTINGS.attacks[0]);
     expect(elite.dropTable).toBe(ELITE_ENEMY_SETTINGS.dropTable);
+
+    expect(brute.health(3)).toBe(health(BRUTE_SETTINGS.health.base, BRUTE_SETTINGS.health.levelGrowth, 3));
+    expect(brute.spawnWeight(6)).toBeCloseTo(
+      Math.min(
+        BRUTE_SETTINGS.spawnWeight.max ?? Infinity,
+        BRUTE_SETTINGS.spawnWeight.base + 2 * BRUTE_SETTINGS.spawnWeight.levelGrowth,
+      ),
+    );
+    expect(brute.speed(3)).toBeCloseTo(
+      speed(BRUTE_SETTINGS.movement.speed, BRUTE_SETTINGS.movement.levelSpeedGrowth, 3),
+    );
+    expect(brute.attackDamage(3)).toBe(43);
+    expect(brute.xpReward(3)).toBe(37);
+    expect(brute.radius).toBe(BRUTE_SETTINGS.collision.radius);
+    expect(brute.unlockMapLevel).toBe(5);
+    expect(brute.budgetCost).toBe(3.4);
+    expect(brute.attack).toBe(BRUTE_SETTINGS.attacks[0]);
+    expect(brute.dropTable).toBe(BRUTE_SETTINGS.dropTable);
   });
 
   it("keeps unlocked spawn weights positive across expected map levels", () => {
@@ -96,6 +125,7 @@ describe("ENEMY_DEFINITIONS", () => {
     expect(chooseEnemyDefinition(1, () => 0.999).kind).toBe("leanHunter");
     expect(chooseEnemyDefinition(2, () => 0.999).kind).toBe("venomSpitter");
     expect(chooseEnemyDefinition(3, () => 0.999).kind).toBe("elite");
+    expect(chooseEnemyDefinition(5, () => 0.999).kind).toBe("brute");
     expect(chooseEnemyDefinition(3, () => 0.999, { maxBudgetCost: 1 }).kind).toBe("leanHunter");
   });
 
@@ -108,7 +138,7 @@ describe("ENEMY_DEFINITIONS", () => {
   });
 
   it("scales encounter budget by map level", () => {
-    expect(encounterBudgetForMapLevel(1)).toBe(13);
-    expect(encounterBudgetForMapLevel(5)).toBe(25);
+    expect(encounterBudgetForMapLevel(1)).toBe(20);
+    expect(encounterBudgetForMapLevel(5)).toBe(38);
   });
 });
