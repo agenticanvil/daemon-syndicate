@@ -176,6 +176,7 @@ export class GameSimulation {
     this.view.renderLevel(this.currentLevel);
     this.player.moveTo(tileToWorld(this.currentLevel.start), this.currentCollisionLayer());
     this.resetReticle();
+    this.view.updateFog(this.view.player.position, 0, true);
   }
 
   get isStarted(): boolean {
@@ -285,6 +286,7 @@ export class GameSimulation {
       this.player.updateTimers(dt);
       this.player.regenerate(dt);
       this.player.applyMovement(command, dt);
+      this.view.updateFog(this.view.player.position, dt);
       result.levelChanged = this.checkGateTransition();
       this.player.updateAim(command.aimWorld);
       this.player.updateRig(dt);
@@ -419,6 +421,7 @@ export class GameSimulation {
     this.view.renderLevel(this.currentLevel);
     this.player.reset(tileToWorld(this.currentLevel.start), this.currentCollisionLayer());
     this.resetReticle();
+    this.view.updateFog(this.view.player.position, 0, true);
     this.kills = 0;
     this.progression.reset();
     this.enemies.spawnLevelEnemies();
@@ -435,6 +438,7 @@ export class GameSimulation {
     this.view.renderLevel(this.currentLevel);
     this.player.moveTo(tileToWorld(this.currentLevel.start), this.currentCollisionLayer());
     this.resetReticle();
+    this.view.updateFog(this.view.player.position, 0, true);
     this.enemies.spawnLevelEnemies();
     this.combat.prepareNextLevel();
   }

@@ -11,6 +11,7 @@ import {
   type VenomSpitterAsset,
 } from "./assetFactory";
 import { exitGateToWorld, tileToWorld, type LevelData } from "./level";
+import { FogOfWar } from "./fogOfWar";
 import { renderLevel as renderLevelToRoot } from "./levelRenderer";
 import { createSceneMaterials, type GameplayMaterials } from "./materials";
 import { createRenderContext, type GraphicsSettings } from "./renderer";
@@ -34,6 +35,7 @@ export type GameScene = {
   createPickupAsset: (kind: ResourceKind) => PickupAsset;
   createEnvironmentAsset: (kind: EnvironmentAssetKind) => EnvironmentAsset;
   createExitPortalAsset: () => import("./assetFactory").ExitPortalAsset;
+  updateFog: (playerPosition: THREE.Vector3, dt: number, instant?: boolean) => void;
   materials: GameplayMaterials;
   resize: () => void;
   applyGraphicsSettings: (settings: GraphicsSettings) => void;
@@ -48,6 +50,8 @@ export function createGameScene(app: HTMLDivElement): GameScene {
 
   const levelRoot = new THREE.Group();
   scene.add(levelRoot);
+  const fogRoot = new THREE.Group();
+  scene.add(fogRoot);
 
   const loader = new THREE.TextureLoader();
   const anisotropy = renderContext.renderer.capabilities.getMaxAnisotropy();
@@ -77,7 +81,11 @@ export function createGameScene(app: HTMLDivElement): GameScene {
 
   addLighting(scene, player);
 
+  let fogOfWar: FogOfWar | undefined;
+
   const renderLevel = (level: LevelData): void => {
+    fogOfWar?.dispose();
+    fogRoot.clear();
     renderLevelToRoot(levelRoot, level, materials.level);
     const exitPortal = assetFactory.createExitPortalAsset();
     const exitPosition = exitGateToWorld(level.end, level.exitDirection);
@@ -92,6 +100,7 @@ export function createGameScene(app: HTMLDivElement): GameScene {
       asset.root.rotation.y = object.rotation;
       levelRoot.add(asset.root);
     }
+    fogOfWar = new FogOfWar(fogRoot, level);
   };
 
   return {
@@ -112,6 +121,7 @@ export function createGameScene(app: HTMLDivElement): GameScene {
     createPickupAsset: assetFactory.createPickupAsset,
     createEnvironmentAsset: assetFactory.createEnvironmentAsset,
     createExitPortalAsset: assetFactory.createExitPortalAsset,
+    updateFog: (playerPosition, dt, instant = false) => fogOfWar?.update(playerPosition, dt, instant),
     materials: materials.gameplay,
     resize: renderContext.resize,
     applyGraphicsSettings: renderContext.applyGraphicsSettings,
