@@ -1,3 +1,4 @@
+import { createAudioSystem } from "./audio";
 import { Game } from "./game";
 import { createPerfRecorder, type PerfRecorder } from "./perf";
 import { seededRandom } from "./rng";
@@ -47,10 +48,16 @@ function startGame(app: HTMLDivElement): void {
   const seed = params.get("seed");
 
   const perf = createPerfRecorder(perfEnabled);
+  const audio = createAudioSystem();
   const ui = createUi(app);
   const world = createGameScene(app);
+  ui.onAudioSettingsChange((settings) => audio.applySettings(settings));
   ui.onGraphicsSettingsChange((settings) => world.applyGraphicsSettings(settings));
-  const game = new Game(world, ui, perf, { rng: seed ? seededRandom(seed) : Math.random, seed: seed ?? undefined });
+  const game = new Game(world, ui, perf, {
+    audio,
+    rng: seed ? seededRandom(seed) : Math.random,
+    seed: seed ?? undefined,
+  });
 
   game.bindEvents();
   window.__daemonPerf = perf;

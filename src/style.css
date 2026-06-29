@@ -584,6 +584,15 @@ canvas {
   text-transform: uppercase;
 }
 
+.setting-value {
+  display: block;
+  margin-top: 4px;
+  color: #f0f7f8;
+  font-size: 0.68rem;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
 .movement-options,
 .graphics-options {
   display: grid;
@@ -637,6 +646,15 @@ canvas {
   width: 18px;
   height: 18px;
   accent-color: #9bf0df;
+}
+
+.audio-slider {
+  width: 100%;
+  min-width: 0;
+  align-self: center;
+  pointer-events: auto;
+  accent-color: #9bf0df;
+  cursor: pointer;
 }
 
 .pause-panel dl {

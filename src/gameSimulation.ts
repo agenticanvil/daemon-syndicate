@@ -110,6 +110,9 @@ export type GameSimulationSnapshot = {
 export type GameStepResult = {
   primaryFired: boolean;
   novaFired: boolean;
+  dashUsed: boolean;
+  enemyHits: number;
+  projectileImpacts: number;
   kills: number;
   killedEnemies: Array<{ kind: EnemyKind; enemyLevel: number; xpReward: number }>;
   damageTaken: number;
@@ -266,6 +269,9 @@ export class GameSimulation {
     const result: GameStepResult = {
       primaryFired: false,
       novaFired: false,
+      dashUsed: false,
+      enemyHits: 0,
+      projectileImpacts: 0,
       kills: 0,
       killedEnemies: [],
       damageTaken: 0,
@@ -289,9 +295,9 @@ export class GameSimulation {
         result.novaFired = this.combat.fireNova();
       }
       if (command.dash) {
-        this.player.tryDash(command);
+        result.dashUsed = this.player.tryDash(command);
       }
-      this.combat.updateProjectiles(dt);
+      result.projectileImpacts += this.combat.updateProjectiles(dt);
       this.enemies.update(dt);
       this.processEvents(result);
       this.pickups.update(dt);
@@ -377,6 +383,7 @@ export class GameSimulation {
   private processEvent(event: GameEvent, result: GameStepResult): void {
     switch (event.type) {
       case "enemyDamaged":
+        result.enemyHits += 1;
         this.view.spawnDamageText(event.position, Math.round(event.amount).toString());
         break;
       case "enemyKilled":
