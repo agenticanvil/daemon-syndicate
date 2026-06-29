@@ -59,7 +59,7 @@ export class Game {
     this.ui.startButton.addEventListener("click", () => {
       this.unlockAudio();
       this.audio?.play("ui-click", { volume: 0.55 });
-      this.startNewRun();
+      this.startNewRun(this.ui.getStartMapLevel());
     });
     this.ui.resumeButton.addEventListener("click", () => this.setPaused(false));
   }
@@ -68,8 +68,8 @@ export class Game {
     this.animate();
   }
 
-  startNewRun(): void {
-    this.simulation.startNewRun();
+  startNewRun(mapLevel = 1): void {
+    this.simulation.startNewRun({ mapLevel });
     this.selectingUpgrade = false;
     this.ui.hideOverlay();
     this.ui.hideUpgradeSelection();

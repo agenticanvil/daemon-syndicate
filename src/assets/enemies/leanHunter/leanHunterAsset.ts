@@ -1,11 +1,11 @@
 import * as THREE from "three";
-import type { EnemyAssetSettings } from "../../assetSettings";
+import type { EnemyAssetSettings } from "../../../assetSettings";
 import {
   createRigidSkinnedAsset,
   type BoneDefinition,
   type RigidSkinnedPart,
   type Vector3Tuple,
-} from "../riggedAsset";
+} from "../../riggedAsset";
 import leanHunterSettings from "./leanHunter.settings.json";
 
 const LEAN_HUNTER_ATLAS_URL = "/assets/lean-hunter-atlas.png";
@@ -256,7 +256,6 @@ function createSurfaceMaterial(
 ): THREE.MeshStandardMaterial {
   const material = new THREE.MeshStandardMaterial({
     map: texture,
-    vertexColors: true,
     roughness: 0.58,
     metalness: 0.82,
     color: 0xffffff,

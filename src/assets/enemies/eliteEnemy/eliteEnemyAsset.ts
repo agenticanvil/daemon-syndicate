@@ -1,7 +1,7 @@
 import type * as THREE from "three";
 import type { EnemyAssetSettings } from "../../../assetSettings";
 import eliteEnemySettings from "./eliteEnemy.settings.json";
-import { loadLeanHunterRig, type LeanHunterRig } from "../leanHunterAsset";
+import { loadLeanHunterRig, type LeanHunterRig } from "../leanHunter/leanHunterAsset";
 
 const ELITE_HUNTER_ATLAS_URL = "/assets/elite-hunter-atlas.png";
 

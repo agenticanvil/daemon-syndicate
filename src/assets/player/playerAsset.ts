@@ -38,9 +38,9 @@ type PlayerMaterials = Record<PlayerMaterialId, THREE.Material> & {
 };
 
 const SURFACE_COLORS = {
-  armor: 0x7d878a,
-  softSuit: 0x4c5356,
-  darkMetal: 0x5e6669,
+  armor: 0xffffff,
+  softSuit: 0xffffff,
+  darkMetal: 0xffffff,
 } satisfies Record<string, THREE.ColorRepresentation>;
 
 export function loadPlayerRig(loader: THREE.TextureLoader, anisotropy: number): PlayerRig {
@@ -260,7 +260,6 @@ function createRimmedSurfaceMaterial(texture: THREE.Texture): THREE.MeshStandard
   const material = new THREE.MeshStandardMaterial({
     map: texture,
     color: 0xffffff,
-    vertexColors: true,
     roughness: 0.52,
     metalness: 0.62,
   });

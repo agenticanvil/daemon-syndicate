@@ -1,60 +1,60 @@
 import * as THREE from "three";
 import type { AssetSettings, EnemyAssetSettings, PickupAssetSettings, PlayerAssetSettings } from "./assetSettings";
+import { type BruteAsset } from "./assets/enemies/brute/bruteAsset";
+import { type EliteEnemyAsset } from "./assets/enemies/eliteEnemy/eliteEnemyAsset";
 import {
-  ELITE_ENEMY_SETTINGS,
-  createEliteEnemyAsset,
-  type EliteEnemyAsset,
-} from "./assets/enemies/eliteEnemy/eliteEnemyAsset";
-import {
-  LEAN_HUNTER_SETTINGS,
-  loadLeanHunterRig,
   type LeanHunterAnimationId,
   type LeanHunterAnimationState,
   type LeanHunterRig,
-} from "./assets/enemies/leanHunterAsset";
-import {
-  INDUSTRIAL_CRATE_SETTINGS,
-  createIndustrialCrateAsset,
-  type IndustrialCrateAsset,
-} from "./assets/environment/industrialCrate/industrialCrateAsset";
-import {
-  EXIT_PORTAL_SETTINGS,
-  createExitPortalAsset,
-  type ExitPortalAsset,
-} from "./assets/environment/exitPortal/exitPortalAsset";
-import {
-  AMMO_PICKUP_SETTINGS,
-  createAmmoPickupAsset,
-  type AmmoPickupAsset,
-} from "./assets/pickups/ammoPickup/ammoPickupAsset";
-import {
-  ENERGY_PICKUP_SETTINGS,
-  createEnergyPickupAsset,
-  type EnergyPickupAsset,
-} from "./assets/pickups/energyPickup/energyPickupAsset";
-import {
-  HEALTH_PICKUP_SETTINGS,
-  createHealthPickupAsset,
-  type HealthPickupAsset,
-} from "./assets/pickups/healthPickup/healthPickupAsset";
-import playerSettings from "./assets/player/player.settings.json";
-import { loadPlayerRig, type PlayerAnimationState } from "./playerAsset";
+} from "./assets/enemies/leanHunter/leanHunterAsset";
+import { type VenomSpitterAsset } from "./assets/enemies/venomSpitter/venomSpitterAsset";
+import { type IndustrialCrateAsset } from "./assets/environment/industrialCrate/industrialCrateAsset";
+import { type ExitPortalAsset } from "./assets/environment/exitPortal/exitPortalAsset";
+import { type AmmoPickupAsset } from "./assets/pickups/ammoPickup/ammoPickupAsset";
+import { type EnergyPickupAsset } from "./assets/pickups/energyPickup/energyPickupAsset";
+import { type HealthPickupAsset } from "./assets/pickups/healthPickup/healthPickupAsset";
+import { createAssetFactory, type AssetFactory } from "./assetFactory";
+import { createPlayerLocalAmbient } from "./playerLocalAmbient";
+import { type PlayerAnimationState, type PlayerRig } from "./playerAsset";
+import { createRenderer } from "./renderer";
+import { addGameplayLighting } from "./sceneLighting";
 import type { ResourceKind } from "./types";
 
-type AssetId =
-  | "player"
-  | "lean-hunter"
-  | "elite-enemy"
-  | "health-pickup"
-  | "ammo-pickup"
-  | "energy-pickup"
-  | "industrial-crate"
-  | "exit-portal";
+const ASSET_SETTINGS_BY_PATH = import.meta.glob("./assets/**/*.settings.json", {
+  eager: true,
+  import: "default",
+}) as Record<string, AssetSettings>;
+
+const EDITOR_ASSET_CREATORS = {
+  player: (factory: AssetFactory) => factory.createPlayerRig(),
+  "lean-hunter": (factory: AssetFactory) => factory.createLeanHunterRig(),
+  "elite-enemy": (factory: AssetFactory) => factory.createEliteEnemyAsset(),
+  "venom-spitter": (factory: AssetFactory) => factory.createVenomSpitterAsset(),
+  brute: (factory: AssetFactory) => factory.createBruteAsset(),
+  "health-pickup": (factory: AssetFactory) => factory.createPickupAsset("health"),
+  "ammo-pickup": (factory: AssetFactory) => factory.createPickupAsset("ammo"),
+  "energy-pickup": (factory: AssetFactory) => factory.createPickupAsset("energy"),
+  "industrial-crate": (factory: AssetFactory) => factory.createEnvironmentAsset("industrial-crate"),
+  "exit-portal": (factory: AssetFactory) => factory.createExitPortalAsset(),
+} satisfies Record<string, (factory: AssetFactory) => EditorAsset>;
+
+type AssetId = keyof typeof EDITOR_ASSET_CREATORS;
 type AngleId = "head-on" | "side" | "behind" | "isometric";
 type PlayerAnimationStateId = "idle" | "walk" | "fire" | "damaged" | "low-health";
 type EditorOnlyAnimationStateId = "base-pose";
 type AnimationStateId = EditorOnlyAnimationStateId | PlayerAnimationStateId | LeanHunterAnimationId;
 type RenderModeId = "shaded" | "wireframe" | "bones";
+type EditorAsset =
+  | PlayerRig
+  | LeanHunterRig
+  | EliteEnemyAsset
+  | VenomSpitterAsset
+  | BruteAsset
+  | HealthPickupAsset
+  | AmmoPickupAsset
+  | EnergyPickupAsset
+  | IndustrialCrateAsset
+  | ExitPortalAsset;
 
 type AssetEditorState = {
   asset: AssetId;
@@ -101,88 +101,26 @@ type AssetDefinition = {
   animations: Array<{ id: AnimationStateId; label: string }>;
 };
 
-const PLAYER_SETTINGS = playerSettings as PlayerAssetSettings;
-
-const ASSET_DEFINITIONS = {
-  player: {
-    label: "Player",
-    targetY: 1.05,
-    collision: PLAYER_SETTINGS.collision,
-    animations: [
-      { id: "base-pose", label: "Base Pose" },
-      { id: "idle", label: "Idle" },
-      { id: "walk", label: "Walk" },
-      { id: "fire", label: "Fire" },
-      { id: "damaged", label: "Damaged" },
-      { id: "low-health", label: "Low Health" },
-    ],
-  },
-  "lean-hunter": {
-    label: "Lean Hunter",
-    targetY: 0.42,
-    collision: LEAN_HUNTER_SETTINGS.collision,
-    animations: [
-      { id: "base-pose", label: "Base Pose" },
-      { id: "idle", label: "Idle" },
-      { id: "walk", label: "Walk" },
-      { id: "melee", label: "Melee" },
-      { id: "death", label: "Death" },
-    ],
-  },
-  "elite-enemy": {
-    label: "Elite Hunter",
-    targetY: 0.42,
-    collision: ELITE_ENEMY_SETTINGS.collision,
-    animations: [
-      { id: "base-pose", label: "Base Pose" },
-      { id: "idle", label: "Idle" },
-      { id: "walk", label: "Walk" },
-      { id: "melee", label: "Melee" },
-      { id: "death", label: "Death" },
-    ],
-  },
-  "health-pickup": {
-    label: "Health Pickup",
-    targetY: 0.45,
-    collision: HEALTH_PICKUP_SETTINGS.collision,
-    animations: [{ id: "idle", label: "Idle" }],
-  },
-  "ammo-pickup": {
-    label: "Ammo Pickup",
-    targetY: 0.45,
-    collision: AMMO_PICKUP_SETTINGS.collision,
-    animations: [{ id: "idle", label: "Idle" }],
-  },
-  "energy-pickup": {
-    label: "Energy Pickup",
-    targetY: 0.45,
-    collision: ENERGY_PICKUP_SETTINGS.collision,
-    animations: [{ id: "idle", label: "Idle" }],
-  },
-  "industrial-crate": {
-    label: "Industrial Crate",
-    targetY: 0.36,
-    collision: INDUSTRIAL_CRATE_SETTINGS.collision,
-    animations: [{ id: "idle", label: "Idle" }],
-  },
-  "exit-portal": {
-    label: "Exit Portal",
-    targetY: 1.2,
-    collision: EXIT_PORTAL_SETTINGS.collision,
-    animations: [{ id: "idle", label: "Idle" }],
-  },
-} satisfies Record<AssetId, AssetDefinition>;
-
-const ASSETS: Array<{ id: AssetId; label: string }> = [
-  { id: "player", label: ASSET_DEFINITIONS.player.label },
-  { id: "lean-hunter", label: ASSET_DEFINITIONS["lean-hunter"].label },
-  { id: "elite-enemy", label: ASSET_DEFINITIONS["elite-enemy"].label },
-  { id: "health-pickup", label: ASSET_DEFINITIONS["health-pickup"].label },
-  { id: "ammo-pickup", label: ASSET_DEFINITIONS["ammo-pickup"].label },
-  { id: "energy-pickup", label: ASSET_DEFINITIONS["energy-pickup"].label },
-  { id: "industrial-crate", label: ASSET_DEFINITIONS["industrial-crate"].label },
-  { id: "exit-portal", label: ASSET_DEFINITIONS["exit-portal"].label },
+const ASSET_DISPLAY_ORDER: AssetId[] = [
+  "player",
+  "lean-hunter",
+  "elite-enemy",
+  "venom-spitter",
+  "brute",
+  "health-pickup",
+  "ammo-pickup",
+  "energy-pickup",
+  "industrial-crate",
+  "exit-portal",
 ];
+const ASSET_SETTINGS = discoverAssetSettings();
+const ASSETS = ASSET_DISPLAY_ORDER.filter((id) => id in ASSET_SETTINGS).map((id) => ({
+  id,
+  label: labelFromAssetId(id),
+}));
+const ASSET_DEFINITIONS = Object.fromEntries(
+  ASSETS.map((asset) => [asset.id, createAssetDefinition(asset.id, ASSET_SETTINGS[asset.id])]),
+) as Record<AssetId, AssetDefinition>;
 const STANDARD_CAMERA_DISTANCE = 1;
 const CAMERA_VIEW_RADIUS = 5.2;
 const CAMERA_TRANSITION_SECONDS = 0.5;
@@ -198,16 +136,9 @@ const ASSET_SPEED_MAX = 8;
 const DROP_CHANCE_MIN = 0;
 const DROP_CHANCE_MAX = 1;
 const ENEMY_ATTACK_MAX = 999;
-const ASSET_SETTINGS_ENDPOINTS = {
-  player: "/__dev/asset-settings/player",
-  "lean-hunter": "/__dev/asset-settings/lean-hunter",
-  "elite-enemy": "/__dev/asset-settings/elite-enemy",
-  "health-pickup": "/__dev/asset-settings/health-pickup",
-  "ammo-pickup": "/__dev/asset-settings/ammo-pickup",
-  "energy-pickup": "/__dev/asset-settings/energy-pickup",
-  "industrial-crate": "/__dev/asset-settings/industrial-crate",
-  "exit-portal": "/__dev/asset-settings/exit-portal",
-} satisfies Record<AssetId, string>;
+const ASSET_SETTINGS_ENDPOINTS = Object.fromEntries(
+  ASSETS.map((asset) => [asset.id, `/__dev/asset-settings/${asset.id}`]),
+) as Record<AssetId, string>;
 
 const CAMERA_POSES: Record<AngleId, CameraPose> = {
   "head-on": { label: "Head On", position: [0, 1.65, -5.2] },
@@ -258,15 +189,7 @@ export function startAssetEditor(app: HTMLDivElement): void {
   const triangleCount = app.querySelector<HTMLElement>("#triangleCount")!;
   const gizmoHost = app.querySelector<HTMLDivElement>("#assetEditorGizmo")!;
 
-  const renderer = new THREE.WebGLRenderer({
-    antialias: true,
-    powerPreference: "high-performance",
-    preserveDrawingBuffer: true,
-  });
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-  renderer.shadowMap.enabled = true;
-  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-  renderer.outputColorSpace = THREE.SRGBColorSpace;
+  const renderer = createRenderer({ preserveDrawingBuffer: true, pixelRatio: 2 });
   canvasHost.append(renderer.domElement);
 
   const scene = new THREE.Scene();
@@ -277,29 +200,31 @@ export function startAssetEditor(app: HTMLDivElement): void {
   const target = new THREE.Vector3(0, ASSET_DEFINITIONS[state.asset].targetY, 0);
   const cameraGizmo = createCameraGizmo(gizmoHost, setCameraDirection);
   const loader = new THREE.TextureLoader();
-  const rigs = {
-    player: loadPlayerRig(loader, renderer.capabilities.getMaxAnisotropy()),
-    "lean-hunter": loadLeanHunterRig(loader, renderer.capabilities.getMaxAnisotropy()),
-    "elite-enemy": createEliteEnemyAsset(loader, renderer.capabilities.getMaxAnisotropy()),
-    "health-pickup": createHealthPickupAsset(),
-    "ammo-pickup": createAmmoPickupAsset(),
-    "energy-pickup": createEnergyPickupAsset(),
-    "industrial-crate": createIndustrialCrateAsset(loader, renderer.capabilities.getMaxAnisotropy()),
-    "exit-portal": createExitPortalAsset(loader, renderer.capabilities.getMaxAnisotropy()),
-  };
+  const assetFactory = createAssetFactory(loader, renderer.capabilities.getMaxAnisotropy());
+  const playerLocalAmbient = createPlayerLocalAmbient();
+  const rigs = Object.fromEntries(
+    ASSETS.map((asset) => [asset.id, EDITOR_ASSET_CREATORS[asset.id](assetFactory)]),
+  ) as Record<AssetId, EditorAsset>;
+  for (const asset of ASSETS) {
+    if (asset.id !== "player") playerLocalAmbient.applyToObject(rigs[asset.id].root);
+  }
+  playerLocalAmbient.update(new THREE.Vector3());
   scene.add(...ASSETS.map((asset) => rigs[asset.id].root));
-  const boneHelpers: Partial<Record<AssetId, THREE.SkeletonHelper>> = {
-    player: createBoneHelper(rigs.player.root, 0xffc857),
-    "lean-hunter": createBoneHelper(rigs["lean-hunter"].root, 0xff5a8a),
-    "elite-enemy": createBoneHelper(rigs["elite-enemy"].root, 0xff5a8a),
-  };
+  const boneHelpers = Object.fromEntries(
+    ASSETS.filter((asset) => hasSkeleton(rigs[asset.id])).map((asset) => [
+      asset.id,
+      createBoneHelper(rigs[asset.id].root, boneHelperColor(asset.id)),
+    ]),
+  ) as Partial<Record<AssetId, THREE.SkeletonHelper>>;
   scene.add(...Object.values(boneHelpers));
 
   const floor = createInspectionFloor();
   scene.add(floor);
   const collisionVolume = createCollisionVolume();
   scene.add(collisionVolume.root);
-  addInspectionLights(scene);
+  const lightAnchor = new THREE.Group();
+  scene.add(lightAnchor);
+  addGameplayLighting(scene, lightAnchor);
   addAxisMarkers(scene);
 
   const clock = new THREE.Clock();
@@ -312,15 +237,7 @@ export function startAssetEditor(app: HTMLDivElement): void {
   let customCameraDirection: THREE.Vector3 | null = null;
   let cameraTransition: CameraTransition | null = null;
 
-  function activeRig():
-    | typeof rigs.player
-    | LeanHunterRig
-    | EliteEnemyAsset
-    | HealthPickupAsset
-    | AmmoPickupAsset
-    | EnergyPickupAsset
-    | IndustrialCrateAsset
-    | ExitPortalAsset {
+  function activeRig(): EditorAsset {
     return rigs[state.asset];
   }
 
@@ -669,7 +586,7 @@ export function startAssetEditor(app: HTMLDivElement): void {
     if (state.animation === "fire" && state.playing) {
       firePulseTimer -= dt;
       if (firePulseTimer <= 0) {
-        rigs.player.triggerFire();
+        (rigs.player as PlayerRig).triggerFire();
         firePulseTimer = 0.72;
       }
     }
@@ -696,18 +613,18 @@ export function startAssetEditor(app: HTMLDivElement): void {
     const dt = state.playing ? rawDt * state.speed : 0;
     updateCamera(rawDt);
     if (state.asset === "player") {
+      const rig = rigs.player as PlayerRig;
       if (state.animation === "base-pose") {
-        rigs.player.applyBasePose();
+        rig.applyBasePose();
       } else {
-        rigs.player.update(playerAnimationState(dt), dt);
+        rig.update(playerAnimationState(dt), dt);
       }
-    } else if (state.asset === "lean-hunter" || state.asset === "elite-enemy") {
+    } else if (isEnemyAsset(state.asset)) {
+      const rig = rigs[state.asset] as LeanHunterRig | EliteEnemyAsset | VenomSpitterAsset | BruteAsset;
       if (state.animation === "base-pose") {
-        rigs["lean-hunter"].applyBasePose();
-        rigs["elite-enemy"].applyBasePose();
+        rig.applyBasePose();
       } else {
-        rigs["lean-hunter"].update(leanHunterAnimationState(), dt);
-        rigs["elite-enemy"].update(leanHunterAnimationState(), dt);
+        rig.update(leanHunterAnimationState(), dt);
       }
     }
     boneHelpers[state.asset]?.updateMatrixWorld(true);
@@ -743,7 +660,7 @@ export function startAssetEditor(app: HTMLDivElement): void {
   animationSelect.addEventListener("change", () => {
     state.animation = toAnimationStateId(state.asset, animationSelect.value);
     firePulseTimer = 0;
-    if (state.asset === "player" && state.animation === "fire") rigs.player.triggerFire();
+    if (state.asset === "player" && state.animation === "fire") (rigs.player as PlayerRig).triggerFire();
     applyStateToControls();
     syncUrl();
   });
@@ -840,7 +757,7 @@ export function startAssetEditor(app: HTMLDivElement): void {
   applyStateToControls();
   applyRenderMode();
   resize();
-  if (state.asset === "player" && state.animation === "fire") rigs.player.triggerFire();
+  if (state.asset === "player" && state.animation === "fire") (rigs.player as PlayerRig).triggerFire();
   animate();
 }
 
@@ -1027,25 +944,85 @@ function readStateFromUrl(): AssetEditorState {
 }
 
 function defaultAssetSettings(): Record<AssetId, AssetSettings> {
-  return {
-    player: cloneAssetSettings({
-      kind: "player",
-      collision: PLAYER_SETTINGS.collision,
-      health: PLAYER_SETTINGS.health,
-      movement: PLAYER_SETTINGS.movement,
-    }),
-    "lean-hunter": cloneAssetSettings(LEAN_HUNTER_SETTINGS),
-    "elite-enemy": cloneAssetSettings(ELITE_ENEMY_SETTINGS),
-    "health-pickup": cloneAssetSettings(HEALTH_PICKUP_SETTINGS),
-    "ammo-pickup": cloneAssetSettings(AMMO_PICKUP_SETTINGS),
-    "energy-pickup": cloneAssetSettings(ENERGY_PICKUP_SETTINGS),
-    "industrial-crate": cloneAssetSettings(INDUSTRIAL_CRATE_SETTINGS),
-    "exit-portal": cloneAssetSettings(EXIT_PORTAL_SETTINGS),
-  };
+  return Object.fromEntries(ASSETS.map((asset) => [asset.id, cloneAssetSettings(ASSET_SETTINGS[asset.id])])) as Record<
+    AssetId,
+    AssetSettings
+  >;
 }
 
 function cloneAssetSettings<T extends AssetSettings>(settings: T): T {
   return structuredClone(settings);
+}
+
+function discoverAssetSettings(): Record<AssetId, AssetSettings> {
+  const discovered = new Map<AssetId, AssetSettings>();
+  for (const [path, settings] of Object.entries(ASSET_SETTINGS_BY_PATH)) {
+    const id = assetIdFromSettingsPath(path);
+    if (!id || !isEditorAssetId(id)) continue;
+    discovered.set(id, settings);
+  }
+  return Object.fromEntries(discovered) as Record<AssetId, AssetSettings>;
+}
+
+function assetIdFromSettingsPath(path: string): string | null {
+  const match = path.match(/\/([^/]+)\/[^/]+\.settings\.json$/);
+  return match ? camelToKebab(match[1]) : null;
+}
+
+function camelToKebab(value: string): string {
+  return value.replace(/([a-z0-9])([A-Z])/g, "$1-$2").toLowerCase();
+}
+
+function labelFromAssetId(id: AssetId): string {
+  if (id === "elite-enemy") return "Elite Hunter";
+  return id
+    .split("-")
+    .map((word) => word[0].toUpperCase() + word.slice(1))
+    .join(" ");
+}
+
+function createAssetDefinition(id: AssetId, settings: AssetSettings): AssetDefinition {
+  return {
+    label: labelFromAssetId(id),
+    targetY: assetTargetY(id, settings),
+    collision: settings.collision,
+    animations: animationDefinitionsForAsset(id, settings),
+  };
+}
+
+function assetTargetY(id: AssetId, settings: AssetSettings): number {
+  if (id === "exit-portal") return 1.2;
+  if (settings.kind === "pickup") return Math.max(0.45, settings.collision.height * 0.5);
+  return settings.collision.height * 0.5;
+}
+
+function animationDefinitionsForAsset(
+  id: AssetId,
+  settings: AssetSettings,
+): Array<{ id: AnimationStateId; label: string }> {
+  if (id === "player") {
+    return [
+      { id: "base-pose", label: "Base Pose" },
+      { id: "idle", label: "Idle" },
+      { id: "walk", label: "Walk" },
+      { id: "fire", label: "Fire" },
+      { id: "damaged", label: "Damaged" },
+      { id: "low-health", label: "Low Health" },
+    ];
+  }
+
+  if (settings.kind === "enemy") {
+    const attackLabel = settings.attacks[0]?.kind === "ranged" ? "Attack" : "Melee";
+    return [
+      { id: "base-pose", label: "Base Pose" },
+      { id: "idle", label: "Idle" },
+      { id: "walk", label: "Walk" },
+      { id: "melee", label: attackLabel },
+      { id: "death", label: "Death" },
+    ];
+  }
+
+  return [{ id: "idle", label: "Idle" }];
 }
 
 function hasHealth(settings: AssetSettings): settings is EnemyAssetSettings | PlayerAssetSettings {
@@ -1134,6 +1111,26 @@ function setMaterialWireframe(material: THREE.Material | THREE.Material[], enabl
   if (!("wireframe" in material)) return;
   material.wireframe = enabled;
   material.needsUpdate = true;
+}
+
+function hasSkeleton(asset: EditorAsset): asset is EditorAsset & { skeleton: THREE.Skeleton } {
+  return "skeleton" in asset;
+}
+
+function isEnemyAsset(asset: AssetId): boolean {
+  return statefulAssetSettings(asset).kind === "enemy";
+}
+
+function statefulAssetSettings(asset: AssetId): AssetSettings {
+  return ASSET_SETTINGS[asset];
+}
+
+function boneHelperColor(asset: AssetId): THREE.ColorRepresentation {
+  if (asset === "player") return 0xffc857;
+  if (asset === "brute") return 0x86ff52;
+  if (asset === "venom-spitter") return 0x8dff38;
+  if (asset === "elite-enemy") return 0xff3434;
+  return 0xff5a8a;
 }
 
 function createBoneHelper(root: THREE.Object3D, color: THREE.ColorRepresentation): THREE.SkeletonHelper {
@@ -1562,24 +1559,6 @@ function updateCollisionVolume(
   volume.cylinder.position.y = height * 0.5;
 }
 
-function addInspectionLights(scene: THREE.Scene): void {
-  scene.add(new THREE.HemisphereLight(0xc9fbff, 0x0b1510, 1.85));
-
-  const keyLight = new THREE.DirectionalLight(0xf4fffb, 4.4);
-  keyLight.position.set(-3.4, 4.8, -4.2);
-  keyLight.castShadow = true;
-  keyLight.shadow.mapSize.set(1024, 1024);
-  scene.add(keyLight);
-
-  const frontFill = new THREE.PointLight(0xbdfcff, 18, 8);
-  frontFill.position.set(-1.8, 2.3, -3.2);
-  scene.add(frontFill);
-
-  const rimLight = new THREE.DirectionalLight(0x67ddff, 1.5);
-  rimLight.position.set(4, 3, 4);
-  scene.add(rimLight);
-}
-
 function addAxisMarkers(scene: THREE.Scene): void {
   const front = new THREE.Mesh(
     new THREE.ConeGeometry(0.08, 0.28, 3),
@@ -1598,20 +1577,15 @@ function addAxisMarkers(scene: THREE.Scene): void {
 }
 
 function toAssetId(value: string | null | undefined): AssetId {
-  return isAssetId(value) ? value : "player";
+  return isAssetId(value) ? value : ASSETS[0].id;
 }
 
 function isAssetId(value: string | null | undefined): value is AssetId {
-  return (
-    value === "player" ||
-    value === "lean-hunter" ||
-    value === "elite-enemy" ||
-    value === "health-pickup" ||
-    value === "ammo-pickup" ||
-    value === "energy-pickup" ||
-    value === "industrial-crate" ||
-    value === "exit-portal"
-  );
+  return isEditorAssetId(value) && ASSETS.some((asset) => asset.id === value);
+}
+
+function isEditorAssetId(value: string | null | undefined): value is AssetId {
+  return typeof value === "string" && value in EDITOR_ASSET_CREATORS;
 }
 
 function toAngleId(value: string | null | undefined): AngleId {

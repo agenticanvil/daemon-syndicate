@@ -7,7 +7,7 @@ const OUT_DIR = join(dirname(fileURLToPath(import.meta.url)), "..", "public", "a
 const TWO_PI = Math.PI * 2;
 
 const sounds = {
-  "primary-fire": { duration: 0.18, render: primaryFire },
+  "primary-fire": { duration: 0.24, render: primaryFire },
   "primary-impact": { duration: 0.22, render: primaryImpact },
   nova: { duration: 0.85, render: nova },
   dash: { duration: 0.24, render: dash },
@@ -46,9 +46,12 @@ function renderSound(duration, render) {
 }
 
 function primaryFire(t, p, noise) {
-  const sweep = chirp(t, 780, 190, 0.14);
-  const click = noise() * env(p, 0.005, 0.02, 1.0, 0.08);
-  return saturate((square(sweep) * 0.22 + Math.sin(sweep) * 0.32 + click * 0.18) * env(p, 0.002, 0.03, 0.8, 0.12), 1.7);
+  const punch = Math.sin(chirp(t, 190, 86, 0.12)) * env(p, 0.001, 0.035, 0.95, 0.16);
+  const beam = Math.sin(chirp(t, 430, 145, 0.22)) * env(p, 0.002, 0.075, 0.82, 0.26);
+  const growl = saw(chirp(t, 260, 118, 0.2)) * env(p, 0.002, 0.055, 0.58, 0.22);
+  const harmonic = Math.sin(chirp(t, 880, 310, 0.16)) * env(p, 0.001, 0.018, 0.36, 0.12);
+  const muzzle = bandNoise(noise, 4) * env(p, 0.001, 0.012, 0.65, 0.07);
+  return saturate(punch * 0.46 + beam * 0.38 + growl * 0.15 + harmonic * 0.1 + muzzle * 0.16, 1.85);
 }
 
 function primaryImpact(t, p, noise) {

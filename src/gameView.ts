@@ -223,7 +223,9 @@ export function createThreeGameplayView(world: GameScene): GameplayView {
     },
     createEnemyView(kind, position, facingYaw) {
       const rig =
-        kind === "elite"
+        kind === "brute"
+          ? world.createBruteAsset()
+          : kind === "elite"
           ? world.createEliteEnemyAsset()
           : kind === "venomSpitter"
             ? world.createVenomSpitterAsset()

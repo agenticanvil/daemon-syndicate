@@ -1,6 +1,6 @@
 import type * as THREE from "three";
 import type { EnemyAssetSettings } from "../../../assetSettings";
-import { loadLeanHunterRig, type LeanHunterRig } from "../leanHunterAsset";
+import { loadLeanHunterRig, type LeanHunterRig } from "../leanHunter/leanHunterAsset";
 import venomSpitterSettings from "./venomSpitter.settings.json";
 
 const VENOM_SPITTER_ATLAS_URL = "/assets/venom-spitter-atlas.png";

@@ -2,25 +2,18 @@ import { promises as fs } from "node:fs";
 import { resolve } from "node:path";
 import { defineConfig } from "vite";
 
-const assetSettingsFiles = {
-  player: "src/assets/player/player.settings.json",
-  "lean-hunter": "src/assets/enemies/leanHunter.settings.json",
-  "elite-enemy": "src/assets/enemies/eliteEnemy/eliteEnemy.settings.json",
-  "health-pickup": "src/assets/pickups/healthPickup/healthPickup.settings.json",
-  "ammo-pickup": "src/assets/pickups/ammoPickup/ammoPickup.settings.json",
-  "energy-pickup": "src/assets/pickups/energyPickup/energyPickup.settings.json",
-  "industrial-crate": "src/assets/environment/industrialCrate/industrialCrate.settings.json",
-  "exit-portal": "src/assets/environment/exitPortal/exitPortal.settings.json",
-};
-
 export default defineConfig({
   plugins: [
     {
       name: "daemon-syndicate-asset-settings",
       apply: "serve",
       configureServer(server) {
+        let assetSettingsFilesPromise;
         server.middlewares.use("/__dev/asset-settings", async (req, res) => {
           const assetId = decodeURIComponent((req.url ?? "").split("?")[0].replace(/^\/+|\/+$/g, ""));
+          const assetSettingsFiles = await (
+            assetSettingsFilesPromise ?? (assetSettingsFilesPromise = discoverAssetSettingsFiles(server.config.root))
+          );
           const settingsFile = assetSettingsFiles[assetId];
 
           if (!settingsFile) {
@@ -47,6 +40,33 @@ export default defineConfig({
   ],
 });
 
+async function discoverAssetSettingsFiles(root) {
+  const assetRoot = resolve(root, "src/assets");
+  const files = {};
+  await visitAssetSettingsFolders(assetRoot, root, files);
+  return files;
+}
+
+async function visitAssetSettingsFolders(directory, root, files) {
+  const entries = await fs.readdir(directory, { withFileTypes: true });
+  for (const entry of entries) {
+    if (entry.name.startsWith(".")) continue;
+    const fullPath = resolve(directory, entry.name);
+    if (entry.isDirectory()) {
+      await visitAssetSettingsFolders(fullPath, root, files);
+      continue;
+    }
+    if (!entry.name.endsWith(".settings.json")) continue;
+    const folder = directory.split(/[/\\]/).at(-1);
+    const assetId = camelToKebab(folder);
+    files[assetId] = fullPath.slice(resolve(root).length + 1);
+  }
+}
+
+function camelToKebab(value) {
+  return value.replace(/([a-z0-9])([A-Z])/g, "$1-$2").toLowerCase();
+}
+
 function normalizeAssetSettings(value) {
   const kind = value?.kind;
   if (kind === "enemy") return normalizeEnemySettings(value);
@@ -60,7 +80,7 @@ function normalizeEnemySettings(value) {
   const collision = normalizeCollisionSettings(value);
   const health = normalizeEnemyHealth(value?.health);
   const speed = Number(value?.movement?.speed);
-  const waveSpeedGrowth = Number(value?.movement?.waveSpeedGrowth);
+  const levelSpeedGrowth = Number(value?.movement?.levelSpeedGrowth);
   const spawnWeight = normalizeSpawnWeight(value?.spawnWeight);
   const attacks = normalizeEnemyAttacks(value?.attacks);
   const dropTable = normalizeDropTable(value?.dropTable);
@@ -69,8 +89,8 @@ function normalizeEnemySettings(value) {
     throw new Error("movement.speed must be between 0 and 8");
   }
 
-  if (!Number.isFinite(waveSpeedGrowth) || waveSpeedGrowth < 0 || waveSpeedGrowth > 2) {
-    throw new Error("movement.waveSpeedGrowth must be between 0 and 2");
+  if (!Number.isFinite(levelSpeedGrowth) || levelSpeedGrowth < 0 || levelSpeedGrowth > 2) {
+    throw new Error("movement.levelSpeedGrowth must be between 0 and 2");
   }
 
   return {
@@ -79,7 +99,7 @@ function normalizeEnemySettings(value) {
     health,
     movement: {
       speed: round(speed, 2),
-      waveSpeedGrowth: round(waveSpeedGrowth, 3),
+      levelSpeedGrowth: round(levelSpeedGrowth, 3),
     },
     spawnWeight,
     attacks,
@@ -164,21 +184,21 @@ function normalizeHealth(value) {
 
 function normalizeEnemyHealth(value) {
   const base = normalizeHealth(value?.base);
-  const waveGrowth = Number(value?.waveGrowth);
+  const levelGrowth = Number(value?.levelGrowth);
 
-  if (!Number.isFinite(waveGrowth) || waveGrowth < 0 || waveGrowth > 100) {
-    throw new Error("health.waveGrowth must be between 0 and 100");
+  if (!Number.isFinite(levelGrowth) || levelGrowth < 0 || levelGrowth > 100) {
+    throw new Error("health.levelGrowth must be between 0 and 100");
   }
 
   return {
     base,
-    waveGrowth: round(waveGrowth, 2),
+    levelGrowth: round(levelGrowth, 2),
   };
 }
 
 function normalizeSpawnWeight(value) {
   const base = Number(value?.base);
-  const waveGrowth = Number(value?.waveGrowth);
+  const levelGrowth = Number(value?.levelGrowth);
   const min = value?.min === undefined ? undefined : Number(value.min);
   const max = value?.max === undefined ? undefined : Number(value.max);
 
@@ -186,8 +206,8 @@ function normalizeSpawnWeight(value) {
     throw new Error("spawnWeight.base must be between 0 and 10");
   }
 
-  if (!Number.isFinite(waveGrowth) || waveGrowth < -10 || waveGrowth > 10) {
-    throw new Error("spawnWeight.waveGrowth must be between -10 and 10");
+  if (!Number.isFinite(levelGrowth) || levelGrowth < -10 || levelGrowth > 10) {
+    throw new Error("spawnWeight.levelGrowth must be between -10 and 10");
   }
 
   if (min !== undefined && (!Number.isFinite(min) || min < 0 || min > 10)) {
@@ -204,7 +224,7 @@ function normalizeSpawnWeight(value) {
 
   return {
     base: round(base, 3),
-    waveGrowth: round(waveGrowth, 3),
+    levelGrowth: round(levelGrowth, 3),
     ...(min === undefined ? {} : { min: round(min, 3) }),
     ...(max === undefined ? {} : { max: round(max, 3) }),
   };

@@ -32,6 +32,7 @@ export type Ui = {
   hideOverlay: () => void;
   setHudVisible: (visible: boolean) => void;
   setPaused: (paused: boolean) => void;
+  getStartMapLevel: () => number;
   getMovementMode: () => MovementControlMode;
   setFpsVisible: (visible: boolean) => void;
   updateFps: (fps: number) => void;
@@ -48,7 +49,18 @@ export function createUi(app: HTMLDivElement): Ui {
       <div class="start">
         <h1>Daemon Syndicate</h1>
         <p>Clear the corporate black-site. Manage health, ammunition, and energy while escalating incursions close in.</p>
-        <button id="start">Deploy</button>
+        <div class="start-actions">
+          <label class="start-level">
+            <span>Start Map</span>
+            <select id="startMapLevel">
+              ${Array.from({ length: 10 }, (_, index) => {
+                const level = index + 1;
+                return `<option value="${level}">${level}</option>`;
+              }).join("")}
+            </select>
+          </label>
+          <button id="start">Deploy</button>
+        </div>
       </div>
     </div>
     <div class="hud hidden">
@@ -190,6 +202,7 @@ export function createUi(app: HTMLDivElement): Ui {
   const upgradeOptions = document.querySelector<HTMLDivElement>("#upgradeOptions")!;
   const pausePanel = document.querySelector<HTMLDivElement>(".pause-panel")!;
   const startButton = document.querySelector<HTMLButtonElement>("#start")!;
+  const startMapLevel = document.querySelector<HTMLSelectElement>("#startMapLevel")!;
   const resumeButton = document.querySelector<HTMLButtonElement>("#resume")!;
   const settingsButton = document.querySelector<HTMLButtonElement>("#settingsButton")!;
   const helpButton = document.querySelector<HTMLButtonElement>("#helpButton")!;
@@ -345,6 +358,10 @@ export function createUi(app: HTMLDivElement): Ui {
     setPaused(paused: boolean) {
       if (paused) showPauseView("main");
       pauseMenu.classList.toggle("hidden", !paused);
+    },
+    getStartMapLevel() {
+      const mapLevel = Number(startMapLevel.value);
+      return Number.isFinite(mapLevel) ? Math.max(1, Math.floor(mapLevel)) : 1;
     },
     getMovementMode() {
       return movementMode;

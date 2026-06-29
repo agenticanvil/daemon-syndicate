@@ -1,12 +1,16 @@
 import * as THREE from "three";
 import { describe, expect, it, vi } from "vitest";
+import { ENEMY_BALANCE } from "./balance";
+import { distance2D } from "./collision";
+import { TILE_SIZE } from "./constants";
 import { EventQueue } from "./eventQueue";
 import { EnemySystem } from "./enemySystem";
 import { createHeadlessGameplayView } from "./gameView";
 import { key, tileToWorld, type LevelData, type TileCoord } from "./level";
+import { seededRandom } from "./rng";
 import type { PlayerResources } from "./types";
 
-function levelWithWalkable(tiles: TileCoord[], id = 2): LevelData {
+function levelWithWalkable(tiles: TileCoord[], id = 2, spawnPoints: TileCoord[] = []): LevelData {
   return {
     id,
     width: 12,
@@ -17,8 +21,32 @@ function levelWithWalkable(tiles: TileCoord[], id = 2): LevelData {
     walkable: new Set(tiles.map(key)),
     blocked: new Set(),
     environmentalObjects: [],
-    spawnPoints: [],
+    spawnPoints,
   };
+}
+
+function squareTiles(size: number): TileCoord[] {
+  return Array.from({ length: size }, (_, y) => y).flatMap((y) =>
+    Array.from({ length: size }, (_, x) => ({ x, y })),
+  );
+}
+
+function createEnemySystem(
+  level: LevelData,
+  view = createHeadlessGameplayView(),
+  rng = seededRandom("enemy-system-test"),
+): EnemySystem {
+  const resources: PlayerResources = { health: 100, ammo: 10, energy: 10 };
+  return new EnemySystem(
+    view,
+    new EventQueue(),
+    { position: view.player.position, radius: 0.55, collisionLayer: level.id },
+    resources,
+    () => level,
+    () => level.id,
+    () => true,
+    rng,
+  );
 }
 
 describe("EnemySystem ranged attacks", () => {
@@ -59,5 +87,45 @@ describe("EnemySystem ranged attacks", () => {
 
     expect(resources.health).toBeLessThan(100);
     expect(view.spawnProjectileImpact).toHaveBeenCalled();
+  });
+});
+
+describe("EnemySystem spawning and activation", () => {
+  it("spreads level spawns across the available map", () => {
+    const tiles = squareTiles(45);
+    const level = levelWithWalkable(tiles, 1, tiles);
+    const view = createHeadlessGameplayView();
+    view.player.position.copy(tileToWorld({ x: 22, y: 22 }));
+    const system = createEnemySystem(level, view, seededRandom("spread-spawn-test"));
+
+    system.spawnLevelEnemies();
+
+    const positions = system.all.map((enemy) => enemy.position);
+    const xs = positions.map((position) => position.x);
+    const zs = positions.map((position) => position.z);
+    const nearestNeighborDistances = positions.map((position, index) =>
+      Math.min(...positions.filter((_, otherIndex) => otherIndex !== index).map((other) => distance2D(position, other))),
+    );
+
+    expect(positions.length).toBeGreaterThan(8);
+    expect(Math.max(...xs) - Math.min(...xs)).toBeGreaterThan(TILE_SIZE * 20);
+    expect(Math.max(...zs) - Math.min(...zs)).toBeGreaterThan(TILE_SIZE * 20);
+    expect(Math.min(...nearestNeighborDistances)).toBeGreaterThan(TILE_SIZE * 3);
+  });
+
+  it("keeps enemies idle until the player is near the activation distance", () => {
+    const level = levelWithWalkable(squareTiles(45));
+    const view = createHeadlessGameplayView();
+    view.player.position.copy(tileToWorld({ x: 22, y: 22 }));
+    const system = createEnemySystem(level, view, () => 0.5);
+    const farSpawn = view.player.position.clone().add(new THREE.Vector3(ENEMY_BALANCE.activationDistance + TILE_SIZE, 0, 0));
+
+    system.spawnEnemyAt("leanHunter", farSpawn);
+    const before = system.all[0].position.clone();
+
+    system.update(1);
+
+    expect(distance2D(system.all[0].position, before)).toBeCloseTo(0);
+    expect(system.all[0].path).toBeUndefined();
   });
 });
