@@ -1,6 +1,6 @@
 import type { ResourceKind } from "./types";
 
-export type CollisionSettings = {
+type CollisionSettings = {
   radius: number;
   height: number;
 };
@@ -20,7 +20,7 @@ export type EnemyAttackDefinition = {
   windup?: number;
 };
 
-export type EnemyHealthSettings = {
+type EnemyHealthSettings = {
   base: number;
   levelGrowth: number;
 };

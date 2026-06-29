@@ -3,12 +3,26 @@ import { TILE_SIZE } from "./constants";
 import { overlaps2D, type CollisionBody2D, type CollisionLayer } from "./collision";
 import type { GameplayView, ProjectileViewHandle } from "./gameView";
 import { key, worldToTile, type LevelData } from "./level";
-import type { Enemy, PlayerResources, Projectile, ProjectileDraft } from "./types";
+import type { Enemy, PlayerResources, Projectile, ProjectileDraft, VectorSnapshot } from "./types";
 import type { PlayerDerivedStats } from "./upgrades";
 import { ABILITY_DEFINITIONS, type AbilityId } from "./weaponDefinitions";
 
 export type ProjectileWallImpact = {
   position: THREE.Vector3;
+};
+
+export type CombatSystemSnapshot = {
+  abilityTimers: Record<AbilityId, number>;
+  projectiles: Array<{
+    id: number;
+    position: VectorSnapshot;
+    velocity: VectorSnapshot;
+    collisionLayer: CollisionLayer;
+    life: number;
+    damage: number;
+    radius: number;
+    pierceRemaining?: number;
+  }>;
 };
 
 export class CombatSystem {
@@ -120,7 +134,7 @@ export class CombatSystem {
     }
   }
 
-  snapshot(): object {
+  snapshot(): CombatSystemSnapshot {
     return {
       abilityTimers: { ...this.abilityTimers },
       projectiles: this.projectiles.map((projectile) => ({
@@ -188,7 +202,7 @@ export class CombatSystem {
   }
 }
 
-function vectorSnapshot(vector: THREE.Vector3): { x: number; y: number; z: number } {
+function vectorSnapshot(vector: THREE.Vector3): VectorSnapshot {
   return { x: vector.x, y: vector.y, z: vector.z };
 }
 

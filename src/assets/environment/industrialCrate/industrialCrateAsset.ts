@@ -4,7 +4,7 @@ import industrialCrateSettings from "./industrialCrate.settings.json";
 
 const INDUSTRIAL_CRATE_ATLAS_URL = "/assets/industrial-crate-atlas.png";
 
-export const INDUSTRIAL_CRATE_SETTINGS = industrialCrateSettings as EnvironmentAssetSettings;
+const INDUSTRIAL_CRATE_SETTINGS = industrialCrateSettings as EnvironmentAssetSettings;
 
 export type EnvironmentAssetKind = "industrial-crate";
 

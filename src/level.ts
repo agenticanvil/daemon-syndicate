@@ -10,7 +10,7 @@ export type TileCoord = {
 
 export type ExitDirection = "north" | "east" | "south" | "west";
 
-export type EnvironmentalObject = {
+type EnvironmentalObject = {
   kind: EnvironmentAssetKind;
   tile: TileCoord;
   rotation: number;

@@ -1,7 +1,7 @@
 import * as THREE from "three";
 import type { GameAudio, SoundId } from "./audio";
 import { createThreeGameplayView, type GameplayView } from "./gameView";
-import { GameSimulation, type DebugSpawnPosition, type GameStepResult } from "./gameSimulation";
+import { GameSimulation, type DebugSpawnPosition, type GameSimulationSnapshot, type GameStepResult } from "./gameSimulation";
 import { InputState } from "./inputState";
 import { movementInputFor } from "./movement";
 import type { PerfRecorder } from "./perf";
@@ -79,7 +79,7 @@ export class Game {
     this.audio?.play("level-transition", { volume: 0.62 });
   }
 
-  snapshot(): object {
+  snapshot(): GameSimulationSnapshot {
     return this.simulation.snapshot();
   }
 

@@ -17,7 +17,7 @@ export type UpgradeId =
 
 export type UpgradeRanks = Record<UpgradeId, number>;
 
-export type UpgradeDefinition = {
+type UpgradeDefinition = {
   id: UpgradeId;
   label: string;
   description: string;
@@ -46,7 +46,7 @@ export type PlayerDerivedStats = {
   ammoRefundChance: number;
 };
 
-export const UPGRADE_DEFINITIONS: Record<UpgradeId, UpgradeDefinition> = {
+const UPGRADE_DEFINITIONS: Record<UpgradeId, UpgradeDefinition> = {
   maxHealth: {
     id: "maxHealth",
     label: "Max Health",

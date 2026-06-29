@@ -7,13 +7,30 @@ import type { LevelData } from "./level";
 import { moveOnWalkableLevel } from "./movement";
 import type { PlayerCommand } from "./playerCommand";
 import { hasStatusEffect, setStatusEffect, tickStatusEffects, type StatusEffect } from "./statusEffects";
-import type { PlayerResources, ResourceKind } from "./types";
+import type { PlayerResources, ResourceKind, VectorSnapshot } from "./types";
 import type { PlayerDerivedStats } from "./upgrades";
 
 const PLAYER_MODEL_FORWARD_OFFSET = Math.PI;
 const PLAYER_BASE_COLOR = 0x9bf0df;
 const PLAYER_FLASH_COLOR = 0xffffff;
 const PLAYER_LOW_HEALTH_COLOR = 0xff7474;
+
+export type PlayerDamageResult = {
+  applied: boolean;
+  gameOver: boolean;
+};
+
+export type PlayerSystemSnapshot = {
+  position: VectorSnapshot;
+  rotationY: number;
+  collisionLayer: CollisionLayer;
+  resources: PlayerResources;
+  maxResources: PlayerResources;
+  statusEffects: Array<{ kind: StatusEffect["kind"]; remaining: number }>;
+  moving: boolean;
+  dashTimer: number;
+  emergencyShieldReady: boolean;
+};
 
 export class PlayerSystem {
   readonly resources: PlayerResources = { ...PLAYER_MAX };
@@ -35,10 +52,6 @@ export class PlayerSystem {
       radius: PLAYER_BALANCE.radius,
       collisionLayer: 0,
     };
-  }
-
-  get isMoving(): boolean {
-    return this.moving;
   }
 
   get maxResources(): PlayerResources {
@@ -66,10 +79,6 @@ export class PlayerSystem {
     this.view.player.position.copy(position);
     this.collisionBody.collisionLayer = collisionLayer;
     this.moving = false;
-  }
-
-  setCollisionLayer(collisionLayer: CollisionLayer): void {
-    this.collisionBody.collisionLayer = collisionLayer;
   }
 
   updateTimers(dt: number): void {
@@ -114,7 +123,12 @@ export class PlayerSystem {
     );
   }
 
-  damage(): boolean {
+  takeDamage(amount: number): PlayerDamageResult {
+    if (amount <= 0 || this.hasStatus("invulnerable")) {
+      return { applied: false, gameOver: false };
+    }
+
+    this.resources.health = Math.max(0, this.resources.health - amount);
     const stats = this.getStats();
     if (
       stats.emergencyShieldUnlocked &&
@@ -126,14 +140,14 @@ export class PlayerSystem {
       this.setStatus("shield", 1.2);
       this.setStatus("invulnerable", 1.2);
       this.view.player.setBodyColor(PLAYER_FLASH_COLOR);
-      return false;
+      return { applied: true, gameOver: false };
     }
 
     this.setStatus("invulnerable", PLAYER_BALANCE.invulnerabilityDuration);
     this.view.player.setBodyColor(
       this.resources.health <= PLAYER_BALANCE.lowHealthThreshold ? PLAYER_LOW_HEALTH_COLOR : PLAYER_FLASH_COLOR,
     );
-    return this.resources.health <= 0;
+    return { applied: true, gameOver: this.resources.health <= 0 };
   }
 
   tryDash(command: PlayerCommand): boolean {
@@ -172,7 +186,7 @@ export class PlayerSystem {
     return hasStatusEffect(this.statusEffects, kind);
   }
 
-  snapshot(): object {
+  snapshot(): PlayerSystemSnapshot {
     return {
       position: vectorSnapshot(this.view.player.position),
       rotationY: this.view.player.rotation.y,
@@ -195,6 +209,6 @@ export class PlayerSystem {
   }
 }
 
-function vectorSnapshot(vector: THREE.Vector3): { x: number; y: number; z: number } {
+function vectorSnapshot(vector: THREE.Vector3): VectorSnapshot {
   return { x: vector.x, y: vector.y, z: vector.z };
 }

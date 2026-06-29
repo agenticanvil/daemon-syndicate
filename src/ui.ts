@@ -5,7 +5,7 @@ import type { UpgradeId, UpgradeOption } from "./upgrades";
 
 export type MovementControlMode = "isometric" | "screen" | "mouse";
 
-export type HudState = {
+type HudState = {
   resources: PlayerResources;
   maxResources: PlayerResources;
   kills: number;
@@ -27,7 +27,6 @@ export type Ui = {
   resumeButton: HTMLButtonElement;
   overlay: HTMLDivElement;
   pauseMenu: HTMLDivElement;
-  showStart: () => void;
   showGameOver: (kills: number) => void;
   hideOverlay: () => void;
   setHudVisible: (visible: boolean) => void;
@@ -333,14 +332,6 @@ export function createUi(app: HTMLDivElement): Ui {
     resumeButton,
     overlay,
     pauseMenu,
-    showStart() {
-      overlay.classList.remove("hidden");
-      hud.classList.add("hidden");
-      overlay.querySelector("h1")!.textContent = "Daemon Syndicate";
-      overlay.querySelector("p")!.textContent =
-        "Clear the corporate black-site. Manage health, ammunition, and energy while escalating incursions close in.";
-      startButton.textContent = "Deploy";
-    },
     showGameOver(kills: number) {
       overlay.classList.remove("hidden");
       hud.classList.add("hidden");

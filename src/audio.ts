@@ -1,4 +1,4 @@
-export const SOUND_URLS = {
+const SOUND_URLS = {
   "primary-fire": "/assets/sfx/primary-fire.wav",
   "primary-impact": "/assets/sfx/primary-impact.wav",
   nova: "/assets/sfx/nova.wav",
@@ -23,7 +23,7 @@ export type AudioSettings = {
   sfxVolume: number;
 };
 
-export type PlaySoundOptions = {
+type PlaySoundOptions = {
   volume?: number;
   playbackRate?: number;
   pan?: number;

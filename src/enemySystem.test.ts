@@ -8,7 +8,6 @@ import { EnemySystem } from "./enemySystem";
 import { createHeadlessGameplayView } from "./gameView";
 import { key, tileToWorld, type LevelData, type TileCoord } from "./level";
 import { seededRandom } from "./rng";
-import type { PlayerResources } from "./types";
 
 function levelWithWalkable(tiles: TileCoord[], id = 2, spawnPoints: TileCoord[] = []): LevelData {
   return {
@@ -36,12 +35,10 @@ function createEnemySystem(
   view = createHeadlessGameplayView(),
   rng = seededRandom("enemy-system-test"),
 ): EnemySystem {
-  const resources: PlayerResources = { health: 100, ammo: 10, energy: 10 };
   return new EnemySystem(
     view,
     new EventQueue(),
     { position: view.player.position, radius: 0.55, collisionLayer: level.id },
-    resources,
     () => level,
     () => level.id,
     () => true,
@@ -53,7 +50,6 @@ describe("EnemySystem ranged attacks", () => {
   it("fires a windup projectile that can damage the player", () => {
     const view = createHeadlessGameplayView();
     const events = new EventQueue();
-    const resources: PlayerResources = { health: 100, ammo: 10, energy: 10 };
     const level = levelWithWalkable(
       Array.from({ length: 12 }, (_, y) => y).flatMap((y) =>
         Array.from({ length: 12 }, (_, x) => ({ x, y })),
@@ -67,7 +63,6 @@ describe("EnemySystem ranged attacks", () => {
       view,
       events,
       { position: view.player.position, radius: 0.55, collisionLayer: 2 },
-      resources,
       () => level,
       () => 2,
       () => true,
@@ -81,11 +76,13 @@ describe("EnemySystem ranged attacks", () => {
     system.update(0.3);
     expect(system.projectileCount).toBe(1);
 
-    for (let i = 0; i < 50 && resources.health === 100; i += 1) {
+    let damageEvent = events.drain().find((event) => event.type === "playerDamaged");
+    for (let i = 0; i < 50 && !damageEvent; i += 1) {
       system.update(1 / 60);
+      damageEvent = events.drain().find((event) => event.type === "playerDamaged");
     }
 
-    expect(resources.health).toBeLessThan(100);
+    expect(damageEvent).toMatchObject({ type: "playerDamaged" });
     expect(view.spawnProjectileImpact).toHaveBeenCalled();
   });
 });

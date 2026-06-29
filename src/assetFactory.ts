@@ -46,4 +46,4 @@ export function createAssetFactory(loader: THREE.TextureLoader, anisotropy: numb
   };
 }
 
-export type { BruteAsset, EliteEnemyAsset, EnvironmentAssetKind, ExitPortalAsset, LeanHunterRig, PlayerRig, VenomSpitterAsset };
+export type { BruteAsset, EliteEnemyAsset, EnvironmentAssetKind, LeanHunterRig, PlayerRig, VenomSpitterAsset };

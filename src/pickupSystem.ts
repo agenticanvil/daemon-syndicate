@@ -8,7 +8,17 @@ import { overlaps2D, type CollisionBody2D, type CollisionLayer } from "./collisi
 import type { EventQueue } from "./eventQueue";
 import type { GameplayView, PickupViewHandle } from "./gameView";
 import type { Rng } from "./rng";
-import type { Pickup, PickupDraft, ResourceKind } from "./types";
+import type { Pickup, PickupDraft, ResourceKind, VectorSnapshot } from "./types";
+
+export type PickupSystemSnapshot = Array<{
+  id: number;
+  position: VectorSnapshot;
+  kind: ResourceKind;
+  collisionLayer: CollisionLayer;
+  amount: number;
+  radius: number;
+  life: number;
+}>;
 
 export class PickupSystem {
   private readonly pickups: Pickup[] = [];
@@ -74,7 +84,7 @@ export class PickupSystem {
     this.pickups.length = 0;
   }
 
-  snapshot(): object {
+  snapshot(): PickupSystemSnapshot {
     return this.pickups.map((pickup) => ({
       id: pickup.id,
       position: vectorSnapshot(pickup.position),
@@ -128,6 +138,6 @@ function chooseDropEntry(dropTable: DropTable, rng: Rng): { kind: ResourceKind; 
   return fallback ? { kind: fallback.kind, amount: fallback.amount } : null;
 }
 
-function vectorSnapshot(vector: THREE.Vector3): { x: number; y: number; z: number } {
+function vectorSnapshot(vector: THREE.Vector3): VectorSnapshot {
   return { x: vector.x, y: vector.y, z: vector.z };
 }

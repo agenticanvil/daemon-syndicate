@@ -18,11 +18,7 @@ export function disposeMesh(mesh: THREE.Mesh): void {
   disposeMeshMaterial(mesh);
 }
 
-export function disposeMeshGeometry(mesh: THREE.Mesh): void {
-  mesh.geometry.dispose();
-}
-
-export function disposeMeshMaterial(mesh: THREE.Mesh): void {
+function disposeMeshMaterial(mesh: THREE.Mesh): void {
   if (Array.isArray(mesh.material)) {
     mesh.material.forEach(disposeMaterial);
   } else {
@@ -30,7 +26,7 @@ export function disposeMeshMaterial(mesh: THREE.Mesh): void {
   }
 }
 
-export function disposeMaterial(material: THREE.Material): void {
+function disposeMaterial(material: THREE.Material): void {
   const textures = new Set<THREE.Texture>();
   for (const value of Object.values(material)) {
     if (value instanceof THREE.Texture) {

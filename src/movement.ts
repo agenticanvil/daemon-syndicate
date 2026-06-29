@@ -82,26 +82,6 @@ export function moveOnWalkableLevel(
   return moved;
 }
 
-export function canMoveOnWalkableLevel(
-  level: LevelData,
-  position: THREE.Vector3,
-  direction: THREE.Vector3,
-  distance: number,
-): boolean {
-  if (direction.lengthSq() <= MOVEMENT_EPSILON) return false;
-
-  const full = position.clone().addScaledVector(direction, distance);
-  if (isWalkable(level, full)) return true;
-
-  const xOnly = position.clone();
-  xOnly.x += direction.x * distance;
-  if (isWalkable(level, xOnly)) return true;
-
-  const zOnly = position.clone();
-  zOnly.z += direction.z * distance;
-  return isWalkable(level, zOnly);
-}
-
 export function canMoveDirectlyOnWalkableLevel(
   level: LevelData,
   position: THREE.Vector3,

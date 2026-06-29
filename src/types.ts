@@ -13,6 +13,8 @@ export type PlayerResources = {
   energy: number;
 };
 
+export type VectorSnapshot = { x: number; y: number; z: number };
+
 export type Enemy = {
   id: number;
   kind: EnemyKind;
@@ -36,14 +38,6 @@ export type Enemy = {
 };
 
 export type EnemyDraft = Omit<Enemy, "id">;
-
-export type EnemyView = {
-  id: number;
-  root: THREE.Object3D;
-  height: number;
-  updateRig?: (animation: EnemyAnimation, dt: number) => void;
-  disposeMaterials: boolean;
-};
 
 export type Projectile = {
   id: number;
@@ -71,11 +65,6 @@ export type EnemyProjectile = {
 
 export type EnemyProjectileDraft = Omit<EnemyProjectile, "id">;
 
-export type ProjectileView = {
-  id: number;
-  mesh: THREE.Mesh;
-};
-
 export type Pickup = {
   id: number;
   position: THREE.Vector3;
@@ -87,14 +76,3 @@ export type Pickup = {
 };
 
 export type PickupDraft = Omit<Pickup, "id">;
-
-export type PickupView = {
-  id: number;
-  mesh: THREE.Mesh;
-};
-
-export type DamageText = {
-  el: HTMLDivElement;
-  world: THREE.Vector3;
-  life: number;
-};

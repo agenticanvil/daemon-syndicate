@@ -23,9 +23,9 @@ const BONE_NAMES = [
   "tail-tip",
 ] as const;
 
-export type BruteAnimationId = "idle" | "walk" | "melee" | "death";
-export type BruteAnimationState = { animation: BruteAnimationId };
-export type BruteBoneName = (typeof BONE_NAMES)[number];
+type BruteAnimationId = "idle" | "walk" | "melee" | "death";
+type BruteAnimationState = { animation: BruteAnimationId };
+type BruteBoneName = (typeof BONE_NAMES)[number];
 
 export type BruteAsset = {
   root: THREE.Group;
@@ -79,16 +79,6 @@ const ATLAS = {
   redSensor: imageAtlasRect(0.74, 0.74, 0.98, 0.98),
   redEye: imageAtlasRect(0.82, 0.76, 0.96, 0.93),
 } satisfies Record<string, AtlasRect>;
-
-const COLOR = {
-  armor: new THREE.Color(0xb4bec0),
-  darkArmor: new THREE.Color(0x859093),
-  flesh: new THREE.Color(0xc2aca2),
-  green: new THREE.Color(0xaaff68),
-  claw: new THREE.Color(0xd2bea0),
-  cable: new THREE.Color(0x7a8284),
-  red: new THREE.Color(0xff766e),
-};
 
 export const BRUTE_SETTINGS = bruteSettings as EnemyAssetSettings;
 
@@ -354,7 +344,6 @@ function buildBruteGeometry(): BruteGeometryBuildResult {
     radialSegments: 8,
     uvRect: ATLAS.armor,
     bone: "body",
-    color: COLOR.armor,
   });
   const abdomen = builder.addEllipsoid({
     center: [0, 0.68, -0.02],
@@ -363,7 +352,6 @@ function buildBruteGeometry(): BruteGeometryBuildResult {
     radialSegments: 8,
     uvRect: ATLAS.greenCore,
     bone: "body",
-    color: COLOR.green,
   });
   const head = builder.addEllipsoid({
     center: [0, 1.48, -0.3],
@@ -372,7 +360,6 @@ function buildBruteGeometry(): BruteGeometryBuildResult {
     radialSegments: 7,
     uvRect: ATLAS.headArmor,
     bone: "head",
-    color: COLOR.darkArmor,
   });
   const mawGlow = builder.addEllipsoid({
     center: [0, 1.34, -0.57],
@@ -381,7 +368,6 @@ function buildBruteGeometry(): BruteGeometryBuildResult {
     radialSegments: 6,
     uvRect: ATLAS.greenMaw,
     bone: "head",
-    color: COLOR.green,
   });
   const leftEye = builder.addEllipsoid({
     center: [-0.23, 1.47, -0.43],
@@ -390,7 +376,6 @@ function buildBruteGeometry(): BruteGeometryBuildResult {
     radialSegments: 5,
     uvRect: ATLAS.redEye,
     bone: "head",
-    color: COLOR.red,
   });
   const rightEye = builder.addEllipsoid({
     center: [0.23, 1.47, -0.43],
@@ -399,13 +384,12 @@ function buildBruteGeometry(): BruteGeometryBuildResult {
     radialSegments: 5,
     uvRect: ATLAS.redEye,
     bone: "head",
-    color: COLOR.red,
   });
-  builder.connect(body.nearest(new THREE.Vector3(0, 1.4, -0.18)), head.nearest(new THREE.Vector3(0, 1.28, -0.18)), ATLAS.cable, "body", COLOR.cable);
-  builder.connect(head.nearest(new THREE.Vector3(0, 1.34, -0.45)), mawGlow.nearest(new THREE.Vector3(0, 1.34, -0.53)), ATLAS.greenMaw, "head", COLOR.green);
-  builder.connect(head.nearest(new THREE.Vector3(-0.18, 1.47, -0.4)), leftEye.nearest(new THREE.Vector3(-0.21, 1.47, -0.42)), ATLAS.redEye, "head", COLOR.red);
-  builder.connect(head.nearest(new THREE.Vector3(0.18, 1.47, -0.4)), rightEye.nearest(new THREE.Vector3(0.21, 1.47, -0.42)), ATLAS.redEye, "head", COLOR.red);
-  builder.connect(body.nearest(new THREE.Vector3(0, 0.76, -0.02)), abdomen.nearest(new THREE.Vector3(0, 0.92, -0.02)), ATLAS.greenCore, "body", COLOR.green);
+  builder.connect(body.nearest(new THREE.Vector3(0, 1.4, -0.18)), head.nearest(new THREE.Vector3(0, 1.28, -0.18)), ATLAS.cable, "body");
+  builder.connect(head.nearest(new THREE.Vector3(0, 1.34, -0.45)), mawGlow.nearest(new THREE.Vector3(0, 1.34, -0.53)), ATLAS.greenMaw, "head");
+  builder.connect(head.nearest(new THREE.Vector3(-0.18, 1.47, -0.4)), leftEye.nearest(new THREE.Vector3(-0.21, 1.47, -0.42)), ATLAS.redEye, "head");
+  builder.connect(head.nearest(new THREE.Vector3(0.18, 1.47, -0.4)), rightEye.nearest(new THREE.Vector3(0.21, 1.47, -0.42)), ATLAS.redEye, "head");
+  builder.connect(body.nearest(new THREE.Vector3(0, 0.76, -0.02)), abdomen.nearest(new THREE.Vector3(0, 0.92, -0.02)), ATLAS.greenCore, "body");
 
   for (const side of [-1, 1] as const) {
     const armBone: BruteBoneName = side < 0 ? "left-arm" : "right-arm";
@@ -417,7 +401,6 @@ function buildBruteGeometry(): BruteGeometryBuildResult {
       radialSegments: 7,
       uvRect: ATLAS.armor,
       bone: armBone,
-      color: COLOR.darkArmor,
     });
     const upperArm = builder.addTube({
       points: [
@@ -429,7 +412,6 @@ function buildBruteGeometry(): BruteGeometryBuildResult {
       radialSegments: 6,
       uvRect: ATLAS.flesh,
       boneForRing: () => armBone,
-      color: COLOR.flesh,
     });
     const forearm = builder.addTube({
       points: [
@@ -441,7 +423,6 @@ function buildBruteGeometry(): BruteGeometryBuildResult {
       radialSegments: 6,
       uvRect: ATLAS.scratchedArmor,
       boneForRing: () => clawBone,
-      color: COLOR.armor,
     });
     const upperClaw = builder.addBlade({
       base: [side * 1.4, 0.86, -0.62],
@@ -452,7 +433,6 @@ function buildBruteGeometry(): BruteGeometryBuildResult {
       side,
       uvRect: ATLAS.claw,
       bone: clawBone,
-      color: COLOR.claw,
     });
     const lowerClaw = builder.addBlade({
       base: [side * 1.42, 0.72, -0.58],
@@ -463,13 +443,12 @@ function buildBruteGeometry(): BruteGeometryBuildResult {
       side,
       uvRect: ATLAS.claw,
       bone: clawBone,
-      color: COLOR.claw,
     });
-    builder.connect(body.nearest(new THREE.Vector3(side * 0.38, 1.18, -0.05)), shoulder.nearest(new THREE.Vector3(side * 0.34, 1.22, -0.08)), ATLAS.armor, "body", COLOR.darkArmor);
-    builder.connect(shoulder.nearest(new THREE.Vector3(side * 0.58, 1.16, -0.1)), upperArm.start, ATLAS.flesh, armBone, COLOR.flesh);
-    builder.connect(upperArm.end, forearm.start, ATLAS.scratchedArmor, clawBone, COLOR.armor);
-    builder.connect(forearm.end, upperClaw.base, ATLAS.claw, clawBone, COLOR.claw);
-    builder.connect(forearm.end, lowerClaw.base, ATLAS.claw, clawBone, COLOR.claw);
+    builder.connect(body.nearest(new THREE.Vector3(side * 0.38, 1.18, -0.05)), shoulder.nearest(new THREE.Vector3(side * 0.34, 1.22, -0.08)), ATLAS.armor, "body");
+    builder.connect(shoulder.nearest(new THREE.Vector3(side * 0.58, 1.16, -0.1)), upperArm.start, ATLAS.flesh, armBone);
+    builder.connect(upperArm.end, forearm.start, ATLAS.scratchedArmor, clawBone);
+    builder.connect(forearm.end, upperClaw.base, ATLAS.claw, clawBone);
+    builder.connect(forearm.end, lowerClaw.base, ATLAS.claw, clawBone);
   }
 
   for (const side of [-1, 1] as const) {
@@ -485,7 +464,6 @@ function buildBruteGeometry(): BruteGeometryBuildResult {
       radialSegments: 6,
       uvRect: ATLAS.flesh,
       boneForRing: () => legBone,
-      color: COLOR.flesh,
     });
     const shin = builder.addTube({
       points: [
@@ -497,7 +475,6 @@ function buildBruteGeometry(): BruteGeometryBuildResult {
       radialSegments: 6,
       uvRect: ATLAS.scratchedArmor,
       boneForRing: () => footBone,
-      color: COLOR.darkArmor,
     });
     const foot = builder.addBlade({
       base: [side * 0.34, -0.43, -0.27],
@@ -508,11 +485,10 @@ function buildBruteGeometry(): BruteGeometryBuildResult {
       side,
       uvRect: ATLAS.claw,
       bone: footBone,
-      color: COLOR.claw,
     });
-    builder.connect(abdomen.nearest(new THREE.Vector3(side * 0.22, 0.48, 0.06)), thigh.start, ATLAS.flesh, legBone, COLOR.flesh);
-    builder.connect(thigh.end, shin.start, ATLAS.scratchedArmor, footBone, COLOR.darkArmor);
-    builder.connect(shin.end, foot.base, ATLAS.claw, footBone, COLOR.claw);
+    builder.connect(abdomen.nearest(new THREE.Vector3(side * 0.22, 0.48, 0.06)), thigh.start, ATLAS.flesh, legBone);
+    builder.connect(thigh.end, shin.start, ATLAS.scratchedArmor, footBone);
+    builder.connect(shin.end, foot.base, ATLAS.claw, footBone);
   }
 
   const tail = builder.addTube({
@@ -529,9 +505,8 @@ function buildBruteGeometry(): BruteGeometryBuildResult {
     radialSegments: 7,
     uvRect: ATLAS.tail,
     boneForRing: (ring) => (ring < 2 ? "tail-base" : ring < 5 ? "tail-mid" : "tail-tip"),
-    color: COLOR.armor,
   });
-  builder.connect(body.nearest(new THREE.Vector3(0, 0.66, 0.24)), tail.start, ATLAS.tail, "tail-base", COLOR.armor);
+  builder.connect(body.nearest(new THREE.Vector3(0, 0.66, 0.24)), tail.start, ATLAS.tail, "tail-base");
 
   return builder.build();
 }
@@ -547,14 +522,12 @@ class BruteGeometryBuilder {
     radialSegments: number;
     uvRect: AtlasRect;
     bone: BruteBoneName;
-    color: THREE.Color;
   }): GeometryPrimitiveResult {
     const center = new THREE.Vector3().fromArray(options.center);
     const radii = new THREE.Vector3().fromArray(options.radii);
     const top = this.addVertex(
       center.clone().add(new THREE.Vector3(0, radii.y, 0)),
       uvInRect(options.uvRect, 0.5, 0),
-      options.color,
       options.bone,
     );
     const rings: number[][] = [];
@@ -570,14 +543,13 @@ class BruteGeometryBuilder {
             Math.sin(theta) * Math.sin(phi) * radii.z,
           ),
         );
-        ring.push(this.addVertex(position, uvInRect(options.uvRect, side / options.radialSegments, lat / options.latSegments), options.color, options.bone));
+        ring.push(this.addVertex(position, uvInRect(options.uvRect, side / options.radialSegments, lat / options.latSegments), options.bone));
       }
       rings.push(ring);
     }
     const bottom = this.addVertex(
       center.clone().add(new THREE.Vector3(0, -radii.y, 0)),
       uvInRect(options.uvRect, 0.5, 1),
-      options.color,
       options.bone,
     );
 
@@ -607,7 +579,6 @@ class BruteGeometryBuilder {
     radialSegments: number;
     uvRect: AtlasRect;
     boneForRing: (ring: number) => BruteBoneName;
-    color: THREE.Color;
   }): { start: number; end: number } {
     const points = options.points.map((point) => new THREE.Vector3().fromArray(point));
     const rings: number[][] = [];
@@ -625,7 +596,6 @@ class BruteGeometryBuilder {
           this.addVertex(
             position,
             uvInRect(options.uvRect, side / options.radialSegments, pointIndex / (points.length - 1)),
-            options.color,
             options.boneForRing(pointIndex),
           ),
         );
@@ -644,12 +614,11 @@ class BruteGeometryBuilder {
       }
     }
 
-    const start = this.addVertex(points[0].clone(), uvInRect(options.uvRect, 0.5, 0), options.color, options.boneForRing(0));
+    const start = this.addVertex(points[0].clone(), uvInRect(options.uvRect, 0.5, 0), options.boneForRing(0));
     const endPointIndex = points.length - 1;
     const end = this.addVertex(
       points[endPointIndex].clone(),
       uvInRect(options.uvRect, 0.5, 1),
-      options.color,
       options.boneForRing(endPointIndex),
     );
     for (let side = 0; side < options.radialSegments; side += 1) {
@@ -670,7 +639,6 @@ class BruteGeometryBuilder {
     side: -1 | 1;
     uvRect: AtlasRect;
     bone: BruteBoneName;
-    color: THREE.Color;
   }): { base: number } {
     const base = new THREE.Vector3().fromArray(options.base);
     const mid = new THREE.Vector3().fromArray(options.mid);
@@ -678,12 +646,12 @@ class BruteGeometryBuilder {
     const out = new THREE.Vector3(options.side, 0, 0).multiplyScalar(options.width);
     const up = new THREE.Vector3(0, options.thickness, 0);
     const insidePoint = base.clone().add(mid).add(tip).multiplyScalar(1 / 3);
-    const baseCenter = this.addVertex(base, uvInRect(options.uvRect, 0.5, 0.12), options.color, options.bone);
-    const b0 = this.addVertex(base.clone().add(out), uvInRect(options.uvRect, 0.1, 0.18), options.color, options.bone);
-    const b1 = this.addVertex(base.clone().sub(out), uvInRect(options.uvRect, 0.9, 0.18), options.color, options.bone);
-    const m0 = this.addVertex(mid.clone().addScaledVector(out, 0.72).add(up), uvInRect(options.uvRect, 0.14, 0.58), options.color, options.bone);
-    const m1 = this.addVertex(mid.clone().sub(out).sub(up), uvInRect(options.uvRect, 0.86, 0.58), options.color, options.bone);
-    const t = this.addVertex(tip, uvInRect(options.uvRect, 0.5, 0.95), options.color, options.bone);
+    const baseCenter = this.addVertex(base, uvInRect(options.uvRect, 0.5, 0.12), options.bone);
+    const b0 = this.addVertex(base.clone().add(out), uvInRect(options.uvRect, 0.1, 0.18), options.bone);
+    const b1 = this.addVertex(base.clone().sub(out), uvInRect(options.uvRect, 0.9, 0.18), options.bone);
+    const m0 = this.addVertex(mid.clone().addScaledVector(out, 0.72).add(up), uvInRect(options.uvRect, 0.14, 0.58), options.bone);
+    const m1 = this.addVertex(mid.clone().sub(out).sub(up), uvInRect(options.uvRect, 0.86, 0.58), options.bone);
+    const t = this.addVertex(tip, uvInRect(options.uvRect, 0.5, 0.95), options.bone);
 
     this.addTriangleFacingAway(baseCenter, b0, m0, insidePoint);
     this.addTriangleFacingAway(baseCenter, m0, t, insidePoint);
@@ -697,7 +665,7 @@ class BruteGeometryBuilder {
     return { base: baseCenter };
   }
 
-  connect(a: number, b: number, uvRect: AtlasRect, bone: BruteBoneName, color: THREE.Color): void {
+  connect(a: number, b: number, uvRect: AtlasRect, bone: BruteBoneName): void {
     const start = this.vertices[a].position;
     const end = this.vertices[b].position;
     const axis = end.clone().sub(start).normalize();
@@ -706,13 +674,11 @@ class BruteGeometryBuilder {
     const c = this.addVertex(
       start.clone().lerp(end, 0.5).addScaledVector(frame.x, radius),
       uvInRect(uvRect, 0.25, 0.5),
-      color,
       bone,
     );
     const d = this.addVertex(
       start.clone().lerp(end, 0.5).addScaledVector(frame.x, -radius),
       uvInRect(uvRect, 0.75, 0.5),
-      color,
       bone,
     );
     const insidePoint = start.clone().add(end).add(this.vertices[c].position).add(this.vertices[d].position).multiplyScalar(0.25);
@@ -751,7 +717,7 @@ class BruteGeometryBuilder {
     return { geometry, stats: analyzeGeometry(this.vertices, this.indices) };
   }
 
-  private addVertex(position: THREE.Vector3, uv: THREE.Vector2, color: THREE.Color, bone: BruteBoneName): number {
+  private addVertex(position: THREE.Vector3, uv: THREE.Vector2, bone: BruteBoneName): number {
     const index = this.vertices.length;
     this.vertices.push({ position, uv, boneIndex: BONE_INDEX[bone] });
     return index;

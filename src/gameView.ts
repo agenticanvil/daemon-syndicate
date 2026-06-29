@@ -5,16 +5,16 @@ import { disposeMesh, disposeObject3D } from "./entityLifecycle";
 import type { EnemyKind } from "./enemyDefinitions";
 import type { LevelData } from "./level";
 import type { GameScene } from "./scene";
-import type { EnemyAnimation, ResourceKind } from "./types";
+import type { EnemyAnimation, ResourceKind, VectorSnapshot } from "./types";
 
-export type PlayerRigState = {
+type PlayerRigState = {
   moving: boolean;
   moveSpeed: number;
   damaged: boolean;
   lowHealth: boolean;
 };
 
-export type PlayerView = {
+type PlayerView = {
   position: THREE.Vector3;
   rotation: THREE.Euler;
   setBodyColor: (color: number) => void;
@@ -40,9 +40,9 @@ export type PickupViewHandle = {
 };
 
 export type EffectsSnapshot = {
-  damageTexts: Array<{ world: { x: number; y: number; z: number }; life: number; text: string }>;
-  novaMeshes: Array<{ position: { x: number; y: number; z: number }; opacity: number; scale: { x: number; y: number; z: number } }>;
-  projectileImpacts: Array<{ position: { x: number; y: number; z: number }; life: number }>;
+  damageTexts: Array<{ world: VectorSnapshot; life: number; text: string }>;
+  novaMeshes: Array<{ position: VectorSnapshot; opacity: number; scale: VectorSnapshot }>;
+  projectileImpacts: Array<{ position: VectorSnapshot; life: number }>;
 };
 
 export type GameplayView = {
@@ -441,6 +441,6 @@ export function createHeadlessGameplayView(): GameplayView {
   };
 }
 
-function vectorSnapshot(vector: THREE.Vector3): { x: number; y: number; z: number } {
+function vectorSnapshot(vector: THREE.Vector3): VectorSnapshot {
   return { x: vector.x, y: vector.y, z: vector.z };
 }

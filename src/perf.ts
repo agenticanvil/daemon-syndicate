@@ -1,11 +1,11 @@
-export type PerfSummary = {
+type PerfSummary = {
   enabled: boolean;
   frames: number;
   frameMs: StatSummary;
   spans: Record<string, StatSummary>;
 };
 
-export type StatSummary = {
+type StatSummary = {
   avg: number;
   p50: number;
   p95: number;
@@ -13,7 +13,7 @@ export type StatSummary = {
   max: number;
 };
 
-export type TraceEvent = {
+type TraceEvent = {
   name: string;
   cat: string;
   ph: "X";

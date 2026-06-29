@@ -16,11 +16,43 @@ import { canMoveDirectlyOnWalkableLevel, moveOnWalkableLevel } from "./movement"
 import { findWorldPath, hasClearWorldPath, pathDirection } from "./pathfinding";
 import type { EventQueue } from "./eventQueue";
 import type { Rng } from "./rng";
-import type { Enemy, EnemyDraft, EnemyProjectile, EnemyProjectileDraft, PlayerResources } from "./types";
+import type { Enemy, EnemyDraft, EnemyProjectile, EnemyProjectileDraft, VectorSnapshot } from "./types";
 
 const MOVEMENT_EPSILON = 0.0001;
 const RANGED_PROJECTILE_HEIGHT = 0.58;
 const RANGED_SPAWN_OFFSET = 0.48;
+
+export type EnemySystemSnapshot = Array<{
+  id: number;
+  kind: EnemyKind;
+  enemyLevel: number;
+  position: VectorSnapshot;
+  facingYaw: number;
+  collisionLayer: CollisionLayer;
+  hp: number;
+  speed: number;
+  xpReward: number;
+  radius: number;
+  attack: Enemy["attack"];
+  dropTable: Enemy["dropTable"];
+  attackTimer: number;
+  attackWindupTimer?: number;
+  attackWindupDirection?: VectorSnapshot;
+  deathTimer?: number;
+  path?: string[];
+  pathTarget?: string;
+  pathRefreshTimer?: number;
+}>;
+
+export type EnemyProjectileSystemSnapshot = Array<{
+  id: number;
+  position: VectorSnapshot;
+  velocity: VectorSnapshot;
+  collisionLayer: CollisionLayer;
+  life: number;
+  damage: number;
+  radius: number;
+}>;
 
 export class EnemySystem {
   private readonly enemies: Enemy[] = [];
@@ -34,7 +66,6 @@ export class EnemySystem {
     private readonly view: GameplayView,
     private readonly events: EventQueue,
     private readonly playerCollisionBody: CollisionBody2D,
-    private readonly resources: PlayerResources,
     private readonly getLevel: () => LevelData,
     private readonly getCollisionLayer: () => CollisionLayer,
     private readonly canDamagePlayer: () => boolean,
@@ -176,7 +207,6 @@ export class EnemySystem {
         this.canDamagePlayer() &&
         !damagedPlayerThisFrame
       ) {
-        this.resources.health = Math.max(0, this.resources.health - enemy.attack.damage);
         enemy.attackTimer = enemy.attack.cooldown;
         damagedPlayerThisFrame = true;
         this.events.emit({ type: "playerDamaged", amount: enemy.attack.damage });
@@ -197,7 +227,7 @@ export class EnemySystem {
     }
   }
 
-  snapshot(): object {
+  snapshot(): EnemySystemSnapshot {
     return this.enemies.map((enemy) => ({
       id: enemy.id,
       kind: enemy.kind,
@@ -224,7 +254,7 @@ export class EnemySystem {
     }));
   }
 
-  projectileSnapshot(): object {
+  projectileSnapshot(): EnemyProjectileSystemSnapshot {
     return this.enemyProjectiles.map((projectile) => ({
       id: projectile.id,
       position: vectorSnapshot(projectile.position),
@@ -458,7 +488,6 @@ export class EnemySystem {
         this.canDamagePlayer() &&
         withinRadius2D(projectile, this.playerCollisionBody, projectile.radius + this.playerCollisionBody.radius)
       ) {
-        this.resources.health = Math.max(0, this.resources.health - projectile.damage);
         this.events.emit({ type: "playerDamaged", amount: projectile.damage });
         this.view.spawnProjectileImpact(projectile.position, projectile.velocity);
         projectile.life = 0;
@@ -508,6 +537,6 @@ export class EnemySystem {
   }
 }
 
-function vectorSnapshot(vector: THREE.Vector3): { x: number; y: number; z: number } {
+function vectorSnapshot(vector: THREE.Vector3): VectorSnapshot {
   return { x: vector.x, y: vector.y, z: vector.z };
 }

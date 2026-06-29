@@ -1,15 +1,15 @@
 import * as THREE from "three";
 import { distance2D, type CollisionLayer } from "./collision";
 import { TILE_SIZE } from "./constants";
-import { CombatSystem } from "./combatSystem";
-import { EnemySystem } from "./enemySystem";
+import { CombatSystem, type CombatSystemSnapshot } from "./combatSystem";
+import { EnemySystem, type EnemyProjectileSystemSnapshot, type EnemySystemSnapshot } from "./enemySystem";
 import type { EnemyKind } from "./enemyDefinitions";
 import { EventQueue, type GameEvent } from "./eventQueue";
-import type { GameplayView } from "./gameView";
+import type { EffectsSnapshot, GameplayView } from "./gameView";
 import { exitGateToWorld, generateLevel, tileToWorld, type ExitDirection, type LevelData, type TileCoord } from "./level";
-import { PickupSystem } from "./pickupSystem";
-import { PlayerSystem } from "./playerSystem";
-import { idlePlayerCommand, type PlayerCommand } from "./playerCommand";
+import { PickupSystem, type PickupSystemSnapshot } from "./pickupSystem";
+import { PlayerSystem, type PlayerSystemSnapshot } from "./playerSystem";
+import { idlePlayerCommand } from "./playerCommand";
 import { PlayerProgression, type PlayerProgressionSnapshot } from "./progression";
 import type { Rng } from "./rng";
 import type { PlayerResources, ResourceKind } from "./types";
@@ -25,8 +25,6 @@ type StartRunOptions = {
 };
 
 export type DebugSpawnPosition = TileCoord | { x: number; y?: number; z: number };
-
-export type VectorSnapshot = { x: number; y: number; z: number };
 
 export type GameSimulationSnapshot = {
   seed?: string;
@@ -48,67 +46,12 @@ export type GameSimulationSnapshot = {
     environmentalObjects: Array<{ kind: string; tile: TileCoord; rotation: number }>;
     spawnPoints: TileCoord[];
   };
-  player: {
-    position: VectorSnapshot;
-    rotationY: number;
-    collisionLayer: CollisionLayer;
-    resources: PlayerResources;
-    maxResources: PlayerResources;
-    statusEffects: Array<{ kind: string; remaining: number }>;
-    moving: boolean;
-    dashTimer: number;
-    emergencyShieldReady: boolean;
-  };
-  enemies: Array<{
-    id: number;
-    kind: EnemyKind;
-    enemyLevel: number;
-    position: VectorSnapshot;
-    facingYaw: number;
-    collisionLayer: CollisionLayer;
-    hp: number;
-    speed: number;
-    xpReward: number;
-    radius: number;
-    attack: { kind: string; range: number; damage: number; cooldown: number };
-    attackTimer: number;
-    deathTimer?: number;
-    path?: string[];
-    pathTarget?: string;
-    pathRefreshTimer?: number;
-  }>;
-  enemyProjectiles: Array<{
-    id: number;
-    position: VectorSnapshot;
-    velocity: VectorSnapshot;
-    collisionLayer: CollisionLayer;
-    life: number;
-    damage: number;
-    radius: number;
-  }>;
-  combat: {
-    abilityTimers: Record<string, number>;
-    projectiles: Array<{
-      id: number;
-      position: VectorSnapshot;
-      velocity: VectorSnapshot;
-      collisionLayer: CollisionLayer;
-      life: number;
-      damage: number;
-      radius: number;
-      pierceRemaining?: number;
-    }>;
-  };
-  pickups: Array<{
-    id: number;
-    position: VectorSnapshot;
-    kind: ResourceKind;
-    collisionLayer: CollisionLayer;
-    amount: number;
-    radius: number;
-    life: number;
-  }>;
-  effects: unknown;
+  player: PlayerSystemSnapshot;
+  enemies: EnemySystemSnapshot;
+  enemyProjectiles: EnemyProjectileSystemSnapshot;
+  combat: CombatSystemSnapshot;
+  pickups: PickupSystemSnapshot;
+  effects: EffectsSnapshot;
 };
 
 export type GameStepResult = {
@@ -161,7 +104,6 @@ export class GameSimulation {
       this.view,
       this.events,
       this.player.collisionBody,
-      this.player.resources,
       () => this.currentLevel,
       () => this.currentCollisionLayer(),
       () => !this.player.hasStatus("invulnerable"),
@@ -216,13 +158,11 @@ export class GameSimulation {
   }
 
   get damageTextCount(): number {
-    const effects = this.view.snapshotEffects() as { damageTexts?: unknown[] };
-    return effects.damageTexts?.length ?? 0;
+    return this.view.snapshotEffects().damageTexts.length;
   }
 
   get novaCount(): number {
-    const effects = this.view.snapshotEffects() as { novaMeshes?: unknown[] };
-    return effects.novaMeshes?.length ?? 0;
+    return this.view.snapshotEffects().novaMeshes.length;
   }
 
   get primaryReady(): boolean {
@@ -340,11 +280,11 @@ export class GameSimulation {
         })),
         spawnPoints: this.currentLevel.spawnPoints.map((spawn) => ({ ...spawn })),
       },
-      player: this.player.snapshot() as GameSimulationSnapshot["player"],
-      enemies: this.enemies.snapshot() as GameSimulationSnapshot["enemies"],
-      enemyProjectiles: this.enemies.projectileSnapshot() as GameSimulationSnapshot["enemyProjectiles"],
-      combat: this.combat.snapshot() as GameSimulationSnapshot["combat"],
-      pickups: this.pickups.snapshot() as GameSimulationSnapshot["pickups"],
+      player: this.player.snapshot(),
+      enemies: this.enemies.snapshot(),
+      enemyProjectiles: this.enemies.projectileSnapshot(),
+      combat: this.combat.snapshot(),
+      pickups: this.pickups.snapshot(),
       effects: this.view.snapshotEffects(),
     };
   }
@@ -401,8 +341,11 @@ export class GameSimulation {
         this.pickups.maybeDropPickup(event.position, event.dropTable);
         break;
       case "playerDamaged":
-        result.damageTaken += event.amount;
-        if (this.player.damage()) {
+        const damage = this.player.takeDamage(event.amount);
+        if (damage.applied) {
+          result.damageTaken += event.amount;
+        }
+        if (damage.gameOver) {
           this.endGame();
         }
         break;

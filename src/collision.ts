@@ -8,7 +8,7 @@ export type CollisionBody2D = {
   collisionLayer: CollisionLayer;
 };
 
-export type ObjectCollisionBody2D = {
+type ObjectCollisionBody2D = {
   mesh: THREE.Object3D;
   radius: number;
   collisionLayer: CollisionLayer;
@@ -19,7 +19,7 @@ type CollisionPoint2DLike =
   | Pick<CollisionBody2D, "position" | "collisionLayer">
   | Pick<ObjectCollisionBody2D, "mesh" | "collisionLayer">;
 
-export function distanceSq2D(a: THREE.Vector3, b: THREE.Vector3): number {
+function distanceSq2D(a: THREE.Vector3, b: THREE.Vector3): number {
   const dx = a.x - b.x;
   const dz = a.z - b.z;
   return dx * dx + dz * dz;

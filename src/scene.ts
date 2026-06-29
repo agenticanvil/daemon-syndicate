@@ -11,6 +11,7 @@ import {
   type PlayerRig,
   type VenomSpitterAsset,
 } from "./assetFactory";
+import type { ExitPortalAsset } from "./assets/environment/exitPortal/exitPortalAsset";
 import { exitGateToWorld, key, tileToWorld, worldToTile, type ExitDirection, type LevelData, type TileCoord } from "./level";
 import { FogOfWar } from "./fogOfWar";
 import { renderLevel as renderLevelToRoot, type LevelEdgeVisibility } from "./levelRenderer";
@@ -38,7 +39,7 @@ export type GameScene = {
   createBruteAsset: () => BruteAsset;
   createPickupAsset: (kind: ResourceKind) => PickupAsset;
   createEnvironmentAsset: (kind: EnvironmentAssetKind) => EnvironmentAsset;
-  createExitPortalAsset: () => import("./assetFactory").ExitPortalAsset;
+  createExitPortalAsset: () => ExitPortalAsset;
   updateFog: (playerPosition: THREE.Vector3, dt: number, instant?: boolean) => void;
   updatePlayerLocalAmbient: (playerPosition: THREE.Vector3) => void;
   isTileExplored: (position: THREE.Vector3) => boolean;
@@ -131,7 +132,7 @@ export function createGameScene(app: HTMLDivElement): GameScene {
     playerLocalAmbient.applyToObject(asset.root);
     return asset;
   };
-  const createExitPortalAsset = (): import("./assetFactory").ExitPortalAsset => {
+  const createExitPortalAsset = (): ExitPortalAsset => {
     const asset = assetFactory.createExitPortalAsset();
     playerLocalAmbient.applyToObject(asset.root);
     return asset;

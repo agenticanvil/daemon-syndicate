@@ -1,6 +1,4 @@
 import * as THREE from "three";
-import type { EnvironmentAssetSettings } from "../../../assetSettings";
-import exitPortalSettings from "./exitPortal.settings.json";
 
 const EXIT_PORTAL_FRAME_ATLAS_URL = "/assets/exit-portal-frame-atlas.png";
 const FRAME_WIDTH_SCALE = 1.85;
@@ -18,8 +16,6 @@ type BoxPart = {
   size: [number, number, number];
   uv: AtlasRect;
 };
-
-export const EXIT_PORTAL_SETTINGS = exitPortalSettings as EnvironmentAssetSettings;
 
 export type ExitPortalAsset = {
   root: THREE.Group;
