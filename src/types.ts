@@ -27,6 +27,8 @@ export type Enemy = {
   attack: EnemyAttackDefinition;
   dropTable: DropTable;
   attackTimer: number;
+  attackWindupTimer?: number;
+  attackWindupDirection?: THREE.Vector3;
   deathTimer?: number;
   path?: string[];
   pathTarget?: string;
@@ -56,6 +58,18 @@ export type Projectile = {
 };
 
 export type ProjectileDraft = Omit<Projectile, "id">;
+
+export type EnemyProjectile = {
+  id: number;
+  position: THREE.Vector3;
+  velocity: THREE.Vector3;
+  collisionLayer: CollisionLayer;
+  life: number;
+  damage: number;
+  radius: number;
+};
+
+export type EnemyProjectileDraft = Omit<EnemyProjectile, "id">;
 
 export type ProjectileView = {
   id: number;

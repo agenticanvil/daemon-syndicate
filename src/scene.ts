@@ -8,6 +8,7 @@ import {
   type LeanHunterRig,
   type PickupAsset,
   type PlayerRig,
+  type VenomSpitterAsset,
 } from "./assetFactory";
 import { exitGateToWorld, tileToWorld, type LevelData } from "./level";
 import { renderLevel as renderLevelToRoot } from "./levelRenderer";
@@ -29,6 +30,7 @@ export type GameScene = {
   renderLevel: (level: LevelData) => void;
   createLeanHunterRig: () => LeanHunterRig;
   createEliteEnemyAsset: () => EliteEnemyAsset;
+  createVenomSpitterAsset: () => VenomSpitterAsset;
   createPickupAsset: (kind: ResourceKind) => PickupAsset;
   createEnvironmentAsset: (kind: EnvironmentAssetKind) => EnvironmentAsset;
   createExitPortalAsset: () => import("./assetFactory").ExitPortalAsset;
@@ -106,6 +108,7 @@ export function createGameScene(app: HTMLDivElement): GameScene {
     renderLevel,
     createLeanHunterRig: assetFactory.createLeanHunterRig,
     createEliteEnemyAsset: assetFactory.createEliteEnemyAsset,
+    createVenomSpitterAsset: assetFactory.createVenomSpitterAsset,
     createPickupAsset: assetFactory.createPickupAsset,
     createEnvironmentAsset: assetFactory.createEnvironmentAsset,
     createExitPortalAsset: assetFactory.createExitPortalAsset,
@@ -133,9 +136,9 @@ function addLighting(scene: THREE.Scene, player: THREE.Group): void {
   alertLight.position.set(-9, 5, -9);
   scene.add(alertLight);
 
-  const armorFlashlight = new THREE.SpotLight(0xa8fff4, 36, 22, 0.45, 0.48, 1.7);
+  const armorFlashlight = new THREE.SpotLight(0xa8fff4, 72, 34, 0.62, 0.48, 1.7);
   armorFlashlight.position.set(0, 1.35, -0.28);
-  armorFlashlight.target.position.set(0, 0.9, -9);
+  armorFlashlight.target.position.set(0, 0.8, -14);
   player.add(armorFlashlight);
   player.add(armorFlashlight.target);
 }

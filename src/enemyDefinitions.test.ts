@@ -1,14 +1,16 @@
 import { describe, expect, it } from "vitest";
 import { ELITE_ENEMY_SETTINGS } from "./assets/enemies/eliteEnemy/eliteEnemyAsset";
 import { LEAN_HUNTER_SETTINGS } from "./assets/enemies/leanHunterAsset";
+import { VENOM_SPITTER_SETTINGS } from "./assets/enemies/venomSpitter/venomSpitterAsset";
 import {
   chooseEnemyDefinition,
   encounterBudgetForMapLevel,
   enemyLevelForMapLevel,
   ENEMY_DEFINITIONS,
+  type EnemyKind,
 } from "./enemyDefinitions";
 
-function definition(kind: "leanHunter" | "elite") {
+function definition(kind: EnemyKind) {
   const found = ENEMY_DEFINITIONS.find((enemyDefinition) => enemyDefinition.kind === kind);
   if (!found) throw new Error(`Missing enemy definition: ${kind}`);
   return found;
@@ -17,6 +19,7 @@ function definition(kind: "leanHunter" | "elite") {
 describe("ENEMY_DEFINITIONS", () => {
   it("preserves current lean hunter and elite scaling formulas", () => {
     const leanHunter = definition("leanHunter");
+    const venomSpitter = definition("venomSpitter");
     const elite = definition("elite");
 
     expect(leanHunter.health(3)).toBe(LEAN_HUNTER_SETTINGS.health.base + 3 * LEAN_HUNTER_SETTINGS.health.levelGrowth);
@@ -36,6 +39,26 @@ describe("ENEMY_DEFINITIONS", () => {
     expect(leanHunter.budgetCost).toBe(1);
     expect(leanHunter.attack).toBe(LEAN_HUNTER_SETTINGS.attacks[0]);
     expect(leanHunter.dropTable).toBe(LEAN_HUNTER_SETTINGS.dropTable);
+
+    expect(venomSpitter.health(3)).toBe(
+      VENOM_SPITTER_SETTINGS.health.base + 3 * VENOM_SPITTER_SETTINGS.health.levelGrowth,
+    );
+    expect(venomSpitter.spawnWeight(3)).toBeCloseTo(
+      Math.min(
+        VENOM_SPITTER_SETTINGS.spawnWeight.max ?? Infinity,
+        VENOM_SPITTER_SETTINGS.spawnWeight.base + 2 * VENOM_SPITTER_SETTINGS.spawnWeight.levelGrowth,
+      ),
+    );
+    expect(venomSpitter.speed(3)).toBeCloseTo(
+      VENOM_SPITTER_SETTINGS.movement.speed + 3 * VENOM_SPITTER_SETTINGS.movement.levelSpeedGrowth,
+    );
+    expect(venomSpitter.attackDamage(3)).toBe(13);
+    expect(venomSpitter.xpReward(3)).toBe(17);
+    expect(venomSpitter.radius).toBe(VENOM_SPITTER_SETTINGS.collision.radius);
+    expect(venomSpitter.unlockMapLevel).toBe(2);
+    expect(venomSpitter.budgetCost).toBe(1.35);
+    expect(venomSpitter.attack).toBe(VENOM_SPITTER_SETTINGS.attacks[0]);
+    expect(venomSpitter.dropTable).toBe(VENOM_SPITTER_SETTINGS.dropTable);
 
     expect(elite.health(3)).toBe(ELITE_ENEMY_SETTINGS.health.base + 3 * ELITE_ENEMY_SETTINGS.health.levelGrowth);
     expect(elite.spawnWeight(3)).toBeCloseTo(
@@ -71,6 +94,7 @@ describe("ENEMY_DEFINITIONS", () => {
   it("selects enemies deterministically when an RNG is injected", () => {
     expect(chooseEnemyDefinition(1, () => 0).kind).toBe("leanHunter");
     expect(chooseEnemyDefinition(1, () => 0.999).kind).toBe("leanHunter");
+    expect(chooseEnemyDefinition(2, () => 0.999).kind).toBe("venomSpitter");
     expect(chooseEnemyDefinition(3, () => 0.999).kind).toBe("elite");
     expect(chooseEnemyDefinition(3, () => 0.999, { maxBudgetCost: 1 }).kind).toBe("leanHunter");
   });

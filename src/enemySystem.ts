@@ -1,6 +1,7 @@
 import * as THREE from "three";
 import { ENEMY_BALANCE, PLAYER_BALANCE } from "./balance";
 import { distance2D, withinRadius2D, type CollisionBody2D, type CollisionLayer } from "./collision";
+import { findProjectileWallImpact } from "./combatSystem";
 import {
   chooseEnemyDefinition,
   encounterBudgetForMapLevel,
@@ -9,20 +10,25 @@ import {
   type EnemyDefinition,
   type EnemyKind,
 } from "./enemyDefinitions";
-import type { EnemyViewHandle, GameplayView } from "./gameView";
+import type { EnemyViewHandle, GameplayView, ProjectileViewHandle } from "./gameView";
 import { key, tileToWorld, worldToTile, type LevelData } from "./level";
 import { canMoveDirectlyOnWalkableLevel, moveOnWalkableLevel } from "./movement";
 import { findWorldPath, hasClearWorldPath, pathDirection } from "./pathfinding";
 import type { EventQueue } from "./eventQueue";
 import type { Rng } from "./rng";
-import type { Enemy, EnemyDraft, PlayerResources } from "./types";
+import type { Enemy, EnemyDraft, EnemyProjectile, EnemyProjectileDraft, PlayerResources } from "./types";
 
 const MOVEMENT_EPSILON = 0.0001;
+const RANGED_PROJECTILE_HEIGHT = 0.58;
+const RANGED_SPAWN_OFFSET = 0.48;
 
 export class EnemySystem {
   private readonly enemies: Enemy[] = [];
+  private readonly enemyProjectiles: EnemyProjectile[] = [];
   private readonly enemyViews = new Map<number, EnemyViewHandle>();
+  private readonly enemyProjectileViews = new Map<number, ProjectileViewHandle>();
   private nextEnemyId = 1;
+  private nextEnemyProjectileId = 1;
 
   constructor(
     private readonly view: GameplayView,
@@ -37,6 +43,10 @@ export class EnemySystem {
 
   get count(): number {
     return this.enemies.length;
+  }
+
+  get projectileCount(): number {
+    return this.enemyProjectiles.length;
   }
 
   get all(): Enemy[] {
@@ -79,7 +89,7 @@ export class EnemySystem {
   }
 
   update(dt: number): void {
-    let damagedPlayerThisFrame = false;
+    let damagedPlayerThisFrame = this.updateEnemyProjectiles(dt, false);
 
     for (const enemy of this.enemies) {
       if (enemy.hp <= 0 && enemy.deathTimer === undefined) {
@@ -96,27 +106,60 @@ export class EnemySystem {
       const distance = distance2D(enemy.position, this.view.player.position);
       const attackDistance = PLAYER_BALANCE.radius + enemy.radius + enemy.attack.range;
       const pursuitDirection = this.getEnemyPursuitDirection(enemy, distance, enemy.speed * dt, dt);
+      const isRanged = enemy.attack.kind === "ranged";
+      const hasLineOfSight = hasClearWorldPath(this.getLevel(), enemy.position, this.view.player.position);
       let moved = false;
+      let movementDirection = pursuitDirection;
 
-      if (distance > PLAYER_BALANCE.radius + enemy.radius + ENEMY_BALANCE.stopProximity) {
-        moved = this.moveEnemy(enemy, pursuitDirection, enemy.speed * dt);
+      this.updateEnemyAttackWindup(enemy, dt);
+
+      if (isRanged) {
+        movementDirection =
+          enemy.attackWindupTimer === undefined
+            ? this.getRangedEnemyMovementDirection(enemy, distance, pursuitDirection, hasLineOfSight)
+            : new THREE.Vector3();
       }
 
-      if (pursuitDirection.lengthSq() > MOVEMENT_EPSILON) {
-        enemy.facingYaw = this.getEnemyFacingYaw(pursuitDirection);
+      if (!isRanged && distance > PLAYER_BALANCE.radius + enemy.radius + ENEMY_BALANCE.stopProximity) {
+        moved = this.moveEnemy(enemy, movementDirection, enemy.speed * dt);
+      } else if (isRanged && movementDirection.lengthSq() > MOVEMENT_EPSILON) {
+        moved = this.moveEnemy(enemy, movementDirection, enemy.speed * dt);
+      }
+
+      if (isRanged && (hasLineOfSight || enemy.attackWindupTimer !== undefined)) {
+        const aimDirection = this.view.player.position.clone().sub(enemy.position).setY(0);
+        if (aimDirection.lengthSq() > MOVEMENT_EPSILON) {
+          enemy.facingYaw = this.getEnemyFacingYaw(aimDirection.normalize());
+        }
+      } else if (movementDirection.lengthSq() > MOVEMENT_EPSILON) {
+        enemy.facingYaw = this.getEnemyFacingYaw(movementDirection);
       } else if (!this.enemyViews.get(enemy.id)?.updateRig) {
         enemy.facingYaw += dt * 2.4;
       }
 
       enemy.attackTimer -= dt;
-      const inAttackRange = withinRadius2D(enemy, this.playerCollisionBody, attackDistance);
-      if (inAttackRange) {
+      const inAttackRange =
+        isRanged
+          ? distance <= attackDistance && hasLineOfSight
+          : withinRadius2D(enemy, this.playerCollisionBody, attackDistance);
+      if (inAttackRange || enemy.attackWindupTimer !== undefined) {
         this.enemyViews.get(enemy.id)?.updateRig?.("melee", dt);
       } else {
         this.enemyViews.get(enemy.id)?.updateRig?.(moved ? "walk" : "idle", dt);
       }
 
-      if (
+      if (isRanged) {
+        if (
+          inAttackRange &&
+          enemy.attackTimer <= 0 &&
+          enemy.attackWindupTimer === undefined &&
+          this.playerCollisionBody.collisionLayer === enemy.collisionLayer
+        ) {
+          const direction = this.view.player.position.clone().sub(enemy.position).setY(0).normalize();
+          enemy.attackWindupTimer = enemy.attack.windup ?? 0.18;
+          enemy.attackWindupDirection = direction;
+        }
+      } else if (
         inAttackRange &&
         enemy.attackTimer <= 0 &&
         this.playerCollisionBody.collisionLayer === enemy.collisionLayer &&
@@ -132,11 +175,15 @@ export class EnemySystem {
 
     this.collectDeadEnemies();
     this.syncEnemyViews();
+    this.syncEnemyProjectileViews();
   }
 
   clear(): void {
     for (const enemy of this.enemies.splice(0)) {
       this.disposeEnemyView(enemy.id);
+    }
+    for (const projectile of this.enemyProjectiles.splice(0)) {
+      this.disposeEnemyProjectileView(projectile.id);
     }
   }
 
@@ -158,10 +205,24 @@ export class EnemySystem {
         entries: enemy.dropTable.entries.map((entry) => ({ ...entry })),
       },
       attackTimer: enemy.attackTimer,
+      attackWindupTimer: enemy.attackWindupTimer,
+      attackWindupDirection: enemy.attackWindupDirection ? vectorSnapshot(enemy.attackWindupDirection) : undefined,
       deathTimer: enemy.deathTimer,
       path: enemy.path ? [...enemy.path] : undefined,
       pathTarget: enemy.pathTarget,
       pathRefreshTimer: enemy.pathRefreshTimer,
+    }));
+  }
+
+  projectileSnapshot(): object {
+    return this.enemyProjectiles.map((projectile) => ({
+      id: projectile.id,
+      position: vectorSnapshot(projectile.position),
+      velocity: vectorSnapshot(projectile.velocity),
+      collisionLayer: projectile.collisionLayer,
+      life: projectile.life,
+      damage: projectile.damage,
+      radius: projectile.radius,
     }));
   }
 
@@ -206,11 +267,25 @@ export class EnemySystem {
     }
   }
 
+  private syncEnemyProjectileViews(): void {
+    for (const projectile of this.enemyProjectiles) {
+      const view = this.enemyProjectileViews.get(projectile.id);
+      view?.sync(projectile.position);
+    }
+  }
+
   private disposeEnemyView(id: number): void {
     const view = this.enemyViews.get(id);
     if (!view) return;
     view.dispose();
     this.enemyViews.delete(id);
+  }
+
+  private disposeEnemyProjectileView(id: number): void {
+    const view = this.enemyProjectileViews.get(id);
+    if (!view) return;
+    view.dispose();
+    this.enemyProjectileViews.delete(id);
   }
 
   private minimumBudgetCost(mapLevel: number): number {
@@ -260,6 +335,110 @@ export class EnemySystem {
 
   private moveEnemy(enemy: Enemy, direction: THREE.Vector3, distance: number): boolean {
     return moveOnWalkableLevel(this.getLevel(), enemy.position, direction, distance);
+  }
+
+  private getRangedEnemyMovementDirection(
+    enemy: Enemy,
+    playerDistance: number,
+    pursuitDirection: THREE.Vector3,
+    hasLineOfSight: boolean,
+  ): THREE.Vector3 {
+    const toPlayer = this.view.player.position.clone().sub(enemy.position).setY(0);
+    if (toPlayer.lengthSq() <= MOVEMENT_EPSILON) return new THREE.Vector3();
+    toPlayer.normalize();
+
+    const preferredMin = Math.max(enemy.attack.range * 0.46, PLAYER_BALANCE.radius + enemy.radius + 1.2);
+    const preferredMax = enemy.attack.range * 0.78;
+    const strafeSign = enemy.id % 2 === 0 ? 1 : -1;
+    const strafe = new THREE.Vector3(-toPlayer.z, 0, toPlayer.x).multiplyScalar(strafeSign);
+
+    if (playerDistance < preferredMin) {
+      return toPlayer.multiplyScalar(-1).addScaledVector(strafe, 0.35).normalize();
+    }
+    if (!hasLineOfSight || playerDistance > preferredMax) {
+      return pursuitDirection;
+    }
+    return strafe;
+  }
+
+  private updateEnemyAttackWindup(enemy: Enemy, dt: number): void {
+    if (enemy.attackWindupTimer === undefined) return;
+
+    enemy.attackWindupTimer -= dt;
+    if (enemy.attackWindupTimer > 0) return;
+
+    const direction =
+      enemy.attackWindupDirection ??
+      this.view.player.position.clone().sub(enemy.position).setY(0).normalize();
+    this.fireEnemyProjectile(enemy, direction);
+    enemy.attackTimer = enemy.attack.cooldown;
+    enemy.attackWindupTimer = undefined;
+    enemy.attackWindupDirection = undefined;
+  }
+
+  private fireEnemyProjectile(enemy: Enemy, direction: THREE.Vector3): void {
+    if (direction.lengthSq() <= MOVEMENT_EPSILON) return;
+    direction.normalize();
+    const speed = enemy.attack.projectileSpeed ?? 8;
+    const spawn = enemy.position
+      .clone()
+      .addScaledVector(direction, enemy.radius + RANGED_SPAWN_OFFSET)
+      .setY(RANGED_PROJECTILE_HEIGHT);
+    this.addEnemyProjectile({
+      position: spawn,
+      velocity: direction.clone().multiplyScalar(speed),
+      collisionLayer: enemy.collisionLayer,
+      life: enemy.attack.range / speed + 0.25,
+      damage: enemy.attack.damage,
+      radius: enemy.attack.projectileRadius ?? 0.22,
+    });
+  }
+
+  private addEnemyProjectile(projectile: EnemyProjectileDraft): void {
+    const id = this.nextEnemyProjectileId;
+    this.nextEnemyProjectileId += 1;
+    const view = this.view.createEnemyProjectileView(projectile.position, projectile.velocity);
+    this.enemyProjectiles.push({ id, ...projectile });
+    this.enemyProjectileViews.set(id, view);
+  }
+
+  private updateEnemyProjectiles(dt: number, damagedPlayerThisFrame: boolean): boolean {
+    for (const projectile of this.enemyProjectiles) {
+      const previousPosition = projectile.position.clone();
+      projectile.position.addScaledVector(projectile.velocity, dt);
+      projectile.life -= dt;
+
+      const wallImpact = findProjectileWallImpact(this.getLevel(), previousPosition, projectile.position);
+      if (wallImpact) {
+        projectile.position.copy(wallImpact.position);
+        projectile.life = 0;
+        this.view.spawnProjectileImpact(wallImpact.position, projectile.velocity);
+        continue;
+      }
+
+      if (
+        !damagedPlayerThisFrame &&
+        projectile.collisionLayer === this.playerCollisionBody.collisionLayer &&
+        this.canDamagePlayer() &&
+        withinRadius2D(projectile, this.playerCollisionBody, projectile.radius + this.playerCollisionBody.radius)
+      ) {
+        this.resources.health = Math.max(0, this.resources.health - projectile.damage);
+        this.events.emit({ type: "playerDamaged", amount: projectile.damage });
+        this.view.spawnProjectileImpact(projectile.position, projectile.velocity);
+        projectile.life = 0;
+        damagedPlayerThisFrame = true;
+      }
+    }
+
+    for (let i = this.enemyProjectiles.length - 1; i >= 0; i -= 1) {
+      const projectile = this.enemyProjectiles[i];
+      if (projectile.life <= 0) {
+        this.disposeEnemyProjectileView(projectile.id);
+        this.enemyProjectiles.splice(i, 1);
+      }
+    }
+
+    return damagedPlayerThisFrame;
   }
 
   private canEnemyMoveDirectly(enemy: Enemy, direction: THREE.Vector3, distance: number): boolean {

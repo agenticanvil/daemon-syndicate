@@ -73,6 +73,15 @@ export type GameSimulationSnapshot = {
     pathTarget?: string;
     pathRefreshTimer?: number;
   }>;
+  enemyProjectiles: Array<{
+    id: number;
+    position: VectorSnapshot;
+    velocity: VectorSnapshot;
+    collisionLayer: CollisionLayer;
+    life: number;
+    damage: number;
+    radius: number;
+  }>;
   combat: {
     abilityTimers: Record<string, number>;
     projectiles: Array<{
@@ -191,7 +200,7 @@ export class GameSimulation {
   }
 
   get projectileCount(): number {
-    return this.combat.projectileCount;
+    return this.combat.projectileCount + this.enemies.projectileCount;
   }
 
   get pickupCount(): number {
@@ -321,6 +330,7 @@ export class GameSimulation {
       },
       player: this.player.snapshot() as GameSimulationSnapshot["player"],
       enemies: this.enemies.snapshot() as GameSimulationSnapshot["enemies"],
+      enemyProjectiles: this.enemies.projectileSnapshot() as GameSimulationSnapshot["enemyProjectiles"],
       combat: this.combat.snapshot() as GameSimulationSnapshot["combat"],
       pickups: this.pickups.snapshot() as GameSimulationSnapshot["pickups"],
       effects: this.view.snapshotEffects(),
