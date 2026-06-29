@@ -51,6 +51,7 @@ export type GameplayView = {
   resetReticle: (position: THREE.Vector3) => void;
   createEnemyView: (kind: EnemyKind, position: THREE.Vector3, facingYaw: number) => EnemyViewHandle;
   createProjectileView: (position: THREE.Vector3, velocity: THREE.Vector3) => ProjectileViewHandle;
+  createEnemyProjectileView: (position: THREE.Vector3, velocity: THREE.Vector3) => ProjectileViewHandle;
   createPickupView: (kind: ResourceKind, position: THREE.Vector3) => PickupViewHandle;
   spawnDamageText: (position: THREE.Vector3, text: string) => void;
   spawnNova: (position: THREE.Vector3) => void;
@@ -80,6 +81,13 @@ export function createThreeGameplayView(world: GameScene): GameplayView {
   const damageTextPool: HTMLDivElement[] = [];
   const novaMeshes: THREE.Mesh[] = [];
   const projectileMeshPool: THREE.Mesh[] = [];
+  const enemyProjectileMeshPool: THREE.Mesh[] = [];
+  const enemyProjectileMaterial = new THREE.MeshBasicMaterial({
+    color: 0x9dff38,
+    transparent: true,
+    opacity: 0.95,
+    toneMapped: false,
+  });
   const impactSparkMesh = new THREE.InstancedMesh(
     IMPACT_SPARK_GEOMETRY,
     new THREE.MeshBasicMaterial({
@@ -212,7 +220,12 @@ export function createThreeGameplayView(world: GameScene): GameplayView {
       world.reticle.position.y = RETICLE_FLOOR_OFFSET;
     },
     createEnemyView(kind, position, facingYaw) {
-      const rig = kind === "elite" ? world.createEliteEnemyAsset() : world.createLeanHunterRig();
+      const rig =
+        kind === "elite"
+          ? world.createEliteEnemyAsset()
+          : kind === "venomSpitter"
+            ? world.createVenomSpitterAsset()
+            : world.createLeanHunterRig();
       rig.root.position.set(position.x, 0, position.z);
       rig.root.rotation.y = facingYaw;
       world.scene.add(rig.root);
@@ -239,6 +252,21 @@ export function createThreeGameplayView(world: GameScene): GameplayView {
         dispose: () => {
           world.scene.remove(mesh);
           projectileMeshPool.push(mesh);
+        },
+      };
+    },
+    createEnemyProjectileView(position, velocity) {
+      const mesh =
+        enemyProjectileMeshPool.pop() ?? new THREE.Mesh(PROJECTILE_GEOMETRY, enemyProjectileMaterial);
+      mesh.position.copy(position);
+      mesh.quaternion.setFromUnitVectors(PROJECTILE_FORWARD, velocity.clone().normalize());
+      mesh.visible = true;
+      world.scene.add(mesh);
+      return {
+        sync: (nextPosition) => mesh.position.copy(nextPosition),
+        dispose: () => {
+          world.scene.remove(mesh);
+          enemyProjectileMeshPool.push(mesh);
         },
       };
     },
@@ -387,6 +415,7 @@ export function createHeadlessGameplayView(): GameplayView {
     resetReticle: () => {},
     createEnemyView: noEnemyView,
     createProjectileView: noProjectileView,
+    createEnemyProjectileView: noProjectileView,
     createPickupView: noPickupView,
     spawnDamageText: () => {},
     spawnNova: () => {},

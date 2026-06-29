@@ -1,9 +1,10 @@
 import { ELITE_ENEMY_SETTINGS } from "./assets/enemies/eliteEnemy/eliteEnemyAsset";
 import { LEAN_HUNTER_SETTINGS } from "./assets/enemies/leanHunterAsset";
+import { VENOM_SPITTER_SETTINGS } from "./assets/enemies/venomSpitter/venomSpitterAsset";
 import type { DropTable, EnemyAssetSettings, EnemyAttackDefinition, EnemySpawnWeightSettings } from "./assetSettings";
 import type { Rng } from "./rng";
 
-export type EnemyKind = "leanHunter" | "elite";
+export type EnemyKind = "leanHunter" | "venomSpitter" | "elite";
 
 export type EnemyDefinition = {
   kind: EnemyKind;
@@ -33,6 +34,20 @@ export const ENEMY_DEFINITIONS: EnemyDefinition[] = [
     xpReward: (enemyLevel) => Math.round(6 + enemyLevel * 1.5),
     attack: primaryEnemyAttack(LEAN_HUNTER_SETTINGS),
     dropTable: LEAN_HUNTER_SETTINGS.dropTable,
+  },
+  {
+    kind: "venomSpitter",
+    radius: VENOM_SPITTER_SETTINGS.collision.radius,
+    unlockMapLevel: 2,
+    budgetCost: 1.35,
+    spawnWeight: spawnWeightFromSettings(VENOM_SPITTER_SETTINGS.spawnWeight, 2),
+    health: (enemyLevel) => VENOM_SPITTER_SETTINGS.health.base + enemyLevel * VENOM_SPITTER_SETTINGS.health.levelGrowth,
+    speed: (enemyLevel) =>
+      VENOM_SPITTER_SETTINGS.movement.speed + enemyLevel * VENOM_SPITTER_SETTINGS.movement.levelSpeedGrowth,
+    attackDamage: (enemyLevel) => scaledAttackDamage(VENOM_SPITTER_SETTINGS, enemyLevel, 2),
+    xpReward: (enemyLevel) => Math.round(10 + enemyLevel * 2.2),
+    attack: primaryEnemyAttack(VENOM_SPITTER_SETTINGS),
+    dropTable: VENOM_SPITTER_SETTINGS.dropTable,
   },
   {
     kind: "elite",

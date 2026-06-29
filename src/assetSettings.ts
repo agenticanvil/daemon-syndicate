@@ -16,6 +16,7 @@ export type EnemyAttackDefinition = {
   cooldown: number;
   range: number;
   projectileSpeed?: number;
+  projectileRadius?: number;
   windup?: number;
 };
 
