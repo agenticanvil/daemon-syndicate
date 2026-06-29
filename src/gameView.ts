@@ -230,12 +230,14 @@ export function createThreeGameplayView(world: GameScene): GameplayView {
             : world.createLeanHunterRig();
       rig.root.position.set(position.x, 0, position.z);
       rig.root.rotation.y = facingYaw;
+      rig.root.visible = world.isTileExplored(position);
       world.scene.add(rig.root);
       return {
         updateRig: (animation, dt) => rig.update({ animation }, dt),
         sync: (nextPosition, nextFacingYaw) => {
           rig.root.position.set(nextPosition.x, 0, nextPosition.z);
           rig.root.rotation.y = nextFacingYaw;
+          rig.root.visible = world.isTileExplored(nextPosition);
         },
         dispose: () => {
           world.scene.remove(rig.root);
@@ -247,10 +249,13 @@ export function createThreeGameplayView(world: GameScene): GameplayView {
       const mesh = projectileMeshPool.pop() ?? new THREE.Mesh(PROJECTILE_GEOMETRY, world.materials.projectile);
       mesh.position.copy(position);
       mesh.quaternion.setFromUnitVectors(PROJECTILE_FORWARD, velocity.clone().normalize());
-      mesh.visible = true;
+      mesh.visible = world.isTileExplored(position);
       world.scene.add(mesh);
       return {
-        sync: (nextPosition) => mesh.position.copy(nextPosition),
+        sync: (nextPosition) => {
+          mesh.position.copy(nextPosition);
+          mesh.visible = world.isTileExplored(nextPosition);
+        },
         dispose: () => {
           world.scene.remove(mesh);
           projectileMeshPool.push(mesh);
@@ -262,10 +267,13 @@ export function createThreeGameplayView(world: GameScene): GameplayView {
         enemyProjectileMeshPool.pop() ?? new THREE.Mesh(PROJECTILE_GEOMETRY, enemyProjectileMaterial);
       mesh.position.copy(position);
       mesh.quaternion.setFromUnitVectors(PROJECTILE_FORWARD, velocity.clone().normalize());
-      mesh.visible = true;
+      mesh.visible = world.isTileExplored(position);
       world.scene.add(mesh);
       return {
-        sync: (nextPosition) => mesh.position.copy(nextPosition),
+        sync: (nextPosition) => {
+          mesh.position.copy(nextPosition);
+          mesh.visible = world.isTileExplored(nextPosition);
+        },
         dispose: () => {
           world.scene.remove(mesh);
           enemyProjectileMeshPool.push(mesh);
@@ -277,6 +285,7 @@ export function createThreeGameplayView(world: GameScene): GameplayView {
       mesh.position.copy(position);
       mesh.position.y = 0.45;
       mesh.rotation.set(0, 0, 0);
+      mesh.visible = world.isTileExplored(position);
       world.scene.add(mesh);
       return {
         sync: (nextPosition, dt) => {
@@ -284,6 +293,7 @@ export function createThreeGameplayView(world: GameScene): GameplayView {
           mesh.position.y =
             0.45 + Math.sin(elapsed * EFFECT_BALANCE.pickupBobSpeed * 1000 + mesh.id) * EFFECT_BALANCE.pickupBobHeight;
           mesh.rotation.y += dt * EFFECT_BALANCE.pickupSpinSpeed;
+          mesh.visible = world.isTileExplored(nextPosition);
         },
         dispose: () => {
           world.scene.remove(mesh);

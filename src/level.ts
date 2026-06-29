@@ -8,7 +8,7 @@ export type TileCoord = {
   y: number;
 };
 
-export type ExitDirection = "north" | "east";
+export type ExitDirection = "north" | "east" | "south" | "west";
 
 export type EnvironmentalObject = {
   kind: EnvironmentAssetKind;
@@ -29,6 +29,12 @@ export type LevelData = {
   spawnPoints: TileCoord[];
 };
 
+type LevelRoute = {
+  exitDirection: ExitDirection;
+  start: TileCoord;
+  end: TileCoord;
+};
+
 const CARDINALS: TileCoord[] = [
   { x: 1, y: 0 },
   { x: -1, y: 0 },
@@ -46,9 +52,7 @@ const DIAGONALS: TileCoord[] = [
 export function generateLevel(id: number, rng: Rng = Math.random): LevelData {
   const width = LEVEL_WIDTH;
   const height = LEVEL_HEIGHT;
-  const exitDirection: ExitDirection = rng() < 0.55 ? "north" : "east";
-  const start = { x: 3, y: height - 4 };
-  const end = exitDirection === "north" ? { x: width - 5, y: 1 } : { x: width - 2, y: 5 };
+  const { exitDirection, start, end } = chooseLevelRoute(width, height, rng);
   const path = buildMainPath(start, end, exitDirection, width, height, rng);
   const walkable = new Set<string>();
 
@@ -99,10 +103,19 @@ export function tileToWorld(tile: TileCoord): THREE.Vector3 {
 
 export function exitGateToWorld(tile: TileCoord, direction: ExitDirection): THREE.Vector3 {
   const position = tileToWorld(tile);
-  if (direction === "east") {
-    position.x += TILE_SIZE * 0.5;
-  } else {
-    position.z -= TILE_SIZE * 0.5;
+  switch (direction) {
+    case "east":
+      position.x += TILE_SIZE * 0.5;
+      break;
+    case "west":
+      position.x -= TILE_SIZE * 0.5;
+      break;
+    case "south":
+      position.z += TILE_SIZE * 0.5;
+      break;
+    case "north":
+      position.z -= TILE_SIZE * 0.5;
+      break;
   }
   return position;
 }
@@ -127,6 +140,50 @@ export function neighbors(tile: TileCoord): TileCoord[] {
   return CARDINALS.map((dir) => ({ x: tile.x + dir.x, y: tile.y + dir.y }));
 }
 
+function chooseLevelRoute(width: number, height: number, rng: Rng): LevelRoute {
+  const startCorners = [
+    { x: 3, y: 3 },
+    { x: width - 4, y: 3 },
+    { x: width - 4, y: height - 4 },
+    { x: 3, y: height - 4 },
+  ];
+  const start = startCorners[Math.floor(rng() * startCorners.length)];
+  const exitDirections = farExitDirections(start, width, height);
+  const exitDirection = exitDirections[Math.floor(rng() * exitDirections.length)];
+
+  return {
+    exitDirection,
+    start,
+    end: chooseExitTile(exitDirection, width, height, rng),
+  };
+}
+
+function farExitDirections(start: TileCoord, width: number, height: number): ExitDirection[] {
+  const directions: ExitDirection[] = [];
+  if (start.y >= height / 2) directions.push("north");
+  if (start.y < height / 2) directions.push("south");
+  if (start.x >= width / 2) directions.push("west");
+  if (start.x < width / 2) directions.push("east");
+  return directions;
+}
+
+function chooseExitTile(direction: ExitDirection, width: number, height: number, rng: Rng): TileCoord {
+  switch (direction) {
+    case "north":
+      return { x: randomEdgeCoordinate(width, rng), y: 1 };
+    case "south":
+      return { x: randomEdgeCoordinate(width, rng), y: height - 2 };
+    case "west":
+      return { x: 1, y: randomEdgeCoordinate(height, rng) };
+    case "east":
+      return { x: width - 2, y: randomEdgeCoordinate(height, rng) };
+  }
+}
+
+function randomEdgeCoordinate(size: number, rng: Rng): number {
+  return 4 + Math.floor(rng() * Math.max(size - 8, 1));
+}
+
 function buildMainPath(
   start: TileCoord,
   end: TileCoord,
@@ -141,17 +198,13 @@ function buildMainPath(
 
   while ((current.x !== end.x || current.y !== end.y) && guard < width * height) {
     guard += 1;
-    const options: TileCoord[] = [];
-    if (current.x < end.x) options.push({ x: current.x + 1, y: current.y });
-    if (current.y > end.y) options.push({ x: current.x, y: current.y - 1 });
-    if (rng() < 0.36 && current.y < height - 4) options.push({ x: current.x, y: current.y + 1 });
-    if (rng() < 0.32 && current.x > 3) options.push({ x: current.x - 1, y: current.y });
+    const options = pathStepOptions(current, end, width, height, rng);
 
     const preferred =
-      exitDirection === "east"
+      exitDirection === "east" || exitDirection === "west"
         ? options.sort((a, b) => Math.abs(a.x - end.x) - Math.abs(b.x - end.x))
         : options.sort((a, b) => Math.abs(a.y - end.y) - Math.abs(b.y - end.y));
-    const next = preferred[Math.floor(rng() * Math.min(preferred.length, 2))] ?? end;
+    const next = preferred[Math.floor(rng() * Math.min(preferred.length, 3))] ?? end;
     current.x = THREE.MathUtils.clamp(next.x, 1, width - 2);
     current.y = THREE.MathUtils.clamp(next.y, 1, height - 2);
     path.push({ ...current });
@@ -168,6 +221,28 @@ function buildMainPath(
   }
 
   return path;
+}
+
+function pathStepOptions(current: TileCoord, end: TileCoord, width: number, height: number, rng: Rng): TileCoord[] {
+  const options: TileCoord[] = [];
+  const xStep = Math.sign(end.x - current.x);
+  const yStep = Math.sign(end.y - current.y);
+  const currentDistance = distance(current, end);
+
+  if (xStep !== 0) options.push({ x: current.x + xStep, y: current.y });
+  if (yStep !== 0) options.push({ x: current.x, y: current.y + yStep });
+
+  for (const direction of shuffle([...CARDINALS], rng)) {
+    if (rng() >= 0.34) continue;
+    const tile = { x: current.x + direction.x, y: current.y + direction.y };
+    if (tile.x < 2 || tile.x > width - 3 || tile.y < 2 || tile.y > height - 3) continue;
+    if (distance(tile, end) > currentDistance + 3) continue;
+    if (!options.some((option) => option.x === tile.x && option.y === tile.y)) {
+      options.push(tile);
+    }
+  }
+
+  return options;
 }
 
 function carveBranch(

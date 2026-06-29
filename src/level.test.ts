@@ -39,6 +39,15 @@ describe("generateLevel", () => {
     });
   });
 
+  it("varies start corners and exit sides across seeded levels", () => {
+    const levels = Array.from({ length: 48 }, (_, index) => generateLevel(3, seededRandom(`route-seed-${index}`)));
+    const starts = new Set(levels.map((level) => key(level.start)));
+    const exitDirections = new Set(levels.map((level) => level.exitDirection));
+
+    expect(starts.size).toBeGreaterThanOrEqual(3);
+    expect(exitDirections).toEqual(new Set(["north", "east", "south", "west"]));
+  });
+
   it("places a small set of non-blocking environmental crates", () => {
     for (let index = 0; index < 8; index += 1) {
       const level = generateLevel(3, seededRandom(`crate-seed-${index}`));
