@@ -338,6 +338,7 @@ export class Game {
       if (!this.simulation.isStarted || this.simulation.isGameOver || this.simulation.isPaused) {
         this.perf.span("camera", () => this.updateCamera());
       }
+      this.world.updatePlayerLocalAmbient(this.simulation.playerPosition);
       this.perf.span("three.render.cpu", () => this.world.renderer.render(this.world.scene, this.world.camera));
     });
   };

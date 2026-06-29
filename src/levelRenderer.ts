@@ -9,7 +9,13 @@ export type LevelRenderMaterials = {
   rim: THREE.MeshBasicMaterial;
 };
 
-export function renderLevel(root: THREE.Group, level: LevelData, materials: LevelRenderMaterials): void {
+export type LevelEdgeVisibility = {
+  updateExploredTiles: (exploredKeys: ReadonlySet<string>) => void;
+};
+
+const HIDDEN_MATRIX = new THREE.Matrix4().makeScale(0, 0, 0);
+
+export function renderLevel(root: THREE.Group, level: LevelData, materials: LevelRenderMaterials): LevelEdgeVisibility {
   root.clear();
 
   const voidPlane = new THREE.Mesh(
@@ -23,16 +29,18 @@ export function renderLevel(root: THREE.Group, level: LevelData, materials: Leve
   const tileGeometry = new THREE.PlaneGeometry(TILE_SIZE, TILE_SIZE);
   const floorTiles = new THREE.InstancedMesh(tileGeometry, materials.floor, level.walkable.size);
   floorTiles.receiveShadow = true;
+  floorTiles.frustumCulled = false;
 
-  let tileIndex = 0;
-  const matrix = new THREE.Matrix4();
+  const floorTransforms: THREE.Matrix4[] = [];
+  const floorOwnerKeys: string[] = [];
   for (const tileKey of level.walkable) {
     const [x, y] = tileKey.split(",").map(Number);
     const position = tileToWorld({ x, y });
+    const matrix = new THREE.Matrix4();
     matrix.makeRotationX(-Math.PI / 2);
     matrix.setPosition(position.x, 0, position.z);
-    floorTiles.setMatrixAt(tileIndex, matrix);
-    tileIndex += 1;
+    floorTransforms.push(matrix);
+    floorOwnerKeys.push(tileKey);
   }
   root.add(floorTiles);
 
@@ -40,6 +48,7 @@ export function renderLevel(root: THREE.Group, level: LevelData, materials: Leve
   const rimGeometry = new THREE.BoxGeometry(TILE_SIZE, 0.04, 0.08);
   const edgeTransforms: THREE.Matrix4[] = [];
   const rimTransforms: THREE.Matrix4[] = [];
+  const edgeOwnerKeys: string[] = [];
 
   for (const tileKey of level.walkable) {
     const tile = tileKey.split(",").map(Number);
@@ -59,16 +68,34 @@ export function renderLevel(root: THREE.Group, level: LevelData, materials: Leve
       rim.setPosition(base.x + dirX * TILE_SIZE * 0.5, 0.06, base.z + dirY * TILE_SIZE * 0.5);
       edgeTransforms.push(edge);
       rimTransforms.push(rim);
+      edgeOwnerKeys.push(tileKey);
     }
   }
 
   const edges = new THREE.InstancedMesh(edgeGeometry, materials.edge, edgeTransforms.length);
   const rims = new THREE.InstancedMesh(rimGeometry, materials.rim, rimTransforms.length);
-  edgeTransforms.forEach((transform, index) => edges.setMatrixAt(index, transform));
-  rimTransforms.forEach((transform, index) => rims.setMatrixAt(index, transform));
+  edges.frustumCulled = false;
+  rims.frustumCulled = false;
   root.add(edges, rims);
 
   addStartPad(root, level.start);
+
+  const updateExploredTiles = (exploredKeys: ReadonlySet<string>): void => {
+    floorTransforms.forEach((floorTransform, index) => {
+      floorTiles.setMatrixAt(index, exploredKeys.has(floorOwnerKeys[index]) ? floorTransform : HIDDEN_MATRIX);
+    });
+    edgeTransforms.forEach((edgeTransform, index) => {
+      const visible = exploredKeys.has(edgeOwnerKeys[index]);
+      edges.setMatrixAt(index, visible ? edgeTransform : HIDDEN_MATRIX);
+      rims.setMatrixAt(index, visible ? rimTransforms[index] : HIDDEN_MATRIX);
+    });
+    floorTiles.instanceMatrix.needsUpdate = true;
+    edges.instanceMatrix.needsUpdate = true;
+    rims.instanceMatrix.needsUpdate = true;
+  };
+  updateExploredTiles(new Set());
+
+  return { updateExploredTiles };
 }
 
 function addStartPad(root: THREE.Group, tile: TileCoord): void {
