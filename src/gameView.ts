@@ -48,6 +48,7 @@ export type EffectsSnapshot = {
 export type GameplayView = {
   player: PlayerView;
   renderLevel: (level: LevelData) => void;
+  updateFog: (playerPosition: THREE.Vector3, dt: number, instant?: boolean) => void;
   resetReticle: (position: THREE.Vector3) => void;
   createEnemyView: (kind: EnemyKind, position: THREE.Vector3, facingYaw: number) => EnemyViewHandle;
   createProjectileView: (position: THREE.Vector3, velocity: THREE.Vector3) => ProjectileViewHandle;
@@ -215,6 +216,7 @@ export function createThreeGameplayView(world: GameScene): GameplayView {
       triggerFire: () => world.playerRig.triggerFire(),
     },
     renderLevel: world.renderLevel,
+    updateFog: world.updateFog,
     resetReticle(position) {
       world.reticle.position.copy(position);
       world.reticle.position.y = RETICLE_FLOOR_OFFSET;
@@ -412,6 +414,7 @@ export function createHeadlessGameplayView(): GameplayView {
       triggerFire: () => {},
     },
     renderLevel: () => {},
+    updateFog: () => {},
     resetReticle: () => {},
     createEnemyView: noEnemyView,
     createProjectileView: noProjectileView,
