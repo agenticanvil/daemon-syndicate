@@ -1,3 +1,4 @@
+import { DEFAULT_AUDIO_SETTINGS, type AudioSettings } from "./audio";
 import type { PlayerResources } from "./types";
 import type { GraphicsSettings } from "./scene";
 import type { UpgradeId, UpgradeOption } from "./upgrades";
@@ -34,6 +35,7 @@ export type Ui = {
   getMovementMode: () => MovementControlMode;
   setFpsVisible: (visible: boolean) => void;
   updateFps: (fps: number) => void;
+  onAudioSettingsChange: (listener: (settings: AudioSettings) => void) => void;
   onGraphicsSettingsChange: (listener: (settings: GraphicsSettings) => void) => void;
   updateHud: (state: HudState) => void;
   showUpgradeSelection: (state: { points: number; options: UpgradeOption[] }, onSelect: (id: UpgradeId) => void) => void;
@@ -134,7 +136,24 @@ export function createUi(app: HTMLDivElement): Ui {
           </div>
           <div class="pause-section">
             <h3>Audio</h3>
-            <div class="empty-section" aria-hidden="true"></div>
+            <label class="setting-row setting-toggle">
+              <span class="setting-label">Mute</span>
+              <input id="audioMuted" type="checkbox" />
+            </label>
+            <label class="setting-row">
+              <div>
+                <span class="setting-label">Master</span>
+                <small class="setting-value" id="masterVolumeValue">82%</small>
+              </div>
+              <input class="audio-slider" id="masterVolume" type="range" min="0" max="1" step="0.01" />
+            </label>
+            <label class="setting-row">
+              <div>
+                <span class="setting-label">SFX</span>
+                <small class="setting-value" id="sfxVolumeValue">90%</small>
+              </div>
+              <input class="audio-slider" id="sfxVolume" type="range" min="0" max="1" step="0.01" />
+            </label>
           </div>
         </section>
         <section class="pause-view pause-view-help" aria-label="Help">
@@ -194,12 +213,24 @@ export function createUi(app: HTMLDivElement): Ui {
   const movementOptions = Array.from(pausePanel.querySelectorAll<HTMLButtonElement>(".movement-option"));
   const preserveDrawingBuffer = document.querySelector<HTMLInputElement>("#preserveDrawingBuffer")!;
   const pixelRatioOptions = Array.from(pausePanel.querySelectorAll<HTMLButtonElement>(".graphics-pixel-option"));
+  const audioMuted = document.querySelector<HTMLInputElement>("#audioMuted")!;
+  const masterVolume = document.querySelector<HTMLInputElement>("#masterVolume")!;
+  const masterVolumeValue = document.querySelector<HTMLElement>("#masterVolumeValue")!;
+  const sfxVolume = document.querySelector<HTMLInputElement>("#sfxVolume")!;
+  const sfxVolumeValue = document.querySelector<HTMLElement>("#sfxVolumeValue")!;
   let movementMode: MovementControlMode = "screen";
   let graphicsSettings: GraphicsSettings = {
     preserveDrawingBuffer: preserveDrawingBuffer.checked,
     pixelRatio: 2,
   };
+  let audioSettings = loadAudioSettings();
   const graphicsSettingsListeners: Array<(settings: GraphicsSettings) => void> = [];
+  const audioSettingsListeners: Array<(settings: AudioSettings) => void> = [];
+
+  audioMuted.checked = audioSettings.muted;
+  masterVolume.value = audioSettings.masterVolume.toString();
+  sfxVolume.value = audioSettings.sfxVolume.toString();
+  updateAudioVolumeLabels();
 
   function setMeter(el: HTMLElement, value: number, max: number): void {
     el.style.width = `${Math.max(0, Math.min(value / max, 1)) * 100}%`;
@@ -218,6 +249,18 @@ export function createUi(app: HTMLDivElement): Ui {
     for (const listener of graphicsSettingsListeners) {
       listener({ ...graphicsSettings });
     }
+  }
+
+  function emitAudioSettings(): void {
+    saveAudioSettings(audioSettings);
+    for (const listener of audioSettingsListeners) {
+      listener({ ...audioSettings });
+    }
+  }
+
+  function updateAudioVolumeLabels(): void {
+    masterVolumeValue.textContent = `${Math.round(audioSettings.masterVolume * 100)}%`;
+    sfxVolumeValue.textContent = `${Math.round(audioSettings.sfxVolume * 100)}%`;
   }
 
   movementOptions.forEach((option) => {
@@ -256,6 +299,20 @@ export function createUi(app: HTMLDivElement): Ui {
       });
       emitGraphicsSettings();
     });
+  });
+  audioMuted.addEventListener("change", () => {
+    audioSettings = { ...audioSettings, muted: audioMuted.checked };
+    emitAudioSettings();
+  });
+  masterVolume.addEventListener("input", () => {
+    audioSettings = { ...audioSettings, masterVolume: clamp01(Number(masterVolume.value)) };
+    updateAudioVolumeLabels();
+    emitAudioSettings();
+  });
+  sfxVolume.addEventListener("input", () => {
+    audioSettings = { ...audioSettings, sfxVolume: clamp01(Number(sfxVolume.value)) };
+    updateAudioVolumeLabels();
+    emitAudioSettings();
   });
 
   return {
@@ -297,6 +354,10 @@ export function createUi(app: HTMLDivElement): Ui {
     },
     updateFps(fps: number) {
       fpsValue.textContent = Math.round(fps).toString();
+    },
+    onAudioSettingsChange(listener: (settings: AudioSettings) => void) {
+      audioSettingsListeners.push(listener);
+      listener({ ...audioSettings });
     },
     onGraphicsSettingsChange(listener: (settings: GraphicsSettings) => void) {
       graphicsSettingsListeners.push(listener);
@@ -345,4 +406,34 @@ export function createUi(app: HTMLDivElement): Ui {
       upgradeOptions.replaceChildren();
     },
   };
+}
+
+const AUDIO_SETTINGS_STORAGE_KEY = "daemon-syndicate.audio-settings";
+
+function loadAudioSettings(): AudioSettings {
+  try {
+    const stored = localStorage.getItem(AUDIO_SETTINGS_STORAGE_KEY);
+    if (!stored) return { ...DEFAULT_AUDIO_SETTINGS };
+    const parsed = JSON.parse(stored) as Partial<AudioSettings>;
+    return {
+      muted: parsed.muted === true,
+      masterVolume: clamp01(parsed.masterVolume ?? DEFAULT_AUDIO_SETTINGS.masterVolume),
+      sfxVolume: clamp01(parsed.sfxVolume ?? DEFAULT_AUDIO_SETTINGS.sfxVolume),
+    };
+  } catch {
+    return { ...DEFAULT_AUDIO_SETTINGS };
+  }
+}
+
+function saveAudioSettings(settings: AudioSettings): void {
+  try {
+    localStorage.setItem(AUDIO_SETTINGS_STORAGE_KEY, JSON.stringify(settings));
+  } catch {
+    // Settings persistence is best-effort; audio should continue working without storage.
+  }
+}
+
+function clamp01(value: number): number {
+  if (!Number.isFinite(value)) return 0;
+  return Math.max(0, Math.min(value, 1));
 }

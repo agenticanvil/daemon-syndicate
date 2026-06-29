@@ -1,22 +1,30 @@
 import * as THREE from "three";
+import type { GameAudio, SoundId } from "./audio";
 import { createThreeGameplayView, type GameplayView } from "./gameView";
-import { GameSimulation, type DebugSpawnPosition } from "./gameSimulation";
+import { GameSimulation, type DebugSpawnPosition, type GameStepResult } from "./gameSimulation";
 import { InputState } from "./inputState";
 import { movementInputFor } from "./movement";
 import type { PerfRecorder } from "./perf";
 import { idlePlayerCommand, type PlayerCommand } from "./playerCommand";
 import type { Rng } from "./rng";
 import type { GameScene } from "./scene";
-import type { PlayerResources } from "./types";
+import type { PlayerResources, ResourceKind } from "./types";
 import type { Ui } from "./ui";
 import type { UpgradeId } from "./upgrades";
 
 type GameOptions = {
+  audio?: GameAudio;
   rng?: Rng;
   seed?: string;
 };
 
 export type { DebugSpawnPosition };
+
+const PICKUP_SOUNDS: Record<ResourceKind, SoundId> = {
+  health: "pickup-health",
+  ammo: "pickup-ammo",
+  energy: "pickup-energy",
+};
 
 export class Game {
   private readonly clock = new THREE.Clock();
@@ -24,6 +32,7 @@ export class Game {
   private readonly input = new InputState();
   private readonly view: GameplayView;
   private readonly simulation: GameSimulation;
+  private readonly audio?: GameAudio;
 
   private fpsVisible = false;
   private nextFpsHudUpdateAt = 0;
@@ -35,6 +44,7 @@ export class Game {
     private readonly perf: PerfRecorder,
     options: GameOptions = {},
   ) {
+    this.audio = options.audio;
     this.view = createThreeGameplayView(world);
     this.simulation = new GameSimulation(this.view, options);
   }
@@ -46,7 +56,11 @@ export class Game {
     window.addEventListener("contextmenu", (event) => event.preventDefault());
     window.addEventListener("keydown", this.handleKeyDown);
     window.addEventListener("keyup", (event) => this.input.deleteKey(event.code));
-    this.ui.startButton.addEventListener("click", () => this.startNewRun());
+    this.ui.startButton.addEventListener("click", () => {
+      this.unlockAudio();
+      this.audio?.play("ui-click", { volume: 0.55 });
+      this.startNewRun();
+    });
     this.ui.resumeButton.addEventListener("click", () => this.setPaused(false));
   }
 
@@ -62,6 +76,7 @@ export class Game {
     this.ui.setHudVisible(true);
     this.ui.setPaused(false);
     this.updateHud();
+    this.audio?.play("level-transition", { volume: 0.62 });
   }
 
   snapshot(): object {
@@ -86,6 +101,7 @@ export class Game {
   }
 
   private readonly handlePointerDown = (event: PointerEvent): void => {
+    this.unlockAudio();
     this.updatePointerWorld(event);
     if (!this.canAct()) return;
     if (event.button === 0) this.input.requestPrimaryFire();
@@ -93,6 +109,7 @@ export class Game {
   };
 
   private readonly handleKeyDown = (event: KeyboardEvent): void => {
+    this.unlockAudio();
     if (event.code === "KeyP") {
       if (!event.repeat) {
         this.fpsVisible = !this.fpsVisible;
@@ -127,8 +144,12 @@ export class Game {
   }
 
   private setPaused(paused: boolean): void {
+    const changed = this.simulation.isPaused !== paused;
     this.simulation.setPaused(paused);
     this.ui.setPaused(paused);
+    if (changed) {
+      this.audio?.play("ui-click", { volume: paused ? 0.42 : 0.58, playbackRate: paused ? 0.86 : 1.06 });
+    }
   }
 
   private presentUpgradeSelection(): void {
@@ -155,9 +176,58 @@ export class Game {
     if (!this.selectingUpgrade) return;
     if (this.simulation.spendUpgrade(id)) {
       this.updateHud();
+      this.audio?.play("upgrade-select", { volume: 0.7 });
     }
     this.presentUpgradeSelection();
   };
+
+  private unlockAudio(): void {
+    void this.audio?.resume().catch(() => undefined);
+  }
+
+  private playStepAudio(result: GameStepResult): void {
+    if (result.primaryFired) {
+      this.audio?.play("primary-fire", { volume: 0.68, playbackRate: randomRate(0.045) });
+    }
+    if (result.projectileImpacts > 0) {
+      this.audio?.play("primary-impact", {
+        volume: Math.min(0.42 + result.projectileImpacts * 0.08, 0.68),
+        playbackRate: randomRate(0.05),
+      });
+    }
+    if (result.novaFired) {
+      this.audio?.play("nova", { volume: 0.82 });
+    }
+    if (result.dashUsed) {
+      this.audio?.play("dash", { volume: 0.58, playbackRate: randomRate(0.04) });
+    }
+    if (result.enemyHits > 0) {
+      this.audio?.play("enemy-hit", {
+        volume: Math.min(0.32 + result.enemyHits * 0.06, 0.66),
+        playbackRate: randomRate(0.08),
+      });
+    }
+    if (result.kills > 0) {
+      this.audio?.play("enemy-death", {
+        volume: Math.min(0.46 + result.kills * 0.08, 0.78),
+        playbackRate: randomRate(0.06),
+      });
+    }
+    if (result.damageTaken > 0) {
+      this.audio?.play("player-hit", { volume: 0.82 });
+    }
+    for (const [kind, amount] of Object.entries(result.pickupsCollected) as Array<[ResourceKind, number]>) {
+      if (amount > 0) {
+        this.audio?.play(PICKUP_SOUNDS[kind], { volume: 0.56, playbackRate: randomRate(0.04) });
+      }
+    }
+    if (result.levelChanged) {
+      this.audio?.play("level-transition", { volume: 0.74 });
+    }
+    if (result.gameOver) {
+      this.audio?.play("game-over", { volume: 0.82 });
+    }
+  }
 
   private buildPlayerCommand(): PlayerCommand {
     if (!this.canAct()) {
@@ -254,6 +324,7 @@ export class Game {
       const command = this.buildPlayerCommand();
       if (this.simulation.isStarted && !this.simulation.isGameOver && !this.simulation.isPaused) {
         const result = this.perf.span("simulation.step", () => this.simulation.step(dt, command));
+        this.playStepAudio(result);
         this.perf.span("camera", () => this.updateCamera());
         this.perf.span("pointer.world", () => this.updatePointerWorldFromCamera());
         this.perf.span("hud/dom", () => this.updateHud());
@@ -270,4 +341,8 @@ export class Game {
       this.perf.span("three.render.cpu", () => this.world.renderer.render(this.world.scene, this.world.camera));
     });
   };
+}
+
+function randomRate(amount: number): number {
+  return 1 + (Math.random() * 2 - 1) * amount;
 }

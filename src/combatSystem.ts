@@ -67,7 +67,9 @@ export class CombatSystem {
     return this.fireAbility("nova", this.view.player.position);
   }
 
-  updateProjectiles(dt: number): void {
+  updateProjectiles(dt: number): number {
+    let impactCount = 0;
+
     for (const projectile of this.projectiles) {
       const previousPosition = projectile.position.clone();
       projectile.position.addScaledVector(projectile.velocity, dt);
@@ -78,6 +80,7 @@ export class CombatSystem {
         projectile.position.copy(wallImpact.position);
         projectile.life = 0;
         this.view.spawnProjectileImpact(wallImpact.position, projectile.velocity);
+        impactCount += 1;
         continue;
       }
 
@@ -87,6 +90,7 @@ export class CombatSystem {
         if (overlaps2D(projectile, enemy)) {
           this.damageEnemy(enemy, projectile.damage, true);
           this.view.spawnProjectileImpact(projectile.position, projectile.velocity);
+          impactCount += 1;
           projectile.hitEnemyIds?.add(enemy.id);
           if ((projectile.pierceRemaining ?? 0) > 0) {
             projectile.pierceRemaining = (projectile.pierceRemaining ?? 0) - 1;
@@ -107,6 +111,7 @@ export class CombatSystem {
     }
 
     this.syncProjectileViews();
+    return impactCount;
   }
 
   clear(): void {

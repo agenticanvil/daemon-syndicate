@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite --host 127.0.0.1",
     "build": "tsc && vite build",
+    "generate:sfx": "node scripts/generate-sfx.mjs",
     "test": "vitest run",
     "perf": "node scripts/perf-run.mjs",
     "sim": "node scripts/sim-run.mjs",
