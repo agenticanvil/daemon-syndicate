@@ -13,7 +13,7 @@ import { createAmmoPickupAsset, type AmmoPickupAsset } from "./assets/pickups/am
 import { createEnergyPickupAsset, type EnergyPickupAsset } from "./assets/pickups/energyPickup/energyPickupAsset";
 import { createHealthPickupAsset, type HealthPickupAsset } from "./assets/pickups/healthPickup/healthPickupAsset";
 import { loadPlayerRig, type PlayerRig } from "./playerAsset";
-import type { ResourceKind } from "./types";
+import type { ResourceKind } from "./resourceTypes";
 
 export type PickupAsset = AmmoPickupAsset | EnergyPickupAsset | HealthPickupAsset;
 export type EnvironmentAsset = IndustrialCrateAsset;

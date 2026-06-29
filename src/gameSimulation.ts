@@ -4,6 +4,7 @@ import { TILE_SIZE } from "./constants";
 import { CombatSystem, type CombatSystemSnapshot } from "./combatSystem";
 import { EnemySystem, type EnemyProjectileSystemSnapshot, type EnemySystemSnapshot } from "./enemySystem";
 import type { EnemyKind } from "./enemyDefinitions";
+import { EntityViewSync } from "./entityViewSync";
 import { EventQueue, type GameEvent } from "./eventQueue";
 import type { EffectsSnapshot, GameplayView } from "./gameView";
 import { exitGateToWorld, generateLevel, tileToWorld, type ExitDirection, type LevelData, type TileCoord } from "./level";
@@ -12,7 +13,7 @@ import { PlayerSystem, type PlayerSystemSnapshot } from "./playerSystem";
 import { idlePlayerCommand } from "./playerCommand";
 import { PlayerProgression, type PlayerProgressionSnapshot } from "./progression";
 import type { Rng } from "./rng";
-import type { PlayerResources, ResourceKind } from "./types";
+import type { PlayerResources, ResourceKind } from "./resourceTypes";
 import { availableUpgradeOptions, derivePlayerStats, type PlayerDerivedStats, type UpgradeId, type UpgradeOption } from "./upgrades";
 
 type GameSimulationOptions = {
@@ -21,7 +22,7 @@ type GameSimulationOptions = {
 };
 
 type StartRunOptions = {
-  mapLevel?: number;
+  mapDepth?: number;
 };
 
 export type DebugSpawnPosition = TileCoord | { x: number; y?: number; z: number };
@@ -32,10 +33,10 @@ export type GameSimulationSnapshot = {
   paused: boolean;
   gameOver: boolean;
   kills: number;
-  levelNumber: number;
+  mapDepth: number;
   progression: PlayerProgressionSnapshot;
   level: {
-    id: number;
+    mapDepth: number;
     width: number;
     height: number;
     exitDirection: ExitDirection;
@@ -64,7 +65,7 @@ export type GameStepResult = {
   killedEnemies: Array<{ kind: EnemyKind; enemyLevel: number; xpReward: number }>;
   damageTaken: number;
   pickupsCollected: Partial<Record<ResourceKind, number>>;
-  levelChanged: boolean;
+  mapDepthChanged: boolean;
   gameOver: boolean;
 };
 
@@ -75,12 +76,13 @@ export class GameSimulation {
   private readonly enemies: EnemySystem;
   private readonly combat: CombatSystem;
   private readonly progression = new PlayerProgression();
+  private readonly entityViews: EntityViewSync;
 
   private started = false;
   private paused = false;
   private gameOver = false;
   private kills = 0;
-  private levelNumber = 1;
+  private mapDepth = 1;
   private currentLevel: LevelData;
   private readonly rng: Rng;
   private readonly seed?: string;
@@ -91,10 +93,10 @@ export class GameSimulation {
   ) {
     this.rng = options.rng ?? Math.random;
     this.seed = options.seed;
-    this.currentLevel = generateLevel(this.levelNumber, this.rng);
+    this.currentLevel = generateLevel(this.mapDepth, this.rng);
+    this.entityViews = new EntityViewSync(this.view);
     this.player = new PlayerSystem(this.view, () => this.currentLevel, () => this.derivedStats());
     this.pickups = new PickupSystem(
-      this.view,
       this.events,
       this.player.collisionBody,
       () => this.currentCollisionLayer(),
@@ -141,8 +143,8 @@ export class GameSimulation {
     return this.kills;
   }
 
-  get currentLevelNumber(): number {
-    return this.levelNumber;
+  get currentMapDepth(): number {
+    return this.mapDepth;
   }
 
   get enemyCount(): number {
@@ -221,7 +223,7 @@ export class GameSimulation {
       killedEnemies: [],
       damageTaken: 0,
       pickupsCollected: {},
-      levelChanged: false,
+      mapDepthChanged: false,
       gameOver: false,
     };
 
@@ -231,7 +233,7 @@ export class GameSimulation {
       this.player.regenerate(dt);
       this.player.applyMovement(command, dt);
       this.view.updateFog(this.view.player.position, dt);
-      result.levelChanged = this.checkGateTransition();
+      result.mapDepthChanged = this.checkGateTransition();
       this.player.updateAim(command.aimWorld);
       this.player.updateRig(dt);
       if (command.firePrimary) {
@@ -248,6 +250,7 @@ export class GameSimulation {
       this.processEvents(result);
       this.pickups.update(dt);
       this.processEvents(result);
+      this.syncEntityViews(dt);
       this.view.updateEffects(dt);
     }
 
@@ -262,10 +265,10 @@ export class GameSimulation {
       paused: this.paused,
       gameOver: this.gameOver,
       kills: this.kills,
-      levelNumber: this.levelNumber,
+      mapDepth: this.mapDepth,
       progression: this.progression.snapshot(),
       level: {
-        id: this.currentLevel.id,
+        mapDepth: this.currentLevel.mapDepth,
         width: this.currentLevel.width,
         height: this.currentLevel.height,
         exitDirection: this.currentLevel.exitDirection,
@@ -291,6 +294,7 @@ export class GameSimulation {
 
   spawnEnemy(kind: EnemyKind, position: DebugSpawnPosition): void {
     this.enemies.spawnEnemyAt(kind, debugPositionToWorld(position));
+    this.syncEntityViews(0);
   }
 
   grantResources(resources: Partial<PlayerResources>): void {
@@ -363,8 +367,8 @@ export class GameSimulation {
 
   private reset(options: StartRunOptions = {}): void {
     this.clearEntities();
-    this.levelNumber = sanitizeStartMapLevel(options.mapLevel);
-    this.currentLevel = generateLevel(this.levelNumber, this.rng);
+    this.mapDepth = sanitizeStartMapDepth(options.mapDepth);
+    this.currentLevel = generateLevel(this.mapDepth, this.rng);
     this.view.renderLevel(this.currentLevel);
     this.player.reset(tileToWorld(this.currentLevel.start), this.currentCollisionLayer());
     this.resetReticle();
@@ -373,6 +377,7 @@ export class GameSimulation {
     this.progression.reset();
     this.enemies.spawnLevelEnemies();
     this.combat.resetTimers();
+    this.syncEntityViews(0);
     this.gameOver = false;
     this.paused = false;
     this.started = true;
@@ -380,14 +385,15 @@ export class GameSimulation {
 
   private loadNextLevel(): void {
     this.clearEntities();
-    this.levelNumber += 1;
-    this.currentLevel = generateLevel(this.levelNumber, this.rng);
+    this.mapDepth += 1;
+    this.currentLevel = generateLevel(this.mapDepth, this.rng);
     this.view.renderLevel(this.currentLevel);
     this.player.moveTo(tileToWorld(this.currentLevel.start), this.currentCollisionLayer());
     this.resetReticle();
     this.view.updateFog(this.view.player.position, 0, true);
     this.enemies.spawnLevelEnemies();
     this.combat.prepareNextLevel();
+    this.syncEntityViews(0);
   }
 
   private resetReticle(): void {
@@ -399,11 +405,24 @@ export class GameSimulation {
     this.enemies.clear();
     this.combat.clear();
     this.pickups.clear();
+    this.entityViews.clear();
     this.view.clearEffects();
   }
 
+  private syncEntityViews(dt: number): void {
+    this.entityViews.sync(
+      {
+        enemies: this.enemies.all,
+        projectiles: this.combat.allProjectiles,
+        enemyProjectiles: this.enemies.allEnemyProjectiles,
+        pickups: this.pickups.all,
+      },
+      dt,
+    );
+  }
+
   private currentCollisionLayer(): CollisionLayer {
-    return this.currentLevel.id;
+    return this.currentLevel.mapDepth;
   }
 
   private derivedStats(): PlayerDerivedStats {
@@ -418,9 +437,9 @@ export class GameSimulation {
   }
 }
 
-function sanitizeStartMapLevel(mapLevel: number | undefined): number {
-  if (mapLevel === undefined || !Number.isFinite(mapLevel)) return 1;
-  return Math.max(1, Math.floor(mapLevel));
+function sanitizeStartMapDepth(mapDepth: number | undefined): number {
+  if (mapDepth === undefined || !Number.isFinite(mapDepth)) return 1;
+  return Math.max(1, Math.floor(mapDepth));
 }
 
 function debugPositionToWorld(position: DebugSpawnPosition): THREE.Vector3 {

@@ -22,7 +22,7 @@ Each report includes a top-level summary plus per-seed results. The console prin
 - `survivalOverTime`
 - `averageKills`
 - `medianKills`
-- `averageLevelReached`
+- `averageMapDepthReached`
 - `averageDamageTaken`
 - `averagePlayerLevelReached`
 - `averageXpEarned`
@@ -88,7 +88,7 @@ Per-run results include:
 - `survived`
 - `deathTimeSeconds`
 - `kills`
-- `levelReached`
+- `mapDepthReached`
 - `finalHealth`, `finalAmmo`, `finalEnergy`
 - `primaryShots`
 - `novaUses`

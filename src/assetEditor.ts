@@ -18,7 +18,7 @@ import { createPlayerLocalAmbient } from "./playerLocalAmbient";
 import { type PlayerAnimationState, type PlayerRig } from "./playerAsset";
 import { createRenderer } from "./renderer";
 import { addGameplayLighting } from "./sceneLighting";
-import type { ResourceKind } from "./types";
+import type { ResourceKind } from "./resourceTypes";
 
 const ASSET_SETTINGS_BY_PATH = import.meta.glob("./assets/**/*.settings.json", {
   eager: true,

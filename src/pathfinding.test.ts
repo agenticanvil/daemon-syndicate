@@ -4,7 +4,7 @@ import { key, type LevelData, type TileCoord } from "./level";
 
 function levelWithWalkable(tiles: TileCoord[]): LevelData {
   return {
-    id: 1,
+    mapDepth: 1,
     width: 5,
     height: 5,
     exitDirection: "north",

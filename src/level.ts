@@ -17,7 +17,7 @@ type EnvironmentalObject = {
 };
 
 export type LevelData = {
-  id: number;
+  mapDepth: number;
   width: number;
   height: number;
   exitDirection: ExitDirection;
@@ -49,7 +49,7 @@ const DIAGONALS: TileCoord[] = [
   { x: -1, y: -1 },
 ];
 
-export function generateLevel(id: number, rng: Rng = Math.random): LevelData {
+export function generateLevel(mapDepth: number, rng: Rng = Math.random): LevelData {
   const width = LEVEL_WIDTH;
   const height = LEVEL_HEIGHT;
   const { exitDirection, start, end } = chooseLevelRoute(width, height, rng);
@@ -61,12 +61,12 @@ export function generateLevel(id: number, rng: Rng = Math.random): LevelData {
     carveCorridor(walkable, path[i - 1], path[i], width, height);
   }
 
-  const branchCount = 14 + Math.min(Math.floor(id / 2), 10);
+  const branchCount = 14 + Math.min(Math.floor(mapDepth / 2), 10);
   for (let i = 0; i < branchCount; i += 1) {
     const anchor = path[3 + Math.floor(rng() * Math.max(path.length - 6, 1))];
     carveBranch(walkable, anchor, width, height, 7 + Math.floor(rng() * 10), rng);
   }
-  carveDeadEndAlcoves(walkable, width, height, 10 + Math.min(id, 8), rng);
+  carveDeadEndAlcoves(walkable, width, height, 10 + Math.min(mapDepth, 8), rng);
 
   carveRoom(walkable, start, width, height, 2);
   carveRoom(walkable, end, width, height, 1);
@@ -81,7 +81,7 @@ export function generateLevel(id: number, rng: Rng = Math.random): LevelData {
     .map(fromKey)
     .filter((tile) => !blocked.has(key(tile)) && distance(tile, start) > 6 && distance(tile, end) > 3);
 
-  return { id, width, height, exitDirection, start, end, walkable, blocked, environmentalObjects, spawnPoints };
+  return { mapDepth, width, height, exitDirection, start, end, walkable, blocked, environmentalObjects, spawnPoints };
 }
 
 export function key(tile: TileCoord): string {

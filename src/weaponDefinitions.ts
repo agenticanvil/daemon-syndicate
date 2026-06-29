@@ -2,7 +2,9 @@ import * as THREE from "three";
 import { WEAPON_BALANCE } from "./balance";
 import { withinRadius2D, type CollisionBody2D, type CollisionLayer } from "./collision";
 import type { GameplayView } from "./gameView";
-import type { Enemy, PlayerResources, ProjectileDraft, ResourceKind } from "./types";
+import type { PlayerResources, ResourceKind } from "./resourceTypes";
+import type { Enemy } from "./enemyTypes";
+import type { ProjectileDraft } from "./projectileTypes";
 import type { PlayerDerivedStats } from "./upgrades";
 
 export type AbilityId = "primary" | "nova";

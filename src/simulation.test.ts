@@ -8,7 +8,7 @@ describe("headless simulation", () => {
 
     expect(first.frames).toBeGreaterThan(0);
     expect(first.kills).toBe(second.kills);
-    expect(first.levelReached).toBe(second.levelReached);
+    expect(first.mapDepthReached).toBe(second.mapDepthReached);
     expect(first.finalHealth).toBe(second.finalHealth);
     expect(first.primaryShots).toBe(second.primaryShots);
     expect(first.novaUses).toBe(second.novaUses);
@@ -23,7 +23,7 @@ describe("headless simulation", () => {
     expect(summary.results).toHaveLength(5);
     expect(summary.results.every((result) => result.frames > 0)).toBe(true);
     expect(summary.averageKills).toBeGreaterThan(0);
-    expect(summary.averageLevelReached).toBeGreaterThanOrEqual(1);
+    expect(summary.averageMapDepthReached).toBeGreaterThanOrEqual(1);
     expect(summary.averagePlayerLevelReached).toBeGreaterThanOrEqual(1);
     expect(summary.averageXpEarned).toBeGreaterThan(0);
     expect(summary.averageUpgradePointsSpent).toBeGreaterThanOrEqual(0);

@@ -1,4 +1,4 @@
-import type { ResourceKind } from "./types";
+import type { ResourceKind } from "./resourceTypes";
 
 type CollisionSettings = {
   radius: number;

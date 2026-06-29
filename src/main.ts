@@ -10,7 +10,7 @@ declare global {
   interface Window {
     __daemonPerf?: PerfRecorder;
     __daemonGame?: {
-      startNewRun: (mapLevel?: number) => void;
+      startNewRun: (mapDepth?: number) => void;
       snapshot: () => unknown;
       spawnEnemy: Game["spawnEnemy"];
       grantResources: Game["grantResources"];
@@ -62,20 +62,20 @@ function startGame(app: HTMLDivElement): void {
   game.bindEvents();
   window.__daemonPerf = perf;
   window.__daemonGame = {
-    startNewRun: (mapLevel) => game.startNewRun(mapLevel),
+    startNewRun: (mapDepth) => game.startNewRun(mapDepth),
     snapshot: () => game.snapshot(),
     spawnEnemy: (kind, position) => game.spawnEnemy(kind, position),
     grantResources: (resources) => game.grantResources(resources),
   };
 
   if (params.get("autostart") === "1") {
-    game.startNewRun(readMapLevelParam(params));
+    game.startNewRun(readMapDepthParam(params));
   }
 
   game.startLoop();
 }
 
-function readMapLevelParam(params: URLSearchParams): number {
-  const mapLevel = Number(params.get("mapLevel") ?? params.get("level"));
-  return Number.isFinite(mapLevel) ? Math.max(1, Math.floor(mapLevel)) : 1;
+function readMapDepthParam(params: URLSearchParams): number {
+  const mapDepth = Number(params.get("mapDepth"));
+  return Number.isFinite(mapDepth) ? Math.max(1, Math.floor(mapDepth)) : 1;
 }

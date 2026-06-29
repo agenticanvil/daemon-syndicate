@@ -7,7 +7,8 @@ import type { LevelData } from "./level";
 import { moveOnWalkableLevel } from "./movement";
 import type { PlayerCommand } from "./playerCommand";
 import { hasStatusEffect, setStatusEffect, tickStatusEffects, type StatusEffect } from "./statusEffects";
-import type { PlayerResources, ResourceKind, VectorSnapshot } from "./types";
+import type { PlayerResources, ResourceKind } from "./resourceTypes";
+import type { VectorSnapshot } from "./vectorTypes";
 import type { PlayerDerivedStats } from "./upgrades";
 
 const PLAYER_MODEL_FORWARD_OFFSET = Math.PI;

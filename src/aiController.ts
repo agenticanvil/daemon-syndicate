@@ -5,7 +5,8 @@ import { exitGateToWorld, type LevelData } from "./level";
 import { findWorldPath, hasClearWorldPath, pathDirection } from "./pathfinding";
 import type { GameSimulationSnapshot } from "./gameSimulation";
 import type { PlayerCommand } from "./playerCommand";
-import type { Pickup, ResourceKind } from "./types";
+import type { ResourceKind } from "./resourceTypes";
+import type { Pickup } from "./pickupTypes";
 
 type PickupSnapshot = GameSimulationSnapshot["pickups"][number];
 type EnemySnapshot = GameSimulationSnapshot["enemies"][number];
@@ -25,7 +26,7 @@ export class BasicPlayerAi {
     this.tick += 1;
     const level = levelFromSnapshot(snapshot);
     const playerPosition = vectorFromSnapshot(snapshot.player.position);
-    const livingEnemies = snapshot.enemies.filter((enemy) => enemy.deathTimer === undefined && enemy.hp > 0);
+    const livingEnemies = snapshot.enemies.filter((enemy) => enemy.deathTimer === undefined && enemy.health > 0);
     const nearestEnemy = nearest(playerPosition, livingEnemies);
     const priorityPickup = this.pickPriorityPickup(snapshot);
     const aimWorld = nearestEnemy
@@ -129,7 +130,7 @@ function directionTo(level: LevelData, from: THREE.Vector3, target: THREE.Vector
 
 function levelFromSnapshot(snapshot: GameSimulationSnapshot): LevelData {
   return {
-    id: snapshot.level.id,
+    mapDepth: snapshot.level.mapDepth,
     width: snapshot.level.width,
     height: snapshot.level.height,
     exitDirection: snapshot.level.exitDirection,

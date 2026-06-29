@@ -1,5 +1,5 @@
 import { DEFAULT_AUDIO_SETTINGS, type AudioSettings } from "./audio";
-import type { PlayerResources } from "./types";
+import type { PlayerResources } from "./resourceTypes";
 import type { GraphicsSettings } from "./scene";
 import type { UpgradeId, UpgradeOption } from "./upgrades";
 
@@ -9,7 +9,7 @@ type HudState = {
   resources: PlayerResources;
   maxResources: PlayerResources;
   kills: number;
-  mapLevel: number;
+  mapDepth: number;
   progression: {
     level: number;
     xp: number;
@@ -31,7 +31,7 @@ export type Ui = {
   hideOverlay: () => void;
   setHudVisible: (visible: boolean) => void;
   setPaused: (paused: boolean) => void;
-  getStartMapLevel: () => number;
+  getStartMapDepth: () => number;
   getMovementMode: () => MovementControlMode;
   setFpsVisible: (visible: boolean) => void;
   updateFps: (fps: number) => void;
@@ -50,8 +50,8 @@ export function createUi(app: HTMLDivElement): Ui {
         <p>Clear the corporate black-site. Manage health, ammunition, and energy while escalating incursions close in.</p>
         <div class="start-actions">
           <label class="start-level">
-            <span>Start Map</span>
-            <select id="startMapLevel">
+            <span>Start Depth</span>
+            <select id="startMapDepth">
               ${Array.from({ length: 10 }, (_, index) => {
                 const level = index + 1;
                 return `<option value="${level}">${level}</option>`;
@@ -80,7 +80,7 @@ export function createUi(app: HTMLDivElement): Ui {
         </div>
         <div class="stats">
           <div class="stat"><span>Kills</span><strong id="kills">0</strong></div>
-          <div class="stat"><span>Map</span><strong id="mapLevel">1</strong></div>
+          <div class="stat"><span>Depth</span><strong id="mapDepth">1</strong></div>
           <div class="stat"><span>Rank</span><strong id="playerLevel">1</strong></div>
           <div class="stat"><span>XP</span><strong id="playerXp">0/100</strong></div>
           <div class="stat fps-stat hidden" id="fpsStat"><span>FPS</span><strong id="fpsValue">0</strong></div>
@@ -175,7 +175,7 @@ export function createUi(app: HTMLDivElement): Ui {
             <div><dt>Aim</dt><dd>Mouse cursor</dd></div>
             <div><dt>Kinetic bolt</dt><dd>Left click, costs ammo</dd></div>
             <div><dt>Plasma nova</dt><dd>Right click or Space, costs energy</dd></div>
-            <div><dt>Gate</dt><dd>Reach the glowing exit to generate the next level</dd></div>
+            <div><dt>Gate</dt><dd>Reach the glowing exit to generate the next depth</dd></div>
             <div><dt>Pause</dt><dd>Escape</dd></div>
           </dl>
           <p>Enemies can drop ammo, energy, or health refills. Energy also regenerates slowly over time.</p>
@@ -201,7 +201,7 @@ export function createUi(app: HTMLDivElement): Ui {
   const upgradeOptions = document.querySelector<HTMLDivElement>("#upgradeOptions")!;
   const pausePanel = document.querySelector<HTMLDivElement>(".pause-panel")!;
   const startButton = document.querySelector<HTMLButtonElement>("#start")!;
-  const startMapLevel = document.querySelector<HTMLSelectElement>("#startMapLevel")!;
+  const startMapDepth = document.querySelector<HTMLSelectElement>("#startMapDepth")!;
   const resumeButton = document.querySelector<HTMLButtonElement>("#resume")!;
   const settingsButton = document.querySelector<HTMLButtonElement>("#settingsButton")!;
   const helpButton = document.querySelector<HTMLButtonElement>("#helpButton")!;
@@ -214,7 +214,7 @@ export function createUi(app: HTMLDivElement): Ui {
   const ammoMeter = document.querySelector<HTMLElement>("#ammoMeter")!;
   const energyMeter = document.querySelector<HTMLElement>("#energyMeter")!;
   const killsEl = document.querySelector<HTMLElement>("#kills")!;
-  const mapLevelEl = document.querySelector<HTMLElement>("#mapLevel")!;
+  const mapDepthEl = document.querySelector<HTMLElement>("#mapDepth")!;
   const playerLevelEl = document.querySelector<HTMLElement>("#playerLevel")!;
   const playerXpEl = document.querySelector<HTMLElement>("#playerXp")!;
   const fpsStat = document.querySelector<HTMLElement>("#fpsStat")!;
@@ -350,9 +350,9 @@ export function createUi(app: HTMLDivElement): Ui {
       if (paused) showPauseView("main");
       pauseMenu.classList.toggle("hidden", !paused);
     },
-    getStartMapLevel() {
-      const mapLevel = Number(startMapLevel.value);
-      return Number.isFinite(mapLevel) ? Math.max(1, Math.floor(mapLevel)) : 1;
+    getStartMapDepth() {
+      const mapDepth = Number(startMapDepth.value);
+      return Number.isFinite(mapDepth) ? Math.max(1, Math.floor(mapDepth)) : 1;
     },
     getMovementMode() {
       return movementMode;
@@ -380,7 +380,7 @@ export function createUi(app: HTMLDivElement): Ui {
       setMeter(ammoMeter, resources.ammo, maxResources.ammo);
       setMeter(energyMeter, resources.energy, maxResources.energy);
       killsEl.textContent = state.kills.toString();
-      mapLevelEl.textContent = state.mapLevel.toString();
+      mapDepthEl.textContent = state.mapDepth.toString();
       playerLevelEl.textContent = state.progression.level.toString();
       playerXpEl.textContent = `${state.progression.xp}/${state.progression.xpToNextLevel}`;
       primaryAbility.classList.toggle("disabled", !state.primaryReady);

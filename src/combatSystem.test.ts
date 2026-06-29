@@ -3,12 +3,13 @@ import { describe, expect, it, vi } from "vitest";
 import { CombatSystem, findProjectileWallImpact } from "./combatSystem";
 import { createHeadlessGameplayView } from "./gameView";
 import { key, tileToWorld, type LevelData, type TileCoord } from "./level";
-import type { Enemy, PlayerResources } from "./types";
+import type { PlayerResources } from "./resourceTypes";
+import type { Enemy } from "./enemyTypes";
 import { createUpgradeRanks, derivePlayerStats } from "./upgrades";
 
 function levelWithWalkable(tiles: TileCoord[]): LevelData {
   return {
-    id: 1,
+    mapDepth: 1,
     width: 5,
     height: 5,
     exitDirection: "north",
@@ -81,13 +82,14 @@ describe("CombatSystem projectiles", () => {
       position: new THREE.Vector3(1.2, 0, 0),
       facingYaw: 0,
       collisionLayer: 1,
-      hp: 10,
+      health: 10,
       speed: 0,
       xpReward: 0,
       radius: 0.48,
       attack: { kind: "melee", range: 1, damage: 1, cooldown: 1 },
       dropTable: { chance: 0, entries: [] },
       attackTimer: 0,
+      animation: "idle",
     };
     const level = levelWithWalkable(Array.from({ length: 45 }, (_, y) => y).flatMap((y) =>
       Array.from({ length: 45 }, (_, x) => ({ x, y })),
@@ -101,7 +103,7 @@ describe("CombatSystem projectiles", () => {
       () => derivePlayerStats(createUpgradeRanks()),
       () => [enemy],
       (target, amount) => {
-        target.hp -= amount;
+        target.health -= amount;
       },
     );
 

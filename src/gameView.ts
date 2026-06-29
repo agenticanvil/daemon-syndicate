@@ -5,7 +5,9 @@ import { disposeMesh, disposeObject3D } from "./entityLifecycle";
 import type { EnemyKind } from "./enemyDefinitions";
 import type { LevelData } from "./level";
 import type { GameScene } from "./scene";
-import type { EnemyAnimation, ResourceKind, VectorSnapshot } from "./types";
+import type { ResourceKind } from "./resourceTypes";
+import type { EnemyAnimation } from "./enemyTypes";
+import type { VectorSnapshot } from "./vectorTypes";
 
 type PlayerRigState = {
   moving: boolean;

@@ -6,9 +6,10 @@ import type { DropTable } from "./assetSettings";
 import { DROP_BALANCE } from "./balance";
 import { overlaps2D, type CollisionBody2D, type CollisionLayer } from "./collision";
 import type { EventQueue } from "./eventQueue";
-import type { GameplayView, PickupViewHandle } from "./gameView";
 import type { Rng } from "./rng";
-import type { Pickup, PickupDraft, ResourceKind, VectorSnapshot } from "./types";
+import type { ResourceKind } from "./resourceTypes";
+import type { Pickup, PickupDraft } from "./pickupTypes";
+import type { VectorSnapshot } from "./vectorTypes";
 
 export type PickupSystemSnapshot = Array<{
   id: number;
@@ -22,11 +23,9 @@ export type PickupSystemSnapshot = Array<{
 
 export class PickupSystem {
   private readonly pickups: Pickup[] = [];
-  private readonly pickupViews = new Map<number, PickupViewHandle>();
   private nextPickupId = 1;
 
   constructor(
-    private readonly view: GameplayView,
     private readonly events: EventQueue,
     private readonly playerCollisionBody: CollisionBody2D,
     private readonly getCollisionLayer: () => CollisionLayer,
@@ -35,6 +34,10 @@ export class PickupSystem {
 
   get count(): number {
     return this.pickups.length;
+  }
+
+  get all(): readonly Pickup[] {
+    return this.pickups;
   }
 
   maybeDropPickup(position: THREE.Vector3, dropTable: DropTable): void {
@@ -69,18 +72,12 @@ export class PickupSystem {
     for (let i = this.pickups.length - 1; i >= 0; i -= 1) {
       const pickup = this.pickups[i];
       if (pickup.life <= 0) {
-        this.disposePickupView(pickup.id);
         this.pickups.splice(i, 1);
       }
     }
-
-    this.syncPickupViews(dt);
   }
 
   clear(): void {
-    for (const pickup of this.pickups) {
-      this.disposePickupView(pickup.id);
-    }
     this.pickups.length = 0;
   }
 
@@ -99,24 +96,7 @@ export class PickupSystem {
   private addPickup(pickup: PickupDraft): void {
     const id = this.nextPickupId;
     this.nextPickupId += 1;
-    const view = this.view.createPickupView(pickup.kind, pickup.position);
     this.pickups.push({ id, ...pickup });
-    this.pickupViews.set(id, view);
-  }
-
-  private syncPickupViews(dt: number): void {
-    for (const pickup of this.pickups) {
-      const view = this.pickupViews.get(pickup.id);
-      if (!view) continue;
-      view.sync(pickup.position, dt);
-    }
-  }
-
-  private disposePickupView(id: number): void {
-    const view = this.pickupViews.get(id);
-    if (!view) return;
-    view.dispose();
-    this.pickupViews.delete(id);
   }
 }
 

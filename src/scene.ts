@@ -19,7 +19,7 @@ import { createSceneMaterials, type GameplayMaterials } from "./materials";
 import { createPlayerLocalAmbient } from "./playerLocalAmbient";
 import { createRenderContext, type GraphicsSettings } from "./renderer";
 import { addGameplayLighting } from "./sceneLighting";
-import type { ResourceKind } from "./types";
+import type { ResourceKind } from "./resourceTypes";
 
 export type { GraphicsSettings };
 

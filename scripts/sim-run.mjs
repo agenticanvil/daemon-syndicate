@@ -47,7 +47,7 @@ try {
         survivalOverTime: report.survivalOverTime,
         averageKills: report.averageKills,
         medianKills: report.medianKills,
-        averageLevelReached: report.averageLevelReached,
+        averageMapDepthReached: report.averageMapDepthReached,
         averagePlayerLevelReached: report.averagePlayerLevelReached,
         averageDamageTaken: report.averageDamageTaken,
         averageXpEarned: report.averageXpEarned,

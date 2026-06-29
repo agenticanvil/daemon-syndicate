@@ -10,9 +10,9 @@ export type EnemyKind = "leanHunter" | "venomSpitter" | "elite" | "brute";
 export type EnemyDefinition = {
   kind: EnemyKind;
   radius: number;
-  unlockMapLevel: number;
+  unlockMapDepth: number;
   budgetCost: number;
-  spawnWeight: (mapLevel: number) => number;
+  spawnWeight: (mapDepth: number) => number;
   health: (enemyLevel: number) => number;
   speed: (enemyLevel: number) => number;
   attackDamage: (enemyLevel: number) => number;
@@ -32,7 +32,7 @@ export const ENEMY_DEFINITIONS: EnemyDefinition[] = [
   {
     kind: "leanHunter",
     radius: LEAN_HUNTER_SETTINGS.collision.radius,
-    unlockMapLevel: 1,
+    unlockMapDepth: 1,
     budgetCost: 1,
     spawnWeight: spawnWeightFromSettings(LEAN_HUNTER_SETTINGS.spawnWeight, 1),
     health: (enemyLevel) =>
@@ -51,7 +51,7 @@ export const ENEMY_DEFINITIONS: EnemyDefinition[] = [
   {
     kind: "venomSpitter",
     radius: VENOM_SPITTER_SETTINGS.collision.radius,
-    unlockMapLevel: 2,
+    unlockMapDepth: 2,
     budgetCost: 1.35,
     spawnWeight: spawnWeightFromSettings(VENOM_SPITTER_SETTINGS.spawnWeight, 2),
     health: (enemyLevel) =>
@@ -70,7 +70,7 @@ export const ENEMY_DEFINITIONS: EnemyDefinition[] = [
   {
     kind: "elite",
     radius: ELITE_ENEMY_SETTINGS.collision.radius,
-    unlockMapLevel: 3,
+    unlockMapDepth: 3,
     budgetCost: 2.4,
     spawnWeight: spawnWeightFromSettings(ELITE_ENEMY_SETTINGS.spawnWeight, 3),
     health: (enemyLevel) =>
@@ -89,7 +89,7 @@ export const ENEMY_DEFINITIONS: EnemyDefinition[] = [
   {
     kind: "brute",
     radius: BRUTE_SETTINGS.collision.radius,
-    unlockMapLevel: 5,
+    unlockMapDepth: 5,
     budgetCost: 3.4,
     spawnWeight: spawnWeightFromSettings(BRUTE_SETTINGS.spawnWeight, 5),
     health: (enemyLevel) =>
@@ -104,33 +104,33 @@ export const ENEMY_DEFINITIONS: EnemyDefinition[] = [
 ];
 
 export function chooseEnemyDefinition(
-  mapLevel: number,
+  mapDepth: number,
   rng: () => number = Math.random,
   options: { maxBudgetCost?: number } = {},
 ): EnemyDefinition {
   const definitions = ENEMY_DEFINITIONS.filter(
     (definition) => options.maxBudgetCost === undefined || definition.budgetCost <= options.maxBudgetCost,
   );
-  const totalWeight = definitions.reduce((sum, definition) => sum + definition.spawnWeight(mapLevel), 0);
+  const totalWeight = definitions.reduce((sum, definition) => sum + definition.spawnWeight(mapDepth), 0);
   let roll = rng() * totalWeight;
 
   for (const definition of definitions) {
-    roll -= definition.spawnWeight(mapLevel);
+    roll -= definition.spawnWeight(mapDepth);
     if (roll <= 0) return definition;
   }
 
   return definitions[0] ?? ENEMY_DEFINITIONS[0];
 }
 
-export function enemyLevelForMapLevel(mapLevel: number, rng: Rng = Math.random): number {
+export function enemyLevelForMapDepth(mapDepth: number, rng: Rng = Math.random): number {
   const roll = rng();
-  if (roll < 0.2) return Math.max(1, mapLevel - 1);
-  if (roll < 0.95) return Math.max(1, mapLevel);
-  return Math.max(1, mapLevel + 1);
+  if (roll < 0.2) return Math.max(1, mapDepth - 1);
+  if (roll < 0.95) return Math.max(1, mapDepth);
+  return Math.max(1, mapDepth + 1);
 }
 
-export function encounterBudgetForMapLevel(mapLevel: number): number {
-  return Math.round((10 + mapLevel * 3) * 1.5);
+export function encounterBudgetForMapDepth(mapDepth: number): number {
+  return Math.round((10 + mapDepth * 3) * 1.5);
 }
 
 function primaryEnemyAttack(settings: EnemyAssetSettings): EnemyAttackDefinition {
@@ -144,10 +144,10 @@ function scaledAttackDamage(settings: EnemyAssetSettings, enemyLevel: number, le
   );
 }
 
-function spawnWeightFromSettings(settings: EnemySpawnWeightSettings, unlockMapLevel: number): (mapLevel: number) => number {
-  return (mapLevel) => {
-    if (mapLevel < unlockMapLevel) return 0;
-    const unlockedLevel = mapLevel - unlockMapLevel + 1;
+function spawnWeightFromSettings(settings: EnemySpawnWeightSettings, unlockMapDepth: number): (mapDepth: number) => number {
+  return (mapDepth) => {
+    if (mapDepth < unlockMapDepth) return 0;
+    const unlockedLevel = mapDepth - unlockMapDepth + 1;
     const scaled = settings.base + unlockedLevel * settings.levelGrowth;
     const withMin = settings.min === undefined ? scaled : Math.max(settings.min, scaled);
     return settings.max === undefined ? withMin : Math.min(settings.max, withMin);

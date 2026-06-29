@@ -1,6 +1,6 @@
 import { PLAYER_BALANCE, WEAPON_BALANCE } from "./balance";
 import { PLAYER_MAX } from "./constants";
-import type { PlayerResources } from "./types";
+import type { PlayerResources } from "./resourceTypes";
 
 export type UpgradeId =
   | "maxHealth"

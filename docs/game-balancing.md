@@ -16,7 +16,7 @@ The current target for this prototype is roughly:
 
 - `survivalRate`: about `0.70` after 180 seconds.
 - `survivalOverTime`: a gradual decline, not a sudden cliff.
-- `averageLevelReached`: useful context, but not a strict target while AI gate navigation still has path variance.
+- `averageMapDepthReached`: useful context, but not a strict target while AI gate navigation still has path variance.
 - `averageDamageTaken`: should move with difficulty changes; very low values usually mean the player is too safe.
 - `averageAmmoStarvationFrames` and `averageEnergyStarvationFrames`: watch these to avoid making challenge come mostly from resource drought.
 
@@ -47,8 +47,8 @@ Good first levers:
 
 - Enemy health growth by `enemyLevel`.
 - Enemy damage growth by `enemyLevel`.
-- Encounter budget by map level.
-- Spawn weights and unlock map levels.
+- Encounter budget by map depth.
+- Spawn weights and unlock map depths.
 - XP thresholds and upgrade pacing.
 
 Use speed carefully. Enemy speed affects readability, pathing, and player control feel more than health or damage. Health, damage, budget, and composition are safer difficulty levers.
@@ -57,7 +57,7 @@ Use speed carefully. Enemy speed affects readability, pathing, and player contro
 
 When adding a new enemy kind:
 
-- Set `unlockMapLevel` conservatively.
+- Set `unlockMapDepth` conservatively.
 - Give it a realistic `budgetCost` so it does not silently increase total encounter pressure.
 - Start with modest `spawnWeight` and inspect `enemyKindKills`.
 - Check `averageEnemyLevelKilled` to make sure the new enemy is not skewing enemy-level pressure unexpectedly.
@@ -72,7 +72,7 @@ Use aggregate metrics to spot the problem, then inspect individual `results` in 
 Useful per-run fields:
 
 - `deathTimeSeconds`
-- `levelReached`
+- `mapDepthReached`
 - `playerLevelReached`
 - `damageTaken`
 - `ammoStarvationFrames`
@@ -80,7 +80,7 @@ Useful per-run fields:
 - `enemyKindKills`
 - `finalSnapshot`
 
-If many failed seeds share the same death window, map level, or resource starvation signal, tune that system directly rather than applying a broad global nerf or buff.
+If many failed seeds share the same death window, map depth, or resource starvation signal, tune that system directly rather than applying a broad global nerf or buff.
 
 ## Verification Checklist
 

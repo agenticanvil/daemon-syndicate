@@ -3,7 +3,9 @@ import { describe, expect, it, vi } from "vitest";
 import { WEAPON_BALANCE } from "./balance";
 import type { GameplayView } from "./gameView";
 import { ABILITY_DEFINITIONS, type CombatContext } from "./weaponDefinitions";
-import type { Enemy, PlayerResources, ProjectileDraft } from "./types";
+import type { PlayerResources } from "./resourceTypes";
+import type { Enemy } from "./enemyTypes";
+import type { ProjectileDraft } from "./projectileTypes";
 import { createUpgradeRanks, derivePlayerStats } from "./upgrades";
 
 function enemyAt(id: number, x: number, z: number, collisionLayer: number): Enemy {
@@ -14,13 +16,14 @@ function enemyAt(id: number, x: number, z: number, collisionLayer: number): Enem
     position: new THREE.Vector3(x, 0, z),
     facingYaw: 0,
     collisionLayer,
-    hp: 100,
+    health: 100,
     speed: 1,
     xpReward: 10,
     radius: 0.5,
     attack: { kind: "melee", damage: 9, cooldown: 0.72, range: 0.42 },
     dropTable: { chance: 0, entries: [{ kind: "ammo", weight: 1, amount: 1 }] },
     attackTimer: 0,
+    animation: "idle",
   };
 }
 

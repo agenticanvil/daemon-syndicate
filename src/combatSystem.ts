@@ -1,9 +1,12 @@
 import * as THREE from "three";
 import { TILE_SIZE } from "./constants";
 import { overlaps2D, type CollisionBody2D, type CollisionLayer } from "./collision";
-import type { GameplayView, ProjectileViewHandle } from "./gameView";
+import type { GameplayView } from "./gameView";
 import { key, worldToTile, type LevelData } from "./level";
-import type { Enemy, PlayerResources, Projectile, ProjectileDraft, VectorSnapshot } from "./types";
+import type { PlayerResources } from "./resourceTypes";
+import type { Enemy } from "./enemyTypes";
+import type { Projectile, ProjectileDraft } from "./projectileTypes";
+import type { VectorSnapshot } from "./vectorTypes";
 import type { PlayerDerivedStats } from "./upgrades";
 import { ABILITY_DEFINITIONS, type AbilityId } from "./weaponDefinitions";
 
@@ -27,7 +30,6 @@ export type CombatSystemSnapshot = {
 
 export class CombatSystem {
   private readonly projectiles: Projectile[] = [];
-  private readonly projectileViews = new Map<number, ProjectileViewHandle>();
   private readonly abilityTimers: Record<AbilityId, number> = {
     primary: 0,
     nova: 0,
@@ -47,6 +49,10 @@ export class CombatSystem {
 
   get projectileCount(): number {
     return this.projectiles.length;
+  }
+
+  get allProjectiles(): readonly Projectile[] {
+    return this.projectiles;
   }
 
   get primaryReady(): boolean {
@@ -119,19 +125,15 @@ export class CombatSystem {
     for (let i = this.projectiles.length - 1; i >= 0; i -= 1) {
       const projectile = this.projectiles[i];
       if (projectile.life <= 0) {
-        this.disposeProjectileView(projectile.id);
         this.projectiles.splice(i, 1);
       }
     }
 
-    this.syncProjectileViews();
     return impactCount;
   }
 
   clear(): void {
-    for (const projectile of this.projectiles.splice(0)) {
-      this.disposeProjectileView(projectile.id);
-    }
+    this.projectiles.length = 0;
   }
 
   snapshot(): CombatSystemSnapshot {
@@ -182,23 +184,7 @@ export class CombatSystem {
   private addProjectile(projectile: ProjectileDraft): void {
     const id = this.nextProjectileId;
     this.nextProjectileId += 1;
-    const view = this.view.createProjectileView(projectile.position, projectile.velocity);
     this.projectiles.push({ id, ...projectile });
-    this.projectileViews.set(id, view);
-  }
-
-  private syncProjectileViews(): void {
-    for (const projectile of this.projectiles) {
-      const view = this.projectileViews.get(projectile.id);
-      view?.sync(projectile.position);
-    }
-  }
-
-  private disposeProjectileView(id: number): void {
-    const view = this.projectileViews.get(id);
-    if (!view) return;
-    view.dispose();
-    this.projectileViews.delete(id);
   }
 }
 

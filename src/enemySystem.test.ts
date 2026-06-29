@@ -11,7 +11,7 @@ import { seededRandom } from "./rng";
 
 function levelWithWalkable(tiles: TileCoord[], id = 2, spawnPoints: TileCoord[] = []): LevelData {
   return {
-    id,
+    mapDepth: id,
     width: 12,
     height: 12,
     exitDirection: "north",
@@ -38,9 +38,9 @@ function createEnemySystem(
   return new EnemySystem(
     view,
     new EventQueue(),
-    { position: view.player.position, radius: 0.55, collisionLayer: level.id },
+    { position: view.player.position, radius: 0.55, collisionLayer: level.mapDepth },
     () => level,
-    () => level.id,
+    () => level.mapDepth,
     () => true,
     rng,
   );

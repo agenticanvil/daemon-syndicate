@@ -1,24 +1,24 @@
 import * as THREE from "three";
-import { ENEMY_BALANCE, PLAYER_BALANCE } from "./balance";
+import { ENEMY_BALANCE } from "./balance";
 import { distance2D, withinRadius2D, type CollisionBody2D, type CollisionLayer } from "./collision";
 import { findProjectileWallImpact } from "./combatSystem";
+import { canFireEnemyProjectile, updateEnemyBehavior } from "./enemyBehavior";
 import {
   chooseEnemyDefinition,
-  encounterBudgetForMapLevel,
-  enemyLevelForMapLevel,
+  encounterBudgetForMapDepth,
+  enemyLevelForMapDepth,
   ENEMY_DEFINITIONS,
   type EnemyDefinition,
   type EnemyKind,
 } from "./enemyDefinitions";
-import type { EnemyViewHandle, GameplayView, ProjectileViewHandle } from "./gameView";
-import { key, tileToWorld, worldToTile, type LevelData } from "./level";
-import { canMoveDirectlyOnWalkableLevel, moveOnWalkableLevel } from "./movement";
-import { findWorldPath, hasClearWorldPath, pathDirection } from "./pathfinding";
+import type { GameplayView } from "./gameView";
+import { tileToWorld, type LevelData } from "./level";
 import type { EventQueue } from "./eventQueue";
 import type { Rng } from "./rng";
-import type { Enemy, EnemyDraft, EnemyProjectile, EnemyProjectileDraft, VectorSnapshot } from "./types";
+import type { Enemy, EnemyDraft } from "./enemyTypes";
+import type { EnemyProjectile, EnemyProjectileDraft } from "./projectileTypes";
+import type { VectorSnapshot } from "./vectorTypes";
 
-const MOVEMENT_EPSILON = 0.0001;
 const RANGED_PROJECTILE_HEIGHT = 0.58;
 const RANGED_SPAWN_OFFSET = 0.48;
 
@@ -29,7 +29,7 @@ export type EnemySystemSnapshot = Array<{
   position: VectorSnapshot;
   facingYaw: number;
   collisionLayer: CollisionLayer;
-  hp: number;
+  health: number;
   speed: number;
   xpReward: number;
   radius: number;
@@ -57,8 +57,6 @@ export type EnemyProjectileSystemSnapshot = Array<{
 export class EnemySystem {
   private readonly enemies: Enemy[] = [];
   private readonly enemyProjectiles: EnemyProjectile[] = [];
-  private readonly enemyViews = new Map<number, EnemyViewHandle>();
-  private readonly enemyProjectileViews = new Map<number, ProjectileViewHandle>();
   private nextEnemyId = 1;
   private nextEnemyProjectileId = 1;
 
@@ -84,17 +82,21 @@ export class EnemySystem {
     return this.enemies;
   }
 
+  get allEnemyProjectiles(): readonly EnemyProjectile[] {
+    return this.enemyProjectiles;
+  }
+
   spawnLevelEnemies(): void {
     const candidates = this.getLevel().spawnPoints
       .map(tileToWorld)
       .filter((position) => distance2D(position, this.view.player.position) >= ENEMY_BALANCE.minSpawnDistance);
-    const mapLevel = this.getLevel().id;
-    let remainingBudget = encounterBudgetForMapLevel(mapLevel);
+    const mapDepth = this.getLevel().mapDepth;
+    let remainingBudget = encounterBudgetForMapDepth(mapDepth);
     const maxCount = Math.min(ENEMY_BALANCE.maxLevelEnemyCount, candidates.length);
     const selectedSpawns: THREE.Vector3[] = [];
 
-    for (let i = 0; i < maxCount && remainingBudget >= this.minimumBudgetCost(mapLevel); i += 1) {
-      const definition = chooseEnemyDefinition(mapLevel, this.rng, { maxBudgetCost: remainingBudget });
+    for (let i = 0; i < maxCount && remainingBudget >= this.minimumBudgetCost(mapDepth); i += 1) {
+      const definition = chooseEnemyDefinition(mapDepth, this.rng, { maxBudgetCost: remainingBudget });
       const spawn = this.takeSpreadSpawn(candidates, selectedSpawns);
       if (!spawn) break;
       selectedSpawns.push(spawn);
@@ -110,7 +112,7 @@ export class EnemySystem {
 
   damageEnemy(enemy: Enemy, amount: number, showText: boolean): void {
     if (enemy.deathTimer !== undefined) return;
-    enemy.hp -= amount;
+    enemy.health -= amount;
     if (showText) {
       this.events.emit({
         type: "enemyDamaged",
@@ -125,106 +127,40 @@ export class EnemySystem {
     let damagedPlayerThisFrame = this.updateEnemyProjectiles(dt, false);
 
     for (const enemy of this.enemies) {
-      if (enemy.hp <= 0 && enemy.deathTimer === undefined) {
+      if (enemy.health <= 0 && enemy.deathTimer === undefined) {
         enemy.deathTimer = ENEMY_BALANCE.deathDuration;
-        this.enemyViews.get(enemy.id)?.updateRig?.("death", 0);
+        enemy.animation = "death";
       }
 
       if (enemy.deathTimer !== undefined) {
         enemy.deathTimer -= dt;
-        this.enemyViews.get(enemy.id)?.updateRig?.("death", dt);
+        enemy.animation = "death";
         continue;
       }
 
-      const distance = distance2D(enemy.position, this.view.player.position);
-      if (distance > ENEMY_BALANCE.activationDistance && enemy.attackWindupTimer === undefined) {
-        enemy.path = undefined;
-        enemy.pathTarget = undefined;
-        enemy.attackTimer -= dt;
-        this.enemyViews.get(enemy.id)?.updateRig?.("idle", dt);
-        continue;
-      }
-
-      const attackDistance = PLAYER_BALANCE.radius + enemy.radius + enemy.attack.range;
-      const pursuitDirection = this.getEnemyPursuitDirection(enemy, distance, enemy.speed * dt, dt);
-      const isRanged = enemy.attack.kind === "ranged";
-      const hasLineOfSight = hasClearWorldPath(this.getLevel(), enemy.position, this.view.player.position);
-      let moved = false;
-      let movementDirection = pursuitDirection;
-
-      this.updateEnemyAttackWindup(enemy, dt);
-
-      if (isRanged) {
-        movementDirection =
-          enemy.attackWindupTimer === undefined
-            ? this.getRangedEnemyMovementDirection(enemy, distance, pursuitDirection, hasLineOfSight)
-            : new THREE.Vector3();
-      }
-
-      if (!isRanged && distance > PLAYER_BALANCE.radius + enemy.radius + ENEMY_BALANCE.stopProximity) {
-        moved = this.moveEnemy(enemy, movementDirection, enemy.speed * dt);
-      } else if (isRanged && movementDirection.lengthSq() > MOVEMENT_EPSILON) {
-        moved = this.moveEnemy(enemy, movementDirection, enemy.speed * dt);
-      }
-
-      if (isRanged && (hasLineOfSight || enemy.attackWindupTimer !== undefined)) {
-        const aimDirection = this.view.player.position.clone().sub(enemy.position).setY(0);
-        if (aimDirection.lengthSq() > MOVEMENT_EPSILON) {
-          enemy.facingYaw = this.getEnemyFacingYaw(aimDirection.normalize());
-        }
-      } else if (movementDirection.lengthSq() > MOVEMENT_EPSILON) {
-        enemy.facingYaw = this.getEnemyFacingYaw(movementDirection);
-      } else if (!this.enemyViews.get(enemy.id)?.updateRig) {
-        enemy.facingYaw += dt * 2.4;
-      }
-
-      enemy.attackTimer -= dt;
-      const inAttackRange =
-        isRanged
-          ? distance <= attackDistance && hasLineOfSight
-          : withinRadius2D(enemy, this.playerCollisionBody, attackDistance);
-      if (inAttackRange || enemy.attackWindupTimer !== undefined) {
-        this.enemyViews.get(enemy.id)?.updateRig?.("melee", dt);
-      } else {
-        this.enemyViews.get(enemy.id)?.updateRig?.(moved ? "walk" : "idle", dt);
-      }
-
-      if (isRanged) {
-        if (
-          inAttackRange &&
-          enemy.attackTimer <= 0 &&
-          enemy.attackWindupTimer === undefined &&
-          this.playerCollisionBody.collisionLayer === enemy.collisionLayer
-        ) {
-          const direction = this.view.player.position.clone().sub(enemy.position).setY(0).normalize();
-          enemy.attackWindupTimer = enemy.attack.windup ?? 0.18;
-          enemy.attackWindupDirection = direction;
-        }
-      } else if (
-        inAttackRange &&
-        enemy.attackTimer <= 0 &&
-        this.playerCollisionBody.collisionLayer === enemy.collisionLayer &&
-        this.canDamagePlayer() &&
-        !damagedPlayerThisFrame
-      ) {
-        enemy.attackTimer = enemy.attack.cooldown;
-        damagedPlayerThisFrame = true;
-        this.events.emit({ type: "playerDamaged", amount: enemy.attack.damage });
-      }
+      const behavior = updateEnemyBehavior({
+        enemy,
+        dt,
+        level: this.getLevel(),
+        playerPosition: this.view.player.position,
+        playerCollisionBody: this.playerCollisionBody,
+        canDamagePlayer: this.canDamagePlayer(),
+        damagedPlayerThisFrame,
+        hasAnimatedRig: true,
+        rng: this.rng,
+        emitPlayerDamaged: (amount) => this.events.emit({ type: "playerDamaged", amount }),
+        fireEnemyProjectile: (target, direction) => this.fireEnemyProjectile(target, direction),
+      });
+      damagedPlayerThisFrame = behavior.damagedPlayer;
+      enemy.animation = behavior.animation;
     }
 
     this.collectDeadEnemies();
-    this.syncEnemyViews();
-    this.syncEnemyProjectileViews();
   }
 
   clear(): void {
-    for (const enemy of this.enemies.splice(0)) {
-      this.disposeEnemyView(enemy.id);
-    }
-    for (const projectile of this.enemyProjectiles.splice(0)) {
-      this.disposeEnemyProjectileView(projectile.id);
-    }
+    this.enemies.length = 0;
+    this.enemyProjectiles.length = 0;
   }
 
   snapshot(): EnemySystemSnapshot {
@@ -235,7 +171,7 @@ export class EnemySystem {
       position: vectorSnapshot(enemy.position),
       facingYaw: enemy.facingYaw,
       collisionLayer: enemy.collisionLayer,
-      hp: enemy.hp,
+      health: enemy.health,
       speed: enemy.speed,
       xpReward: enemy.xpReward,
       radius: enemy.radius,
@@ -267,9 +203,9 @@ export class EnemySystem {
   }
 
   private spawnEnemy(spawn: THREE.Vector3, providedDefinition?: EnemyDefinition): void {
-    const mapLevel = this.getLevel().id;
-    const enemyLevel = enemyLevelForMapLevel(mapLevel, this.rng);
-    const definition = providedDefinition ?? chooseEnemyDefinition(mapLevel, this.rng);
+    const mapDepth = this.getLevel().mapDepth;
+    const enemyLevel = enemyLevelForMapDepth(mapDepth, this.rng);
+    const definition = providedDefinition ?? chooseEnemyDefinition(mapDepth, this.rng);
     const facingYaw = 0;
 
     this.addEnemy(
@@ -279,7 +215,7 @@ export class EnemySystem {
         position: new THREE.Vector3(spawn.x, 0, spawn.z),
         facingYaw,
         collisionLayer: this.getCollisionLayer(),
-        hp: definition.health(enemyLevel),
+        health: definition.health(enemyLevel),
         speed: definition.speed(enemyLevel),
         xpReward: definition.xpReward(enemyLevel),
         radius: definition.radius,
@@ -287,50 +223,20 @@ export class EnemySystem {
         dropTable: definition.dropTable,
         attackTimer: 0,
         pathRefreshTimer: this.rng() * ENEMY_BALANCE.pathRefreshInterval,
+        animation: "idle",
       },
-      this.view.createEnemyView(definition.kind, spawn, facingYaw),
     );
   }
 
-  private addEnemy(enemy: EnemyDraft, view: EnemyViewHandle): void {
+  private addEnemy(enemy: EnemyDraft): void {
     const id = this.nextEnemyId;
     this.nextEnemyId += 1;
     this.enemies.push({ id, ...enemy });
-    this.enemyViews.set(id, view);
   }
 
-  private syncEnemyViews(): void {
-    for (const enemy of this.enemies) {
-      const view = this.enemyViews.get(enemy.id);
-      if (!view) continue;
-      view.sync(enemy.position, enemy.facingYaw);
-    }
-  }
-
-  private syncEnemyProjectileViews(): void {
-    for (const projectile of this.enemyProjectiles) {
-      const view = this.enemyProjectileViews.get(projectile.id);
-      view?.sync(projectile.position);
-    }
-  }
-
-  private disposeEnemyView(id: number): void {
-    const view = this.enemyViews.get(id);
-    if (!view) return;
-    view.dispose();
-    this.enemyViews.delete(id);
-  }
-
-  private disposeEnemyProjectileView(id: number): void {
-    const view = this.enemyProjectileViews.get(id);
-    if (!view) return;
-    view.dispose();
-    this.enemyProjectileViews.delete(id);
-  }
-
-  private minimumBudgetCost(mapLevel: number): number {
+  private minimumBudgetCost(mapDepth: number): number {
     return ENEMY_DEFINITIONS.reduce((minimum, definition) => {
-      const weight = definition.spawnWeight(mapLevel);
+      const weight = definition.spawnWeight(mapDepth);
       if (weight <= 0) return minimum;
       return Math.min(minimum, definition.budgetCost);
     }, Infinity);
@@ -362,88 +268,8 @@ export class EnemySystem {
     return spawn;
   }
 
-  private getEnemyPursuitDirection(
-    enemy: Enemy,
-    playerDistance: number,
-    moveDistance: number,
-    dt: number,
-  ): THREE.Vector3 {
-    const direct = this.view.player.position.clone().sub(enemy.position).setY(0);
-    if (direct.lengthSq() <= MOVEMENT_EPSILON) return direct;
-    direct.normalize();
-
-    if (playerDistance > ENEMY_BALANCE.pathfindingRadius) {
-      enemy.path = undefined;
-      enemy.pathTarget = undefined;
-      return direct;
-    }
-
-    if (
-      playerDistance <= ENEMY_BALANCE.directApproachRadius &&
-      hasClearWorldPath(this.getLevel(), enemy.position, this.view.player.position) &&
-      this.canEnemyMoveDirectly(enemy, direct, moveDistance)
-    ) {
-      enemy.path = undefined;
-      enemy.pathTarget = undefined;
-      return direct;
-    }
-
-    const playerKey = key(worldToTile(this.view.player.position));
-    enemy.pathRefreshTimer = (enemy.pathRefreshTimer ?? 0) - dt;
-    if (!enemy.path || enemy.pathTarget !== playerKey || enemy.pathRefreshTimer <= 0) {
-      enemy.path = findWorldPath(this.getLevel(), enemy.position, this.view.player.position);
-      enemy.pathTarget = playerKey;
-      enemy.pathRefreshTimer = ENEMY_BALANCE.pathRefreshInterval + this.rng() * ENEMY_BALANCE.pathRefreshJitter;
-    }
-
-    return pathDirection(enemy.path, enemy.position, ENEMY_BALANCE.waypointReachedDistance) ?? direct;
-  }
-
-  private moveEnemy(enemy: Enemy, direction: THREE.Vector3, distance: number): boolean {
-    return moveOnWalkableLevel(this.getLevel(), enemy.position, direction, distance);
-  }
-
-  private getRangedEnemyMovementDirection(
-    enemy: Enemy,
-    playerDistance: number,
-    pursuitDirection: THREE.Vector3,
-    hasLineOfSight: boolean,
-  ): THREE.Vector3 {
-    const toPlayer = this.view.player.position.clone().sub(enemy.position).setY(0);
-    if (toPlayer.lengthSq() <= MOVEMENT_EPSILON) return new THREE.Vector3();
-    toPlayer.normalize();
-
-    const preferredMin = Math.max(enemy.attack.range * 0.46, PLAYER_BALANCE.radius + enemy.radius + 1.2);
-    const preferredMax = enemy.attack.range * 0.78;
-    const strafeSign = enemy.id % 2 === 0 ? 1 : -1;
-    const strafe = new THREE.Vector3(-toPlayer.z, 0, toPlayer.x).multiplyScalar(strafeSign);
-
-    if (playerDistance < preferredMin) {
-      return toPlayer.multiplyScalar(-1).addScaledVector(strafe, 0.35).normalize();
-    }
-    if (!hasLineOfSight || playerDistance > preferredMax) {
-      return pursuitDirection;
-    }
-    return strafe;
-  }
-
-  private updateEnemyAttackWindup(enemy: Enemy, dt: number): void {
-    if (enemy.attackWindupTimer === undefined) return;
-
-    enemy.attackWindupTimer -= dt;
-    if (enemy.attackWindupTimer > 0) return;
-
-    const direction =
-      enemy.attackWindupDirection ??
-      this.view.player.position.clone().sub(enemy.position).setY(0).normalize();
-    this.fireEnemyProjectile(enemy, direction);
-    enemy.attackTimer = enemy.attack.cooldown;
-    enemy.attackWindupTimer = undefined;
-    enemy.attackWindupDirection = undefined;
-  }
-
   private fireEnemyProjectile(enemy: Enemy, direction: THREE.Vector3): void {
-    if (direction.lengthSq() <= MOVEMENT_EPSILON) return;
+    if (!canFireEnemyProjectile(direction)) return;
     direction.normalize();
     const speed = enemy.attack.projectileSpeed ?? 8;
     const spawn = enemy.position
@@ -463,9 +289,7 @@ export class EnemySystem {
   private addEnemyProjectile(projectile: EnemyProjectileDraft): void {
     const id = this.nextEnemyProjectileId;
     this.nextEnemyProjectileId += 1;
-    const view = this.view.createEnemyProjectileView(projectile.position, projectile.velocity);
     this.enemyProjectiles.push({ id, ...projectile });
-    this.enemyProjectileViews.set(id, view);
   }
 
   private updateEnemyProjectiles(dt: number, damagedPlayerThisFrame: boolean): boolean {
@@ -498,16 +322,11 @@ export class EnemySystem {
     for (let i = this.enemyProjectiles.length - 1; i >= 0; i -= 1) {
       const projectile = this.enemyProjectiles[i];
       if (projectile.life <= 0) {
-        this.disposeEnemyProjectileView(projectile.id);
         this.enemyProjectiles.splice(i, 1);
       }
     }
 
     return damagedPlayerThisFrame;
-  }
-
-  private canEnemyMoveDirectly(enemy: Enemy, direction: THREE.Vector3, distance: number): boolean {
-    return canMoveDirectlyOnWalkableLevel(this.getLevel(), enemy.position, direction, distance);
   }
 
   private collectDeadEnemies(): number {
@@ -524,16 +343,11 @@ export class EnemySystem {
           position: enemy.position.clone(),
           dropTable: enemy.dropTable,
         });
-        this.disposeEnemyView(enemy.id);
         this.enemies.splice(i, 1);
         kills += 1;
       }
     }
     return kills;
-  }
-
-  private getEnemyFacingYaw(direction: THREE.Vector3): number {
-    return Math.atan2(-direction.x, -direction.z);
   }
 }
 

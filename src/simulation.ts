@@ -4,7 +4,7 @@ import type { EnemyKind } from "./enemyDefinitions";
 import { createHeadlessGameplayView } from "./gameView";
 import { GameSimulation, type GameSimulationSnapshot } from "./gameSimulation";
 import { seededRandom } from "./rng";
-import type { ResourceKind } from "./types";
+import type { ResourceKind } from "./resourceTypes";
 import { AUTO_UPGRADE_PRIORITY, type UpgradeId, type UpgradeOption } from "./upgrades";
 
 export type SimulationRunOptions = {
@@ -21,7 +21,7 @@ export type SimulationRunResult = {
   survived: boolean;
   deathTimeSeconds?: number;
   kills: number;
-  levelReached: number;
+  mapDepthReached: number;
   finalHealth: number;
   finalAmmo: number;
   finalEnergy: number;
@@ -47,7 +47,7 @@ export type SimulationBatchSummary = {
   survivalOverTime: Array<{ seconds: number; survivalRate: number; alive: number }>;
   averageKills: number;
   medianKills: number;
-  averageLevelReached: number;
+  averageMapDepthReached: number;
   averagePlayerLevelReached: number;
   averageDamageTaken: number;
   averageXpEarned: number;
@@ -117,7 +117,7 @@ export function runHeadlessSimulation(options: SimulationRunOptions): Simulation
     survived: !finalSnapshot.gameOver,
     deathTimeSeconds: finalSnapshot.gameOver ? round(completedFrames * fixedDt) : undefined,
     kills: finalSnapshot.kills,
-    levelReached: finalSnapshot.levelNumber,
+    mapDepthReached: finalSnapshot.mapDepth,
     finalHealth: finalSnapshot.player.resources.health,
     finalAmmo: finalSnapshot.player.resources.ammo,
     finalEnergy: Math.round(finalSnapshot.player.resources.energy * 100) / 100,
@@ -174,7 +174,7 @@ export function runHeadlessBatch(options: {
     survivalOverTime: survivalOverTime(results, secondsPerRun),
     averageKills: average(results.map((result) => result.kills)),
     medianKills: median(results.map((result) => result.kills)),
-    averageLevelReached: average(results.map((result) => result.levelReached)),
+    averageMapDepthReached: average(results.map((result) => result.mapDepthReached)),
     averagePlayerLevelReached: average(results.map((result) => result.playerLevelReached)),
     averageDamageTaken: average(results.map((result) => result.damageTaken)),
     averageXpEarned: average(results.map((result) => result.xpEarned)),

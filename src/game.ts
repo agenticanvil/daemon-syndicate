@@ -8,7 +8,7 @@ import type { PerfRecorder } from "./perf";
 import { idlePlayerCommand, type PlayerCommand } from "./playerCommand";
 import type { Rng } from "./rng";
 import type { GameScene } from "./scene";
-import type { PlayerResources, ResourceKind } from "./types";
+import type { PlayerResources, ResourceKind } from "./resourceTypes";
 import type { Ui } from "./ui";
 import type { UpgradeId } from "./upgrades";
 
@@ -59,7 +59,7 @@ export class Game {
     this.ui.startButton.addEventListener("click", () => {
       this.unlockAudio();
       this.audio?.play("ui-click", { volume: 0.55 });
-      this.startNewRun(this.ui.getStartMapLevel());
+      this.startNewRun(this.ui.getStartMapDepth());
     });
     this.ui.resumeButton.addEventListener("click", () => this.setPaused(false));
   }
@@ -68,8 +68,8 @@ export class Game {
     this.animate();
   }
 
-  startNewRun(mapLevel = 1): void {
-    this.simulation.startNewRun({ mapLevel });
+  startNewRun(mapDepth = 1): void {
+    this.simulation.startNewRun({ mapDepth });
     this.selectingUpgrade = false;
     this.ui.hideOverlay();
     this.ui.hideUpgradeSelection();
@@ -221,7 +221,7 @@ export class Game {
         this.audio?.play(PICKUP_SOUNDS[kind], { volume: 0.56, playbackRate: randomRate(0.04) });
       }
     }
-    if (result.levelChanged) {
+    if (result.mapDepthChanged) {
       this.audio?.play("level-transition", { volume: 0.74 });
     }
     if (result.gameOver) {
@@ -264,7 +264,7 @@ export class Game {
       resources: this.simulation.resources,
       maxResources: this.simulation.maxResources,
       kills: this.simulation.killCount,
-      mapLevel: this.simulation.currentLevelNumber,
+      mapDepth: this.simulation.currentMapDepth,
       progression: this.simulation.snapshot().progression,
       primaryReady: this.simulation.primaryReady,
       novaReady: this.simulation.novaReady,
@@ -304,7 +304,7 @@ export class Game {
       pickups: this.simulation.pickupCount,
       damageTexts: this.simulation.damageTextCount,
       novaMeshes: this.simulation.novaCount,
-      level: this.simulation.currentLevelNumber,
+      mapDepth: this.simulation.currentMapDepth,
       kills: this.simulation.killCount,
       renderCalls: this.world.renderer.info.render.calls,
       triangles: this.world.renderer.info.render.triangles,
@@ -330,7 +330,7 @@ export class Game {
         this.perf.span("hud/dom", () => this.updateHud());
         if (this.simulation.isGameOver) {
           this.ui.showGameOver(this.simulation.killCount);
-        } else if (result.levelChanged) {
+        } else if (result.mapDepthChanged) {
           this.presentUpgradeSelection();
         }
       }
