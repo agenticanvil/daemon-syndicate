@@ -9,11 +9,12 @@ import { createExitPortalAsset, type ExitPortalAsset } from "./assets/environmen
 import { createAmmoPickupAsset, type AmmoPickupAsset } from "./assets/pickups/ammoPickup/ammoPickupAsset";
 import { createEnergyPickupAsset, type EnergyPickupAsset } from "./assets/pickups/energyPickup/energyPickupAsset";
 import { createHealthPickupAsset, type HealthPickupAsset } from "./assets/pickups/healthPickup/healthPickupAsset";
+import type { GltfAssetLibrary } from "./gltfAssetFactory";
 import { loadPlayerRig, type PlayerRig } from "./playerAsset";
 import type { ResourceKind } from "./resourceTypes";
 
 export type PickupAsset = AmmoPickupAsset | EnergyPickupAsset | HealthPickupAsset;
-export type EnvironmentAsset = IndustrialCrateAsset;
+export type EnvironmentAsset = IndustrialCrateAsset | { root: THREE.Object3D };
 
 export type AssetFactory = {
   createPlayerRig: () => PlayerRig;
@@ -23,7 +24,11 @@ export type AssetFactory = {
   createExitPortalAsset: () => ExitPortalAsset;
 };
 
-export function createAssetFactory(loader: THREE.TextureLoader, anisotropy: number): AssetFactory {
+export function createAssetFactory(
+  loader: THREE.TextureLoader,
+  anisotropy: number,
+  gltfAssets?: GltfAssetLibrary,
+): AssetFactory {
   return {
     createPlayerRig: () => loadPlayerRig(loader, anisotropy),
     createEnemyAsset: (kind) => enemyContentFor(kind).createAsset(loader, anisotropy),
@@ -32,7 +37,7 @@ export function createAssetFactory(loader: THREE.TextureLoader, anisotropy: numb
       if (kind === "energy") return createEnergyPickupAsset();
       return createHealthPickupAsset();
     },
-    createEnvironmentAsset: () => createIndustrialCrateAsset(loader, anisotropy),
+    createEnvironmentAsset: (kind) => gltfAssets?.createEnvironmentAsset(kind) ?? createIndustrialCrateAsset(loader, anisotropy),
     createExitPortalAsset: () => createExitPortalAsset(loader, anisotropy),
   };
 }

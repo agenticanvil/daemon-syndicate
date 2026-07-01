@@ -17,6 +17,7 @@ import { createSceneMaterials, type GameplayMaterials } from "./materials";
 import { createPlayerLocalAmbient } from "./playerLocalAmbient";
 import { createRenderContext, type GraphicsSettings } from "./renderer";
 import { addGameplayLighting } from "./sceneLighting";
+import type { GltfAssetLibrary } from "./gltfAssetFactory";
 import type { ResourceKind } from "./resourceTypes";
 
 export type { GraphicsSettings };
@@ -43,7 +44,7 @@ export type GameScene = {
   applyGraphicsSettings: (settings: GraphicsSettings) => void;
 };
 
-export function createGameScene(app: HTMLDivElement): GameScene {
+export function createGameScene(app: HTMLDivElement, gltfAssets?: GltfAssetLibrary): GameScene {
   const renderContext = createRenderContext(app);
 
   const scene = new THREE.Scene();
@@ -55,7 +56,7 @@ export function createGameScene(app: HTMLDivElement): GameScene {
 
   const loader = new THREE.TextureLoader();
   const anisotropy = renderContext.renderer.capabilities.getMaxAnisotropy();
-  const assetFactory = createAssetFactory(loader, anisotropy);
+  const assetFactory = createAssetFactory(loader, anisotropy, gltfAssets);
   const materials = createSceneMaterials(loader, anisotropy);
   const playerLocalAmbient = createPlayerLocalAmbient();
   Object.values(materials.level.floors).forEach((material) => playerLocalAmbient.applyToMaterial(material));

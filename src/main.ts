@@ -3,6 +3,7 @@ import { Game } from "./game";
 import { createPerfRecorder, type PerfRecorder } from "./perf";
 import { seededRandom } from "./rng";
 import { createGameScene } from "./scene";
+import { loadGltfAssetLibrary } from "./gltfAssetFactory";
 import "./style.css";
 import { createUi } from "./ui";
 
@@ -39,10 +40,10 @@ async function startApp(app: HTMLDivElement, routePath: string): Promise<void> {
     return;
   }
 
-  startGame(app);
+  await startGame(app);
 }
 
-function startGame(app: HTMLDivElement): void {
+async function startGame(app: HTMLDivElement): Promise<void> {
   const params = new URLSearchParams(window.location.search);
   const perfEnabled = params.get("perf") === "1";
   const seed = params.get("seed");
@@ -50,7 +51,8 @@ function startGame(app: HTMLDivElement): void {
   const perf = createPerfRecorder(perfEnabled);
   const audio = createAudioSystem();
   const ui = createUi(app);
-  const world = createGameScene(app);
+  const gltfAssets = await loadGltfAssetLibrary();
+  const world = createGameScene(app, gltfAssets);
   ui.onAudioSettingsChange((settings) => audio.applySettings(settings));
   ui.onGraphicsSettingsChange((settings) => world.applyGraphicsSettings(settings));
   const game = new Game(world, ui, perf, {
