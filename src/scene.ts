@@ -7,9 +7,9 @@ import {
   type EnvironmentAssetKind,
   type PickupAsset,
   type PlayerRig,
+  type PortalAsset,
 } from "./assetFactory";
 import type { EnemyKind } from "./enemyDefinitions";
-import type { ExitPortalAsset } from "./assets/environment/exitPortal/exitPortalAsset";
 import { exitGateToWorld, key, tileToWorld, worldToTile, type ExitDirection, type LevelData, type TileCoord } from "./level";
 import { FogOfWar } from "./fogOfWar";
 import { renderLevel as renderLevelToRoot, type LevelEdgeVisibility } from "./levelRenderer";
@@ -35,7 +35,7 @@ export type GameScene = {
   createEnemyAsset: (kind: EnemyKind) => EnemyAsset;
   createPickupAsset: (kind: ResourceKind) => PickupAsset;
   createEnvironmentAsset: (kind: EnvironmentAssetKind) => EnvironmentAsset;
-  createExitPortalAsset: () => ExitPortalAsset;
+  createExitPortalAsset: () => PortalAsset;
   updateFog: (playerPosition: THREE.Vector3, dt: number, instant?: boolean) => void;
   updatePlayerLocalAmbient: (playerPosition: THREE.Vector3) => void;
   isTileExplored: (position: THREE.Vector3) => boolean;
@@ -113,7 +113,7 @@ export function createGameScene(app: HTMLDivElement, gltfAssets?: GltfAssetLibra
     playerLocalAmbient.applyToObject(asset.root);
     return asset;
   };
-  const createExitPortalAsset = (): ExitPortalAsset => {
+  const createExitPortalAsset = (): PortalAsset => {
     const asset = assetFactory.createExitPortalAsset();
     playerLocalAmbient.applyToObject(asset.root);
     return asset;

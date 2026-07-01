@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "id": "exit-portal",
+  "category": "environment",
+  "label": "Exit Portal",
+  "kind": "environment",
+  "model": {
+    "file": "exit-portal.glb",
+    "scale": 1,
+    "rotationY": 0,
+    "floorOffset": 0
+  },
+  "preview": {
+    "targetY": 1.4
+  },
+  "collision": {
+    "type": "circle",
+    "radius": 1.4
+  }
+}

@@ -12,10 +12,12 @@ type RuntimeGltfAsset = {
 export type GltfAssetLibrary = {
   createPickupAsset: (kind: ResourceKind) => { root: THREE.Object3D } | null;
   createEnvironmentAsset: (kind: EnvironmentAssetKind) => { root: THREE.Object3D } | null;
+  createExitPortalAsset: () => { root: THREE.Object3D } | null;
 };
 
 const RUNTIME_GLB_ASSETS = [
   { category: "environment", name: "industrial-crate" },
+  { category: "environment", name: "exit-portal" },
   { category: "pickups", name: "health-pickup" },
   { category: "pickups", name: "ammo-pickup" },
   { category: "pickups", name: "energy-pickup" },
@@ -59,6 +61,13 @@ export async function loadGltfAssetLibrary(): Promise<GltfAssetLibrary> {
     },
     createEnvironmentAsset(kind) {
       const asset = environmentAssets.get(kind);
+      if (!asset) return null;
+      return {
+        root: asset.template.clone(true),
+      };
+    },
+    createExitPortalAsset() {
+      const asset = environmentAssets.get("exit-portal");
       if (!asset) return null;
       return {
         root: asset.template.clone(true),

@@ -15,13 +15,14 @@ import type { ResourceKind } from "./resourceTypes";
 
 export type PickupAsset = AmmoPickupAsset | EnergyPickupAsset | HealthPickupAsset | { root: THREE.Object3D };
 export type EnvironmentAsset = IndustrialCrateAsset | { root: THREE.Object3D };
+export type PortalAsset = ExitPortalAsset | { root: THREE.Object3D };
 
 export type AssetFactory = {
   createPlayerRig: () => PlayerRig;
   createEnemyAsset: (kind: EnemyKind) => EnemyAsset;
   createPickupAsset: (kind: ResourceKind) => PickupAsset;
   createEnvironmentAsset: (kind: EnvironmentAssetKind) => EnvironmentAsset;
-  createExitPortalAsset: () => ExitPortalAsset;
+  createExitPortalAsset: () => PortalAsset;
 };
 
 export function createAssetFactory(
@@ -40,7 +41,7 @@ export function createAssetFactory(
       return createHealthPickupAsset();
     },
     createEnvironmentAsset: (kind) => gltfAssets?.createEnvironmentAsset(kind) ?? createIndustrialCrateAsset(loader, anisotropy),
-    createExitPortalAsset: () => createExitPortalAsset(loader, anisotropy),
+    createExitPortalAsset: () => gltfAssets?.createExitPortalAsset() ?? createExitPortalAsset(loader, anisotropy),
   };
 }
 
