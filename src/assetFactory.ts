@@ -1,21 +1,13 @@
 import * as THREE from "three";
-import { enemyContentFor, type EnemyAsset, type EnemyKind } from "./assets/enemies/enemyContent";
-import {
-  createIndustrialCrateAsset,
-  type EnvironmentAssetKind,
-  type IndustrialCrateAsset,
-} from "./assets/environment/industrialCrate/industrialCrateAsset";
-import { createExitPortalAsset, type ExitPortalAsset } from "./assets/environment/exitPortal/exitPortalAsset";
-import { createAmmoPickupAsset, type AmmoPickupAsset } from "./assets/pickups/ammoPickup/ammoPickupAsset";
-import { createEnergyPickupAsset, type EnergyPickupAsset } from "./assets/pickups/energyPickup/energyPickupAsset";
-import { createHealthPickupAsset, type HealthPickupAsset } from "./assets/pickups/healthPickup/healthPickupAsset";
+import type { EnemyAsset, EnemyKind } from "./assets/enemies/enemyContent";
 import type { GltfAssetLibrary } from "./gltfAssetFactory";
-import { loadPlayerRig, type PlayerRig } from "./playerAsset";
+import type { PlayerRig } from "./playerAsset";
 import type { ResourceKind } from "./resourceTypes";
 
-export type PickupAsset = AmmoPickupAsset | EnergyPickupAsset | HealthPickupAsset | { root: THREE.Object3D };
-export type EnvironmentAsset = IndustrialCrateAsset | { root: THREE.Object3D };
-export type PortalAsset = ExitPortalAsset | { root: THREE.Object3D };
+export type EnvironmentAssetKind = "industrial-crate";
+export type PickupAsset = { root: THREE.Object3D };
+export type EnvironmentAsset = { root: THREE.Object3D };
+export type PortalAsset = { root: THREE.Object3D };
 
 export type AssetFactory = {
   createPlayerRig: () => PlayerRig;
@@ -26,23 +18,26 @@ export type AssetFactory = {
 };
 
 export function createAssetFactory(
-  loader: THREE.TextureLoader,
-  anisotropy: number,
+  _loader: THREE.TextureLoader,
+  _anisotropy: number,
   gltfAssets?: GltfAssetLibrary,
 ): AssetFactory {
+  if (!gltfAssets) throw new Error("GLB asset library is required before creating runtime assets");
+
   return {
-    createPlayerRig: () => gltfAssets?.createPlayerRig() ?? loadPlayerRig(loader, anisotropy),
-    createEnemyAsset: (kind) => gltfAssets?.createEnemyAsset(kind) ?? enemyContentFor(kind).createAsset(loader, anisotropy),
+    createPlayerRig: () => requiredAsset(gltfAssets.createPlayerRig(), "player/player"),
+    createEnemyAsset: (kind) => requiredAsset(gltfAssets.createEnemyAsset(kind), `enemy/${kind}`),
     createPickupAsset: (kind) => {
-      const gltfPickup = gltfAssets?.createPickupAsset(kind);
-      if (gltfPickup) return gltfPickup;
-      if (kind === "ammo") return createAmmoPickupAsset();
-      if (kind === "energy") return createEnergyPickupAsset();
-      return createHealthPickupAsset();
+      return requiredAsset(gltfAssets.createPickupAsset(kind), `pickup/${kind}`);
     },
-    createEnvironmentAsset: (kind) => gltfAssets?.createEnvironmentAsset(kind) ?? createIndustrialCrateAsset(loader, anisotropy),
-    createExitPortalAsset: () => gltfAssets?.createExitPortalAsset() ?? createExitPortalAsset(loader, anisotropy),
+    createEnvironmentAsset: (kind) => requiredAsset(gltfAssets.createEnvironmentAsset(kind), `environment/${kind}`),
+    createExitPortalAsset: () => requiredAsset(gltfAssets.createExitPortalAsset(), "environment/exit-portal"),
   };
 }
 
-export type { EnemyAsset, EnvironmentAssetKind, PlayerRig };
+function requiredAsset<T>(asset: T | null, id: string): T {
+  if (!asset) throw new Error(`Missing runtime GLB asset: ${id}`);
+  return asset;
+}
+
+export type { EnemyAsset, PlayerRig };

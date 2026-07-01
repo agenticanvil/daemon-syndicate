@@ -1,7 +1,4 @@
 import * as THREE from "three";
-import { AMMO_PICKUP_SETTINGS } from "./assets/pickups/ammoPickup/ammoPickupAsset";
-import { ENERGY_PICKUP_SETTINGS } from "./assets/pickups/energyPickup/energyPickupAsset";
-import { HEALTH_PICKUP_SETTINGS } from "./assets/pickups/healthPickup/healthPickupAsset";
 import type { DropTable } from "./assetSettings";
 import { DROP_BALANCE } from "./balance";
 import { overlaps2D, type CollisionBody2D, type CollisionLayer } from "./collision";
@@ -10,6 +7,12 @@ import type { Rng } from "./rng";
 import type { ResourceKind } from "./resourceTypes";
 import type { Pickup, PickupDraft } from "./pickupTypes";
 import type { VectorSnapshot } from "./vectorTypes";
+
+const PICKUP_SETTINGS = {
+  health: { collision: { radius: 0.62 }, lifetime: 18 },
+  ammo: { collision: { radius: 0.62 }, lifetime: 18 },
+  energy: { collision: { radius: 0.62 }, lifetime: 18 },
+} as const satisfies Record<ResourceKind, { collision: { radius: number }; lifetime: number }>;
 
 export type PickupSystemSnapshot = Array<{
   id: number;
@@ -45,8 +48,7 @@ export class PickupSystem {
     if (!entry) return;
 
     const { kind, amount } = entry;
-    const settings =
-      kind === "health" ? HEALTH_PICKUP_SETTINGS : kind === "ammo" ? AMMO_PICKUP_SETTINGS : ENERGY_PICKUP_SETTINGS;
+    const settings = PICKUP_SETTINGS[kind];
     this.addPickup(
       {
         position: position.clone(),

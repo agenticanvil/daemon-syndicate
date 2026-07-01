@@ -1,8 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { BRUTE_SETTINGS } from "./assets/enemies/brute/bruteAsset";
-import { ELITE_ENEMY_SETTINGS } from "./assets/enemies/eliteEnemy/eliteEnemyAsset";
-import { LEAN_HUNTER_SETTINGS } from "./assets/enemies/leanHunter/leanHunterAsset";
-import { VENOM_SPITTER_SETTINGS } from "./assets/enemies/venomSpitter/venomSpitterAsset";
+import { enemyContentFor } from "./assets/enemies/enemyContent";
+import type { EnemyAssetSettings } from "./assetSettings";
 import {
   chooseEnemyDefinition,
   encounterBudgetForMapDepth,
@@ -21,6 +19,11 @@ const health = (base: number, levelGrowth: number, enemyLevel: number) =>
   Math.round((base + enemyLevel * levelGrowth) * 1.2);
 const speed = (base: number, levelGrowth: number, enemyLevel: number) =>
   (base + enemyLevel * levelGrowth * 1.5) * 1.375;
+
+const LEAN_HUNTER_SETTINGS: EnemyAssetSettings = enemyContentFor("leanHunter").settings;
+const VENOM_SPITTER_SETTINGS: EnemyAssetSettings = enemyContentFor("venomSpitter").settings;
+const ELITE_ENEMY_SETTINGS: EnemyAssetSettings = enemyContentFor("elite").settings;
+const BRUTE_SETTINGS: EnemyAssetSettings = enemyContentFor("brute").settings;
 
 describe("ENEMY_DEFINITIONS", () => {
   it("preserves current lean hunter and elite scaling formulas", () => {

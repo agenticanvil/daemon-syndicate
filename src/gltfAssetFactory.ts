@@ -3,7 +3,7 @@ import { GLTFLoader, type GLTF } from "three/examples/jsm/loaders/GLTFLoader.js"
 import { clone as cloneSkeleton } from "three/examples/jsm/utils/SkeletonUtils.js";
 import type { AssetSidecar } from "./assetManifest";
 import type { EnemyAsset, EnemyAssetAnimation, EnemyKind } from "./assets/enemies/enemyContent";
-import type { EnvironmentAssetKind } from "./assets/environment/industrialCrate/industrialCrateAsset";
+import type { EnvironmentAssetKind } from "./assetFactory";
 import type { PlayerRig } from "./playerAsset";
 import type { ResourceKind } from "./resourceTypes";
 
