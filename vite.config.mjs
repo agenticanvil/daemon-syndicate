@@ -94,7 +94,7 @@ async function handlePublicAssetsRequest(root, req, res) {
   return sendJson(res, 405, { error: "Method not allowed" });
 }
 
-async function discoverPublicAssets(root) {
+export async function discoverPublicAssets(root) {
   const assetsRoot = resolve(root, "public/assets");
   const records = [];
   for (const category of ASSET_CATEGORIES) {
@@ -144,7 +144,7 @@ async function readPublicAssetRecord(root, request) {
   };
 }
 
-async function validatePublicAssets(root) {
+export async function validatePublicAssets(root) {
   const records = await discoverPublicAssets(root);
   const issues = [];
   for (const record of records) {
@@ -212,7 +212,7 @@ async function promoteStagedAssets(root, options) {
   };
 }
 
-function parseAssetEndpointPath(path) {
+export function parseAssetEndpointPath(path) {
   const parts = path.split("/");
   if (parts.length === 2) {
     const [category, name] = parts;
@@ -243,7 +243,7 @@ function sidecarFilePath(root, request) {
   return resolve(base, `${request.name}.asset.json`);
 }
 
-async function createDefaultSidecar(root, request) {
+export async function createDefaultSidecar(root, request) {
   const legacy = await readLegacySettingsForAsset(root, request.name);
   return normalizeAssetSidecar(
     {
@@ -322,7 +322,7 @@ function defaultPreviewForCategory(category) {
   return { targetY: 0.45 };
 }
 
-function normalizeAssetSidecar(value, request) {
+export function normalizeAssetSidecar(value, request) {
   const category = request.category;
   const name = request.name;
   const kind = value?.kind ?? kindForCategory(category);
@@ -400,6 +400,7 @@ function kindForCategory(category) {
 async function discoverAssetSettingsFiles(root) {
   const assetRoot = resolve(root, "src/assets");
   const files = {};
+  if (!(await fileExists(assetRoot))) return files;
   await visitAssetSettingsFolders(assetRoot, root, files);
   return files;
 }
