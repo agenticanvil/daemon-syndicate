@@ -2,6 +2,7 @@ import * as THREE from "three";
 import { GLTFLoader, type GLTF } from "three/examples/jsm/loaders/GLTFLoader.js";
 import type { EnemyAttackDefinition, PickupAssetSettings } from "./assetSettings";
 import type { AssetSidecar, EditorAssetRecord } from "./assetManifest";
+import { applyExitPortalFieldMaterial } from "./exitPortalFieldMaterial";
 import { createRenderer } from "./renderer";
 import { addGameplayLighting } from "./sceneLighting";
 import type { ResourceKind } from "./resourceTypes";
@@ -966,11 +967,17 @@ function dropTableEditorRow(kind: ResourceKind, label: string): string {
 }
 
 function applyGameMaterialConventions(root: THREE.Object3D): void {
+  applyExitPortalFieldMaterial(root);
   root.traverse((object) => {
     if (!(object instanceof THREE.Mesh)) return;
     object.castShadow = true;
     object.receiveShadow = true;
   });
+  const portalField = root.getObjectByName("exit-portal-field");
+  if (portalField instanceof THREE.Mesh) {
+    portalField.castShadow = false;
+    portalField.receiveShadow = false;
+  }
 }
 
 function setWireframe(root: THREE.Object3D, enabled: boolean): void {

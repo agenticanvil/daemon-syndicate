@@ -4,6 +4,7 @@ import { clone as cloneSkeleton } from "three/examples/jsm/utils/SkeletonUtils.j
 import type { AssetSidecar } from "./assetManifest";
 import type { EnemyAsset, EnemyAssetAnimation, EnemyKind } from "./assets/enemies/enemyContent";
 import type { EnvironmentAssetKind } from "./assetFactory";
+import { applyExitPortalFieldMaterial } from "./exitPortalFieldMaterial";
 import type { PlayerRig } from "./playerAsset";
 import type { ResourceKind } from "./resourceTypes";
 
@@ -122,11 +123,17 @@ function applyModelConventions(root: THREE.Object3D, sidecar: AssetSidecar): voi
   root.scale.setScalar(sidecar.model.scale ?? 1);
   root.rotation.y = sidecar.model.rotationY ?? 0;
   root.position.y = sidecar.model.floorOffset ?? 0;
+  applyExitPortalFieldMaterial(root);
   root.traverse((object) => {
     if (!(object instanceof THREE.Mesh)) return;
     object.castShadow = true;
     object.receiveShadow = true;
   });
+  const portalField = root.getObjectByName("exit-portal-field");
+  if (portalField instanceof THREE.Mesh) {
+    portalField.castShadow = false;
+    portalField.receiveShadow = false;
+  }
 }
 
 function createGltfEnemyAsset(asset: RuntimeGltfAsset): EnemyAsset {
