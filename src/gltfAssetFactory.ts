@@ -4,6 +4,7 @@ import { clone as cloneSkeleton } from "three/examples/jsm/utils/SkeletonUtils.j
 import type { AssetSidecar } from "./assetManifest";
 import type { EnemyAsset, EnemyAssetAnimation, EnemyKind } from "./assets/enemies/enemyContent";
 import type { EnvironmentAssetKind } from "./assets/environment/industrialCrate/industrialCrateAsset";
+import type { PlayerRig } from "./playerAsset";
 import type { ResourceKind } from "./resourceTypes";
 
 type RuntimeGltfAsset = {
@@ -13,6 +14,7 @@ type RuntimeGltfAsset = {
 };
 
 export type GltfAssetLibrary = {
+  createPlayerRig: () => PlayerRig | null;
   createEnemyAsset: (kind: EnemyKind) => EnemyAsset | null;
   createPickupAsset: (kind: ResourceKind) => { root: THREE.Object3D } | null;
   createEnvironmentAsset: (kind: EnvironmentAssetKind) => { root: THREE.Object3D } | null;
@@ -20,6 +22,7 @@ export type GltfAssetLibrary = {
 };
 
 const RUNTIME_GLB_ASSETS = [
+  { category: "player", name: "player" },
   { category: "enemies", name: "lean-hunter" },
   { category: "enemies", name: "venom-spitter" },
   { category: "enemies", name: "elite-enemy" },
@@ -46,6 +49,7 @@ const ENEMY_ASSET_NAME_BY_KIND = {
 
 export async function loadGltfAssetLibrary(): Promise<GltfAssetLibrary> {
   const loader = new GLTFLoader();
+  let playerAsset: RuntimeGltfAsset | null = null;
   const enemyAssets = new Map<string, RuntimeGltfAsset>();
   const environmentAssets = new Map<string, RuntimeGltfAsset>();
   const pickupAssets = new Map<string, RuntimeGltfAsset>();
@@ -59,17 +63,26 @@ export async function loadGltfAssetLibrary(): Promise<GltfAssetLibrary> {
       const modelUrl = `/assets/${asset.category}/${asset.name}/${sidecar.model.file}`;
       const gltf = await loadGltf(loader, modelUrl);
       applyModelConventions(gltf.scene, sidecar);
-      const target =
-        asset.category === "enemies" ? enemyAssets : asset.category === "pickups" ? pickupAssets : environmentAssets;
-      target.set(asset.name, {
+      const runtimeAsset = {
         sidecar,
         template: gltf.scene,
         animations: gltf.animations,
-      });
+      };
+      if (asset.category === "player") {
+        playerAsset = runtimeAsset;
+      } else {
+        const target =
+          asset.category === "enemies" ? enemyAssets : asset.category === "pickups" ? pickupAssets : environmentAssets;
+        target.set(asset.name, runtimeAsset);
+      }
     }),
   );
 
   return {
+    createPlayerRig() {
+      if (!playerAsset) return null;
+      return createGltfPlayerRig(playerAsset);
+    },
     createEnemyAsset(kind) {
       const asset = enemyAssets.get(ENEMY_ASSET_NAME_BY_KIND[kind]);
       if (!asset) return null;
@@ -155,4 +168,102 @@ function createGltfEnemyAsset(asset: RuntimeGltfAsset): EnemyAsset {
       mixer.update(dt);
     },
   };
+}
+
+function createGltfPlayerRig(asset: RuntimeGltfAsset): PlayerRig {
+  const root = cloneSkeleton(asset.template) as THREE.Group;
+  const mixer = new THREE.AnimationMixer(root);
+  const clips = new Map(asset.animations.map((clip) => [clip.name, clip]));
+  const body = findMesh(root, "body");
+  const handSocket = ensureGroup(root, "weapon-socket");
+  let activeAction: THREE.AnimationAction | null = null;
+  let activeAnimation: string | null = null;
+  let fireTimer = 0;
+  let equippedWeapon = handSocket.getObjectByName("pulse-rifle") ?? null;
+
+  const playAnimation = (animation: string): void => {
+    const clip = clips.get(animation);
+    if (!clip) return;
+    const nextAction = mixer.clipAction(clip);
+    if (activeAction === nextAction) return;
+    activeAction?.fadeOut(0.08);
+    nextAction.reset().fadeIn(0.08).play();
+    if (animation === "fire" || animation === "damaged") {
+      nextAction.setLoop(THREE.LoopOnce, 1);
+      nextAction.clampWhenFinished = true;
+    } else {
+      nextAction.setLoop(THREE.LoopRepeat, Number.POSITIVE_INFINITY);
+      nextAction.clampWhenFinished = false;
+    }
+    activeAction = nextAction;
+  };
+
+  return {
+    root,
+    body,
+    handSocket,
+    setWeapon(weapon: THREE.Object3D) {
+      if (equippedWeapon) handSocket.remove(equippedWeapon);
+      equippedWeapon = weapon;
+      handSocket.add(equippedWeapon);
+    },
+    triggerFire() {
+      fireTimer = 0.18;
+    },
+    applyBasePose() {
+      mixer.stopAllAction();
+      activeAction = null;
+      activeAnimation = null;
+      fireTimer = 0;
+    },
+    update(state, dt) {
+      fireTimer = Math.max(0, fireTimer - dt);
+      const animation =
+        fireTimer > 0
+          ? "fire"
+          : state.damaged
+            ? "damaged"
+            : state.lowHealth
+              ? "low-health"
+              : state.moving
+                ? "walk"
+                : "idle";
+      if (activeAnimation !== animation) {
+        activeAnimation = animation;
+        playAnimation(animation);
+      }
+      mixer.update(dt * Math.max(1, state.moving ? state.moveSpeed / 5 : 1));
+    },
+  };
+}
+
+function findMesh(root: THREE.Object3D, name: string): THREE.Mesh<THREE.BufferGeometry, THREE.MeshStandardMaterial> {
+  const object = root.getObjectByName(name) ?? root.getObjectByProperty("type", "Mesh");
+  if (!(object instanceof THREE.Mesh)) throw new Error(`Missing GLB mesh: ${name}`);
+  if (!(object.material instanceof THREE.MeshStandardMaterial)) {
+    object.material = new THREE.MeshStandardMaterial({ color: 0x9fb4b8, roughness: 0.5, metalness: 0.55 });
+  }
+  return object as THREE.Mesh<THREE.BufferGeometry, THREE.MeshStandardMaterial>;
+}
+
+function ensureGroup(root: THREE.Object3D, name: string): THREE.Group {
+  const object = root.getObjectByName(name);
+  if (object instanceof THREE.Group) return object;
+  if (object) {
+    const group = new THREE.Group();
+    group.name = object.name;
+    group.position.copy(object.position);
+    group.quaternion.copy(object.quaternion);
+    group.scale.copy(object.scale);
+    while (object.children.length > 0) {
+      group.add(object.children[0]);
+    }
+    object.parent?.add(group);
+    object.parent?.remove(object);
+    return group;
+  }
+  const group = new THREE.Group();
+  group.name = name;
+  root.add(group);
+  return group;
 }

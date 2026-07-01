@@ -23,7 +23,7 @@ export type PlayerAnimationState = {
 
 export type PlayerRig = {
   root: THREE.Group;
-  body: THREE.SkinnedMesh<THREE.BufferGeometry, THREE.MeshStandardMaterial>;
+  body: THREE.Mesh<THREE.BufferGeometry, THREE.MeshStandardMaterial>;
   handSocket: THREE.Group;
   setWeapon: (weapon: THREE.Object3D) => void;
   triggerFire: () => void;
