@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "id": "ammo-pickup",
+  "category": "pickups",
+  "label": "Ammo Pickup",
+  "kind": "pickup",
+  "model": {
+    "file": "ammo-pickup.glb",
+    "scale": 1,
+    "rotationY": 0,
+    "floorOffset": 0
+  },
+  "preview": {
+    "targetY": 0.35
+  },
+  "collision": {
+    "type": "circle",
+    "radius": 0.62
+  },
+  "resources": {
+    "ammo": 22
+  },
+  "lifetime": 18
+}

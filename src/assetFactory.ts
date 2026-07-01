@@ -13,7 +13,7 @@ import type { GltfAssetLibrary } from "./gltfAssetFactory";
 import { loadPlayerRig, type PlayerRig } from "./playerAsset";
 import type { ResourceKind } from "./resourceTypes";
 
-export type PickupAsset = AmmoPickupAsset | EnergyPickupAsset | HealthPickupAsset;
+export type PickupAsset = AmmoPickupAsset | EnergyPickupAsset | HealthPickupAsset | { root: THREE.Object3D };
 export type EnvironmentAsset = IndustrialCrateAsset | { root: THREE.Object3D };
 
 export type AssetFactory = {
@@ -33,6 +33,8 @@ export function createAssetFactory(
     createPlayerRig: () => loadPlayerRig(loader, anisotropy),
     createEnemyAsset: (kind) => enemyContentFor(kind).createAsset(loader, anisotropy),
     createPickupAsset: (kind) => {
+      const gltfPickup = gltfAssets?.createPickupAsset(kind);
+      if (gltfPickup) return gltfPickup;
       if (kind === "ammo") return createAmmoPickupAsset();
       if (kind === "energy") return createEnergyPickupAsset();
       return createHealthPickupAsset();

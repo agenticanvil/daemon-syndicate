@@ -102,7 +102,7 @@ export function createThreeGameplayView(world: GameScene): GameplayView {
     life: number;
   }> = [];
   const impactSparkMatrix = new THREE.Matrix4();
-  const pickupMeshPools: Record<ResourceKind, THREE.Mesh[]> = {
+  const pickupMeshPools: Record<ResourceKind, THREE.Object3D[]> = {
     health: [],
     ammo: [],
     energy: [],

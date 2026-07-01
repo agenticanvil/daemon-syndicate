@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "id": "health-pickup",
+  "category": "pickups",
+  "label": "Health Pickup",
+  "kind": "pickup",
+  "model": {
+    "file": "health-pickup.glb",
+    "scale": 1,
+    "rotationY": 0,
+    "floorOffset": 0
+  },
+  "preview": {
+    "targetY": 0.35
+  },
+  "collision": {
+    "type": "circle",
+    "radius": 0.62
+  },
+  "resources": {
+    "health": 24
+  },
+  "lifetime": 18
+}

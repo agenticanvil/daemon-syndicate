@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "id": "energy-pickup",
+  "category": "pickups",
+  "label": "Energy Pickup",
+  "kind": "pickup",
+  "model": {
+    "file": "energy-pickup.glb",
+    "scale": 1,
+    "rotationY": 0,
+    "floorOffset": 0
+  },
+  "preview": {
+    "targetY": 0.35
+  },
+  "collision": {
+    "type": "circle",
+    "radius": 0.62
+  },
+  "resources": {
+    "energy": 32
+  },
+  "lifetime": 18
+}

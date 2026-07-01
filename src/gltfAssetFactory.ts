@@ -2,6 +2,7 @@ import * as THREE from "three";
 import { GLTFLoader, type GLTF } from "three/examples/jsm/loaders/GLTFLoader.js";
 import type { AssetSidecar } from "./assetManifest";
 import type { EnvironmentAssetKind } from "./assets/environment/industrialCrate/industrialCrateAsset";
+import type { ResourceKind } from "./resourceTypes";
 
 type RuntimeGltfAsset = {
   sidecar: AssetSidecar;
@@ -9,14 +10,27 @@ type RuntimeGltfAsset = {
 };
 
 export type GltfAssetLibrary = {
+  createPickupAsset: (kind: ResourceKind) => { root: THREE.Object3D } | null;
   createEnvironmentAsset: (kind: EnvironmentAssetKind) => { root: THREE.Object3D } | null;
 };
 
-const RUNTIME_GLB_ASSETS = [{ category: "environment", name: "industrial-crate" }] as const;
+const RUNTIME_GLB_ASSETS = [
+  { category: "environment", name: "industrial-crate" },
+  { category: "pickups", name: "health-pickup" },
+  { category: "pickups", name: "ammo-pickup" },
+  { category: "pickups", name: "energy-pickup" },
+] as const;
+
+const PICKUP_ASSET_NAME_BY_KIND = {
+  health: "health-pickup",
+  ammo: "ammo-pickup",
+  energy: "energy-pickup",
+} as const satisfies Record<ResourceKind, string>;
 
 export async function loadGltfAssetLibrary(): Promise<GltfAssetLibrary> {
   const loader = new GLTFLoader();
   const environmentAssets = new Map<string, RuntimeGltfAsset>();
+  const pickupAssets = new Map<string, RuntimeGltfAsset>();
 
   await Promise.all(
     RUNTIME_GLB_ASSETS.map(async (asset) => {
@@ -27,7 +41,8 @@ export async function loadGltfAssetLibrary(): Promise<GltfAssetLibrary> {
       const modelUrl = `/assets/${asset.category}/${asset.name}/${sidecar.model.file}`;
       const gltf = await loadGltf(loader, modelUrl);
       applyModelConventions(gltf.scene, sidecar);
-      environmentAssets.set(asset.name, {
+      const target = asset.category === "pickups" ? pickupAssets : environmentAssets;
+      target.set(asset.name, {
         sidecar,
         template: gltf.scene,
       });
@@ -35,6 +50,13 @@ export async function loadGltfAssetLibrary(): Promise<GltfAssetLibrary> {
   );
 
   return {
+    createPickupAsset(kind) {
+      const asset = pickupAssets.get(PICKUP_ASSET_NAME_BY_KIND[kind]);
+      if (!asset) return null;
+      return {
+        root: asset.template.clone(true),
+      };
+    },
     createEnvironmentAsset(kind) {
       const asset = environmentAssets.get(kind);
       if (!asset) return null;
