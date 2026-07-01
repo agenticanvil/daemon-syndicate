@@ -32,7 +32,7 @@ export function createAssetFactory(
 ): AssetFactory {
   return {
     createPlayerRig: () => loadPlayerRig(loader, anisotropy),
-    createEnemyAsset: (kind) => enemyContentFor(kind).createAsset(loader, anisotropy),
+    createEnemyAsset: (kind) => gltfAssets?.createEnemyAsset(kind) ?? enemyContentFor(kind).createAsset(loader, anisotropy),
     createPickupAsset: (kind) => {
       const gltfPickup = gltfAssets?.createPickupAsset(kind);
       if (gltfPickup) return gltfPickup;
