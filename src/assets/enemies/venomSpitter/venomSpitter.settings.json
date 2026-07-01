@@ -1,5 +1,14 @@
 {
   "kind": "enemy",
+  "gameplay": {
+    "unlockMapDepth": 2,
+    "budgetCost": 1.35,
+    "attackDamageLevelGrowth": 2,
+    "xpReward": {
+      "base": 10,
+      "levelGrowth": 2.2
+    }
+  },
   "collision": {
     "radius": 0.68,
     "height": 1.1

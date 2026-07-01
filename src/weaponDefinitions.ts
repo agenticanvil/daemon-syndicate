@@ -1,7 +1,7 @@
 import * as THREE from "three";
 import { WEAPON_BALANCE } from "./balance";
 import { withinRadius2D, type CollisionBody2D, type CollisionLayer } from "./collision";
-import type { GameplayView } from "./gameView";
+import type { GameEffect } from "./gameEffects";
 import type { PlayerResources, ResourceKind } from "./resourceTypes";
 import type { Enemy } from "./enemyTypes";
 import type { ProjectileDraft } from "./projectileTypes";
@@ -10,14 +10,15 @@ import type { PlayerDerivedStats } from "./upgrades";
 export type AbilityId = "primary" | "nova";
 
 export type CombatContext = {
-  view: GameplayView;
   resources: PlayerResources;
   playerCollisionBody: CollisionBody2D;
+  playerPosition: THREE.Vector3;
   collisionLayer: CollisionLayer;
   enemies: Enemy[];
   stats: PlayerDerivedStats;
   damageEnemy: (enemy: Enemy, amount: number, showText: boolean) => void;
   addProjectile: (projectile: ProjectileDraft) => void;
+  emitEffect: (effect: GameEffect) => void;
 };
 
 export type AbilityDefinition = {
@@ -35,14 +36,12 @@ export const ABILITY_DEFINITIONS: Record<AbilityId, AbilityDefinition> = {
     cost: WEAPON_BALANCE.primary.ammoCost,
     cooldown: WEAPON_BALANCE.primary.cooldown,
     fire: (context, aimWorld) => {
-      const direction = aimWorld.clone().sub(context.view.player.position);
+      const direction = aimWorld.clone().sub(context.playerPosition);
       direction.y = 0;
       if (direction.lengthSq() < 0.01) return false;
       direction.normalize();
 
-      const position = context.view.player.position
-        .clone()
-        .addScaledVector(direction, WEAPON_BALANCE.primary.spawnOffset);
+      const position = context.playerPosition.clone().addScaledVector(direction, WEAPON_BALANCE.primary.spawnOffset);
       position.y = WEAPON_BALANCE.primary.spawnHeight;
 
       context.addProjectile({
@@ -55,7 +54,6 @@ export const ABILITY_DEFINITIONS: Record<AbilityId, AbilityDefinition> = {
         pierceRemaining: context.stats.projectilePierce,
         hitEnemyIds: new Set(),
       });
-      context.view.player.triggerFire();
       context.resources.ammo -= WEAPON_BALANCE.primary.ammoCost;
       return true;
     },
@@ -66,13 +64,13 @@ export const ABILITY_DEFINITIONS: Record<AbilityId, AbilityDefinition> = {
     cost: WEAPON_BALANCE.nova.energyCost,
     cooldown: WEAPON_BALANCE.nova.cooldown,
     fire: (context) => {
-      context.view.spawnNova(context.view.player.position);
+      context.emitEffect({ type: "nova", position: context.playerPosition.clone() });
 
       for (const enemy of context.enemies) {
         if (enemy.deathTimer !== undefined) continue;
         if (withinRadius2D(enemy, context.playerCollisionBody, context.stats.novaRadius)) {
           context.damageEnemy(enemy, context.stats.novaDamage, true);
-          const push = enemy.position.clone().sub(context.view.player.position).setY(0).normalize();
+          const push = enemy.position.clone().sub(context.playerPosition).setY(0).normalize();
           enemy.position.addScaledVector(push, WEAPON_BALANCE.nova.pushDistance);
         }
       }

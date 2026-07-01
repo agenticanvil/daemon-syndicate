@@ -1,7 +1,7 @@
 import * as THREE from "three";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import { CombatSystem, findProjectileWallImpact } from "./combatSystem";
-import { createHeadlessGameplayView } from "./gameView";
+import type { GameEffect } from "./gameEffects";
 import { key, tileToWorld, type LevelData, type TileCoord } from "./level";
 import type { PlayerResources } from "./resourceTypes";
 import type { Enemy } from "./enemyTypes";
@@ -69,10 +69,8 @@ describe("findProjectileWallImpact", () => {
 
 describe("CombatSystem projectiles", () => {
   it("spawns a projectile impact spark when a projectile hits an enemy", () => {
-    const view = createHeadlessGameplayView();
-    const spawnProjectileImpact = vi.fn();
-    view.spawnProjectileImpact = spawnProjectileImpact;
-    view.player.position.set(0, 0, 0);
+    const effects: GameEffect[] = [];
+    const playerPosition = new THREE.Vector3(0, 0, 0);
 
     const resources: PlayerResources = { health: 100, ammo: 10, energy: 100 };
     const enemy: Enemy = {
@@ -95,14 +93,15 @@ describe("CombatSystem projectiles", () => {
       Array.from({ length: 45 }, (_, x) => ({ x, y })),
     ));
     const combat = new CombatSystem(
-      view,
+      (effect) => effects.push(effect),
       resources,
-      { position: view.player.position, radius: 0.55, collisionLayer: 1 },
+      { position: playerPosition, radius: 0.55, collisionLayer: 1 },
+      () => playerPosition,
       () => 1,
       () => level,
       () => derivePlayerStats(createUpgradeRanks()),
       () => [enemy],
-      (target, amount) => {
+      (target: Enemy, amount: number) => {
         target.health -= amount;
       },
     );
@@ -110,8 +109,10 @@ describe("CombatSystem projectiles", () => {
     combat.firePrimary(new THREE.Vector3(10, 0, 0));
     combat.updateProjectiles(0.02);
 
-    expect(spawnProjectileImpact).toHaveBeenCalledTimes(1);
-    expect(spawnProjectileImpact.mock.calls[0][0]).toBeInstanceOf(THREE.Vector3);
-    expect(spawnProjectileImpact.mock.calls[0][1]).toBeInstanceOf(THREE.Vector3);
+    expect(effects).toHaveLength(1);
+    expect(effects[0]).toMatchObject({ type: "projectileImpact" });
+    if (effects[0].type !== "projectileImpact") throw new Error("Expected projectile impact effect");
+    expect(effects[0].position).toBeInstanceOf(THREE.Vector3);
+    expect(effects[0].incomingVelocity).toBeInstanceOf(THREE.Vector3);
   });
 });

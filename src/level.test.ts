@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { FLOOR_VARIANTS } from "./floorVariants";
 import { fromKey, generateLevel, key, type LevelData, type TileCoord } from "./level";
 import { seededRandom } from "./rng";
 
@@ -61,6 +62,16 @@ describe("generateLevel", () => {
         expect(level.blocked.has(objectKey)).toBe(true);
         expect(level.spawnPoints.map((spawn) => `${spawn.x},${spawn.y}`)).not.toContain(objectKey);
       }
+    }
+  });
+
+  it("assigns known floor variants to every walkable tile", () => {
+    const level = generateLevel(3, seededRandom("floor-variant-seed"));
+    const knownVariants = new Set<string>(FLOOR_VARIANTS.map((variant) => variant.id));
+
+    expect(level.floorVariants?.size).toBe(level.walkable.size);
+    for (const tileKey of level.walkable) {
+      expect(knownVariants.has(level.floorVariants?.get(tileKey) ?? "")).toBe(true);
     }
   });
 

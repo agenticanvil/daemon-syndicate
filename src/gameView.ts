@@ -8,22 +8,7 @@ import type { GameScene } from "./scene";
 import type { ResourceKind } from "./resourceTypes";
 import type { EnemyAnimation } from "./enemyTypes";
 import type { VectorSnapshot } from "./vectorTypes";
-
-type PlayerRigState = {
-  moving: boolean;
-  moveSpeed: number;
-  damaged: boolean;
-  lowHealth: boolean;
-};
-
-type PlayerView = {
-  position: THREE.Vector3;
-  rotation: THREE.Euler;
-  setBodyColor: (color: number) => void;
-  lerpBodyColor: (color: number, alpha: number) => void;
-  updateRig: (state: PlayerRigState, dt: number) => void;
-  triggerFire: () => void;
-};
+import type { PlayerRenderState } from "./playerSystem";
 
 export type EnemyViewHandle = {
   updateRig?: (animation: EnemyAnimation, dt: number) => void;
@@ -41,14 +26,16 @@ export type PickupViewHandle = {
   dispose: () => void;
 };
 
-export type EffectsSnapshot = {
+type EffectsSnapshot = {
   damageTexts: Array<{ world: VectorSnapshot; life: number; text: string }>;
   novaMeshes: Array<{ position: VectorSnapshot; opacity: number; scale: VectorSnapshot }>;
   projectileImpacts: Array<{ position: VectorSnapshot; life: number }>;
 };
 
 export type GameplayView = {
-  player: PlayerView;
+  syncPlayer: (state: PlayerRenderState, dt: number, instant?: boolean) => void;
+  flashPlayerColor: (color: number) => void;
+  triggerPlayerFire: () => void;
   renderLevel: (level: LevelData) => void;
   updateFog: (playerPosition: THREE.Vector3, dt: number, instant?: boolean) => void;
   resetReticle: (position: THREE.Vector3) => void;
@@ -78,6 +65,8 @@ const MAX_IMPACT_SPARKS = 112;
 const IMPACT_SPARK_LIFE = 0.22;
 const IMPACT_SPARK_GEOMETRY = new THREE.BoxGeometry(0.035, 0.035, 0.42);
 const HIDDEN_MATRIX = new THREE.Matrix4().makeScale(0, 0, 0);
+const PLAYER_BASE_COLOR = 0x9bf0df;
+const PLAYER_LOW_HEALTH_COLOR = 0xff7474;
 
 export function createThreeGameplayView(world: GameScene): GameplayView {
   const damageTexts: Array<{ el: HTMLDivElement; world: THREE.Vector3; life: number }> = [];
@@ -209,14 +198,27 @@ export function createThreeGameplayView(world: GameScene): GameplayView {
   }
 
   return {
-    player: {
-      position: world.player.position,
-      rotation: world.player.rotation,
-      setBodyColor: (color) => world.playerBody.material.color.set(color),
-      lerpBodyColor: (color, alpha) => world.playerBody.material.color.lerp(new THREE.Color(color), alpha),
-      updateRig: (state, dt) => world.playerRig.update(state, dt),
-      triggerFire: () => world.playerRig.triggerFire(),
+    syncPlayer(state, dt, instant = false) {
+      world.player.position.copy(state.position);
+      world.player.rotation.y = state.rotationY;
+      const targetColor = state.lowHealth ? PLAYER_LOW_HEALTH_COLOR : PLAYER_BASE_COLOR;
+      if (instant) {
+        world.playerBody.material.color.set(targetColor);
+      } else {
+        world.playerBody.material.color.lerp(new THREE.Color(targetColor), dt * 10);
+      }
+      world.playerRig.update(
+        {
+          moving: state.moving,
+          moveSpeed: state.moveSpeed,
+          damaged: state.damaged,
+          lowHealth: state.lowHealth,
+        },
+        dt,
+      );
     },
+    flashPlayerColor: (color) => world.playerBody.material.color.set(color),
+    triggerPlayerFire: () => world.playerRig.triggerFire(),
     renderLevel: world.renderLevel,
     updateFog: world.updateFog,
     resetReticle(position) {
@@ -224,14 +226,7 @@ export function createThreeGameplayView(world: GameScene): GameplayView {
       world.reticle.position.y = RETICLE_FLOOR_OFFSET;
     },
     createEnemyView(kind, position, facingYaw) {
-      const rig =
-        kind === "brute"
-          ? world.createBruteAsset()
-          : kind === "elite"
-          ? world.createEliteEnemyAsset()
-          : kind === "venomSpitter"
-            ? world.createVenomSpitterAsset()
-            : world.createLeanHunterRig();
+      const rig = world.createEnemyAsset(kind);
       rig.root.position.set(position.x, 0, position.z);
       rig.root.rotation.y = facingYaw;
       rig.root.visible = world.isTileExplored(position);
@@ -398,48 +393,6 @@ export function createThreeGameplayView(world: GameScene): GameplayView {
         })),
       };
     },
-  };
-}
-
-export function createHeadlessGameplayView(): GameplayView {
-  const playerPosition = new THREE.Vector3();
-  const playerRotation = new THREE.Euler();
-
-  const noEnemyView = (): EnemyViewHandle => ({
-    sync: () => {},
-    dispose: () => {},
-  });
-  const noProjectileView = (): ProjectileViewHandle => ({
-    sync: () => {},
-    dispose: () => {},
-  });
-  const noPickupView = (): PickupViewHandle => ({
-    sync: () => {},
-    dispose: () => {},
-  });
-
-  return {
-    player: {
-      position: playerPosition,
-      rotation: playerRotation,
-      setBodyColor: () => {},
-      lerpBodyColor: () => {},
-      updateRig: () => {},
-      triggerFire: () => {},
-    },
-    renderLevel: () => {},
-    updateFog: () => {},
-    resetReticle: () => {},
-    createEnemyView: noEnemyView,
-    createProjectileView: noProjectileView,
-    createEnemyProjectileView: noProjectileView,
-    createPickupView: noPickupView,
-    spawnDamageText: () => {},
-    spawnNova: () => {},
-    spawnProjectileImpact: () => {},
-    updateEffects: () => {},
-    clearEffects: () => {},
-    snapshotEffects: () => ({ damageTexts: [], novaMeshes: [], projectileImpacts: [] }),
   };
 }
 

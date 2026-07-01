@@ -11,11 +11,11 @@ import leanHunterSettings from "./leanHunter.settings.json";
 const LEAN_HUNTER_ATLAS_URL = "/assets/lean-hunter-atlas.png";
 const FLOOR_OFFSET = 0.08;
 
-export type LeanHunterAnimationId = "idle" | "walk" | "melee" | "death";
+type LeanHunterAnimationId = "idle" | "walk" | "melee" | "death";
 
 export const LEAN_HUNTER_SETTINGS = leanHunterSettings as EnemyAssetSettings;
 
-export type LeanHunterAnimationState = {
+type LeanHunterAnimationState = {
   animation: LeanHunterAnimationId;
 };
 

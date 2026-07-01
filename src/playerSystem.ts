@@ -2,7 +2,6 @@ import * as THREE from "three";
 import { PLAYER_BALANCE } from "./balance";
 import type { CollisionBody2D, CollisionLayer } from "./collision";
 import { PLAYER_MAX } from "./constants";
-import type { GameplayView } from "./gameView";
 import type { LevelData } from "./level";
 import { moveOnWalkableLevel } from "./movement";
 import type { PlayerCommand } from "./playerCommand";
@@ -12,13 +11,22 @@ import type { VectorSnapshot } from "./vectorTypes";
 import type { PlayerDerivedStats } from "./upgrades";
 
 const PLAYER_MODEL_FORWARD_OFFSET = Math.PI;
-const PLAYER_BASE_COLOR = 0x9bf0df;
 const PLAYER_FLASH_COLOR = 0xffffff;
 const PLAYER_LOW_HEALTH_COLOR = 0xff7474;
 
 export type PlayerDamageResult = {
   applied: boolean;
   gameOver: boolean;
+  flashColor?: number;
+};
+
+export type PlayerRenderState = {
+  position: THREE.Vector3;
+  rotationY: number;
+  moving: boolean;
+  moveSpeed: number;
+  damaged: boolean;
+  lowHealth: boolean;
 };
 
 export type PlayerSystemSnapshot = {
@@ -34,22 +42,23 @@ export type PlayerSystemSnapshot = {
 };
 
 export class PlayerSystem {
+  readonly position = new THREE.Vector3();
   readonly resources: PlayerResources = { ...PLAYER_MAX };
   readonly collisionBody: CollisionBody2D;
 
   private readonly movementInput = new THREE.Vector3();
   private readonly statusEffects: StatusEffect[] = [];
+  private rotationY = 0;
   private moving = false;
   private dashTimer = 0;
   private emergencyShieldReady = true;
 
   constructor(
-    private readonly view: GameplayView,
     private readonly getLevel: () => LevelData,
     private readonly getStats: () => PlayerDerivedStats,
   ) {
     this.collisionBody = {
-      position: this.view.player.position,
+      position: this.position,
       radius: PLAYER_BALANCE.radius,
       collisionLayer: 0,
     };
@@ -64,7 +73,8 @@ export class PlayerSystem {
   }
 
   reset(position: THREE.Vector3, collisionLayer: CollisionLayer): void {
-    this.view.player.position.copy(position);
+    this.position.copy(position);
+    this.rotationY = 0;
     this.collisionBody.collisionLayer = collisionLayer;
     this.resources.health = this.maxResources.health;
     this.resources.ammo = this.maxResources.ammo;
@@ -73,11 +83,11 @@ export class PlayerSystem {
     this.moving = false;
     this.dashTimer = 0;
     this.emergencyShieldReady = true;
-    this.view.player.setBodyColor(PLAYER_BASE_COLOR);
   }
 
   moveTo(position: THREE.Vector3, collisionLayer: CollisionLayer): void {
-    this.view.player.position.copy(position);
+    this.position.copy(position);
+    this.rotationY = 0;
     this.collisionBody.collisionLayer = collisionLayer;
     this.moving = false;
   }
@@ -85,7 +95,6 @@ export class PlayerSystem {
   updateTimers(dt: number): void {
     this.dashTimer = Math.max(0, this.dashTimer - dt);
     tickStatusEffects(this.statusEffects, dt);
-    this.view.player.lerpBodyColor(this.targetBodyColor(), dt * 10);
   }
 
   regenerate(dt: number): void {
@@ -101,27 +110,26 @@ export class PlayerSystem {
 
     if (this.moving) {
       input.normalize();
-      moveOnWalkableLevel(this.getLevel(), this.view.player.position, input, this.getStats().movementSpeed * dt);
+      moveOnWalkableLevel(this.getLevel(), this.position, input, this.getStats().movementSpeed * dt);
     }
   }
 
   updateAim(aimWorld: THREE.Vector3): void {
-    const aim = aimWorld.clone().sub(this.view.player.position).setY(0);
+    const aim = aimWorld.clone().sub(this.position).setY(0);
     if (aim.lengthSq() > 0.01) {
-      this.view.player.rotation.y = Math.atan2(aim.x, aim.z) + PLAYER_MODEL_FORWARD_OFFSET;
+      this.rotationY = Math.atan2(aim.x, aim.z) + PLAYER_MODEL_FORWARD_OFFSET;
     }
   }
 
-  updateRig(dt: number): void {
-    this.view.player.updateRig(
-      {
-        moving: this.moving,
-        moveSpeed: this.getStats().movementSpeed,
-        damaged: this.hasStatus("invulnerable"),
-        lowHealth: this.resources.health <= PLAYER_BALANCE.lowHealthThreshold,
-      },
-      dt,
-    );
+  renderState(): PlayerRenderState {
+    return {
+      position: this.position,
+      rotationY: this.rotationY,
+      moving: this.moving,
+      moveSpeed: this.getStats().movementSpeed,
+      damaged: this.hasStatus("invulnerable"),
+      lowHealth: this.resources.health <= PLAYER_BALANCE.lowHealthThreshold,
+    };
   }
 
   takeDamage(amount: number): PlayerDamageResult {
@@ -140,15 +148,16 @@ export class PlayerSystem {
       this.resources.health = Math.max(1, this.resources.health);
       this.setStatus("shield", 1.2);
       this.setStatus("invulnerable", 1.2);
-      this.view.player.setBodyColor(PLAYER_FLASH_COLOR);
-      return { applied: true, gameOver: false };
+      return { applied: true, gameOver: false, flashColor: PLAYER_FLASH_COLOR };
     }
 
     this.setStatus("invulnerable", PLAYER_BALANCE.invulnerabilityDuration);
-    this.view.player.setBodyColor(
-      this.resources.health <= PLAYER_BALANCE.lowHealthThreshold ? PLAYER_LOW_HEALTH_COLOR : PLAYER_FLASH_COLOR,
-    );
-    return { applied: true, gameOver: this.resources.health <= 0 };
+    return {
+      applied: true,
+      gameOver: this.resources.health <= 0,
+      flashColor:
+        this.resources.health <= PLAYER_BALANCE.lowHealthThreshold ? PLAYER_LOW_HEALTH_COLOR : PLAYER_FLASH_COLOR,
+    };
   }
 
   tryDash(command: PlayerCommand): boolean {
@@ -157,7 +166,7 @@ export class PlayerSystem {
 
     const direction = command.movement.clone().setY(0);
     if (direction.lengthSq() <= 0.001) {
-      direction.copy(command.aimWorld).sub(this.view.player.position).setY(0);
+      direction.copy(command.aimWorld).sub(this.position).setY(0);
     }
     if (direction.lengthSq() <= 0.001) return false;
 
@@ -165,7 +174,7 @@ export class PlayerSystem {
     this.resources.energy -= stats.dashEnergyCost;
     this.dashTimer = stats.dashCooldown;
     this.setStatus("invulnerable", Math.max(0.18, stats.dashCooldown * 0.18));
-    return moveOnWalkableLevel(this.getLevel(), this.view.player.position, direction, stats.dashDistance);
+    return moveOnWalkableLevel(this.getLevel(), this.position, direction, stats.dashDistance);
   }
 
   grantResource(kind: ResourceKind, amount: number): void {
@@ -189,8 +198,8 @@ export class PlayerSystem {
 
   snapshot(): PlayerSystemSnapshot {
     return {
-      position: vectorSnapshot(this.view.player.position),
-      rotationY: this.view.player.rotation.y,
+      position: vectorSnapshot(this.position),
+      rotationY: this.rotationY,
       collisionLayer: this.collisionBody.collisionLayer,
       resources: { ...this.resources },
       maxResources: { ...this.maxResources },
@@ -203,10 +212,6 @@ export class PlayerSystem {
 
   private setStatus(kind: StatusEffect["kind"], remaining: number): void {
     setStatusEffect(this.statusEffects, { kind, remaining });
-  }
-
-  private targetBodyColor(): number {
-    return this.resources.health <= PLAYER_BALANCE.lowHealthThreshold ? PLAYER_LOW_HEALTH_COLOR : PLAYER_BASE_COLOR;
   }
 }
 

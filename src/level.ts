@@ -1,6 +1,7 @@
 import * as THREE from "three";
 import { LEVEL_HEIGHT, LEVEL_WIDTH, TILE_SIZE } from "./constants";
 import type { EnvironmentAssetKind } from "./assetFactory";
+import { chooseFloorVariant, type FloorVariantId } from "./floorVariants";
 import type { Rng } from "./rng";
 
 export type TileCoord = {
@@ -24,6 +25,7 @@ export type LevelData = {
   start: TileCoord;
   end: TileCoord;
   walkable: Set<string>;
+  floorVariants?: ReadonlyMap<string, FloorVariantId>;
   blocked: Set<string>;
   environmentalObjects: EnvironmentalObject[];
   spawnPoints: TileCoord[];
@@ -80,8 +82,21 @@ export function generateLevel(mapDepth: number, rng: Rng = Math.random): LevelDa
   const spawnPoints = [...walkable]
     .map(fromKey)
     .filter((tile) => !blocked.has(key(tile)) && distance(tile, start) > 6 && distance(tile, end) > 3);
+  const floorVariants = assignFloorVariants(walkable, rng);
 
-  return { mapDepth, width, height, exitDirection, start, end, walkable, blocked, environmentalObjects, spawnPoints };
+  return {
+    mapDepth,
+    width,
+    height,
+    exitDirection,
+    start,
+    end,
+    walkable,
+    floorVariants,
+    blocked,
+    environmentalObjects,
+    spawnPoints,
+  };
 }
 
 export function key(tile: TileCoord): string {
@@ -506,6 +521,10 @@ function placeEnvironmentalObjects(
   }
 
   return objects;
+}
+
+function assignFloorVariants(walkable: Set<string>, rng: Rng): ReadonlyMap<string, FloorVariantId> {
+  return new Map([...walkable].map((tileKey) => [tileKey, chooseFloorVariant(rng)]));
 }
 
 function isConnectedAfterBlocking(walkable: Set<string>, blocked: Set<string>, start: TileCoord): boolean {

@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import { FLOOR_VARIANTS, type FloorVariantId } from "./floorVariants";
 import type { LevelRenderMaterials } from "./levelRenderer";
 
 export type GameplayMaterials = {
@@ -14,27 +15,9 @@ export type SceneMaterials = {
 };
 
 export function createSceneMaterials(loader: THREE.TextureLoader, anisotropy: number): SceneMaterials {
-  const floorTexture = loader.load("/assets/facility-floor.png");
-  const floorNormalMap = loader.load("/assets/facility-floor-normal.png");
-  floorTexture.colorSpace = THREE.SRGBColorSpace;
-  floorTexture.wrapS = THREE.RepeatWrapping;
-  floorTexture.wrapT = THREE.RepeatWrapping;
-  floorTexture.repeat.set(1, 1);
-  floorTexture.anisotropy = anisotropy;
-  floorNormalMap.wrapS = THREE.RepeatWrapping;
-  floorNormalMap.wrapT = THREE.RepeatWrapping;
-  floorNormalMap.repeat.set(1, 1);
-  floorNormalMap.anisotropy = anisotropy;
-
   return {
     level: {
-      floor: new THREE.MeshStandardMaterial({
-        map: floorTexture,
-        normalMap: floorNormalMap,
-        normalScale: new THREE.Vector2(0.28, 0.28),
-        roughness: 0.78,
-        metalness: 0.42,
-      }),
+      floors: createFloorMaterials(loader, anisotropy),
       edge: new THREE.MeshStandardMaterial({ color: 0x111b1e, roughness: 0.86, metalness: 0.32 }),
       void: new THREE.MeshBasicMaterial({ color: 0x010304 }),
       rim: new THREE.MeshBasicMaterial({ color: 0x2ddbd2, transparent: true, opacity: 0.36 }),
@@ -61,4 +44,42 @@ export function createSceneMaterials(loader: THREE.TextureLoader, anisotropy: nu
       }),
     },
   };
+}
+
+function createFloorMaterials(
+  loader: THREE.TextureLoader,
+  anisotropy: number,
+): Record<FloorVariantId, THREE.MeshStandardMaterial> {
+  return Object.fromEntries(
+    FLOOR_VARIANTS.map((variant) => {
+      const map = loadRepeatingTexture(loader, variant.mapUrl, anisotropy, true);
+      const normalMap = loadRepeatingTexture(loader, variant.normalMapUrl, anisotropy, false);
+
+      return [
+        variant.id,
+        new THREE.MeshStandardMaterial({
+          map,
+          normalMap,
+          normalScale: new THREE.Vector2(...variant.normalScale),
+          roughness: variant.roughness,
+          metalness: variant.metalness,
+        }),
+      ];
+    }),
+  ) as Record<FloorVariantId, THREE.MeshStandardMaterial>;
+}
+
+function loadRepeatingTexture(
+  loader: THREE.TextureLoader,
+  url: string,
+  anisotropy: number,
+  useSrgbColorSpace: boolean,
+): THREE.Texture {
+  const texture = loader.load(url);
+  if (useSrgbColorSpace) texture.colorSpace = THREE.SRGBColorSpace;
+  texture.wrapS = THREE.RepeatWrapping;
+  texture.wrapT = THREE.RepeatWrapping;
+  texture.repeat.set(1, 1);
+  texture.anisotropy = anisotropy;
+  return texture;
 }

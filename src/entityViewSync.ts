@@ -1,4 +1,5 @@
 import type { Enemy } from "./enemyTypes";
+import type { EntityViewState } from "./entityState";
 import type {
   EnemyViewHandle,
   GameplayView,
@@ -7,13 +8,6 @@ import type {
 } from "./gameView";
 import type { Pickup } from "./pickupTypes";
 import type { EnemyProjectile, Projectile } from "./projectileTypes";
-
-export type EntityViewState = {
-  enemies: readonly Enemy[];
-  projectiles: readonly Projectile[];
-  enemyProjectiles: readonly EnemyProjectile[];
-  pickups: readonly Pickup[];
-};
 
 export class EntityViewSync {
   private readonly enemyViews = new Map<number, EnemyViewHandle>();

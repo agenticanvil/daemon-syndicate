@@ -1,13 +1,13 @@
 import * as THREE from "three";
 import type { AssetSettings, EnemyAssetSettings, PickupAssetSettings, PlayerAssetSettings } from "./assetSettings";
-import { type BruteAsset } from "./assets/enemies/brute/bruteAsset";
-import { type EliteEnemyAsset } from "./assets/enemies/eliteEnemy/eliteEnemyAsset";
 import {
-  type LeanHunterAnimationId,
-  type LeanHunterAnimationState,
-  type LeanHunterRig,
-} from "./assets/enemies/leanHunter/leanHunterAsset";
-import { type VenomSpitterAsset } from "./assets/enemies/venomSpitter/venomSpitterAsset";
+  ENEMY_ASSET_IDS,
+  enemyContentForAssetId,
+  isEnemyAssetId,
+  type EnemyAsset,
+  type EnemyAssetAnimation,
+  type EnemyAssetId,
+} from "./assets/enemies/enemyContent";
 import { type IndustrialCrateAsset } from "./assets/environment/industrialCrate/industrialCrateAsset";
 import { type ExitPortalAsset } from "./assets/environment/exitPortal/exitPortalAsset";
 import { type AmmoPickupAsset } from "./assets/pickups/ammoPickup/ammoPickupAsset";
@@ -25,36 +25,48 @@ const ASSET_SETTINGS_BY_PATH = import.meta.glob("./assets/**/*.settings.json", {
   import: "default",
 }) as Record<string, AssetSettings>;
 
-const EDITOR_ASSET_CREATORS = {
-  player: (factory: AssetFactory) => factory.createPlayerRig(),
-  "lean-hunter": (factory: AssetFactory) => factory.createLeanHunterRig(),
-  "elite-enemy": (factory: AssetFactory) => factory.createEliteEnemyAsset(),
-  "venom-spitter": (factory: AssetFactory) => factory.createVenomSpitterAsset(),
-  brute: (factory: AssetFactory) => factory.createBruteAsset(),
-  "health-pickup": (factory: AssetFactory) => factory.createPickupAsset("health"),
-  "ammo-pickup": (factory: AssetFactory) => factory.createPickupAsset("ammo"),
-  "energy-pickup": (factory: AssetFactory) => factory.createPickupAsset("energy"),
-  "industrial-crate": (factory: AssetFactory) => factory.createEnvironmentAsset("industrial-crate"),
-  "exit-portal": (factory: AssetFactory) => factory.createExitPortalAsset(),
-} satisfies Record<string, (factory: AssetFactory) => EditorAsset>;
-
-type AssetId = keyof typeof EDITOR_ASSET_CREATORS;
+type StaticAssetId =
+  | "player"
+  | "health-pickup"
+  | "ammo-pickup"
+  | "energy-pickup"
+  | "industrial-crate"
+  | "exit-portal";
+type AssetId = StaticAssetId | EnemyAssetId;
 type AngleId = "head-on" | "side" | "behind" | "isometric";
 type PlayerAnimationStateId = "idle" | "walk" | "fire" | "damaged" | "low-health";
 type EditorOnlyAnimationStateId = "base-pose";
-type AnimationStateId = EditorOnlyAnimationStateId | PlayerAnimationStateId | LeanHunterAnimationId;
+type AnimationStateId = EditorOnlyAnimationStateId | PlayerAnimationStateId | EnemyAssetAnimation;
 type RenderModeId = "shaded" | "wireframe" | "bones";
 type EditorAsset =
   | PlayerRig
-  | LeanHunterRig
-  | EliteEnemyAsset
-  | VenomSpitterAsset
-  | BruteAsset
+  | EnemyAsset
   | HealthPickupAsset
   | AmmoPickupAsset
   | EnergyPickupAsset
   | IndustrialCrateAsset
   | ExitPortalAsset;
+
+const ENEMY_ASSET_CREATORS = Object.fromEntries(
+  ENEMY_ASSET_IDS.map((assetId) => [
+    assetId,
+    (factory: AssetFactory) => {
+      const content = enemyContentForAssetId(assetId);
+      if (!content) throw new Error(`Missing enemy content for asset: ${assetId}`);
+      return factory.createEnemyAsset(content.kind);
+    },
+  ]),
+) as Record<EnemyAssetId, (factory: AssetFactory) => EditorAsset>;
+
+const EDITOR_ASSET_CREATORS: Record<AssetId, (factory: AssetFactory) => EditorAsset> = {
+  player: (factory) => factory.createPlayerRig(),
+  ...ENEMY_ASSET_CREATORS,
+  "health-pickup": (factory) => factory.createPickupAsset("health"),
+  "ammo-pickup": (factory) => factory.createPickupAsset("ammo"),
+  "energy-pickup": (factory) => factory.createPickupAsset("energy"),
+  "industrial-crate": (factory) => factory.createEnvironmentAsset("industrial-crate"),
+  "exit-portal": (factory) => factory.createExitPortalAsset(),
+};
 
 type AssetEditorState = {
   asset: AssetId;
@@ -103,10 +115,7 @@ type AssetDefinition = {
 
 const ASSET_DISPLAY_ORDER: AssetId[] = [
   "player",
-  "lean-hunter",
-  "elite-enemy",
-  "venom-spitter",
-  "brute",
+  ...ENEMY_ASSET_IDS,
   "health-pickup",
   "ammo-pickup",
   "energy-pickup",
@@ -599,9 +608,9 @@ export function startAssetEditor(app: HTMLDivElement): void {
     };
   }
 
-  function leanHunterAnimationState(): LeanHunterAnimationState {
+  function enemyAnimationState(): { animation: EnemyAssetAnimation } {
     return {
-      animation: isLeanHunterAnimationId(state.animation) ? state.animation : "idle",
+      animation: isEnemyAnimationId(state.animation) ? state.animation : "idle",
     };
   }
 
@@ -620,11 +629,11 @@ export function startAssetEditor(app: HTMLDivElement): void {
         rig.update(playerAnimationState(dt), dt);
       }
     } else if (isEnemyAsset(state.asset)) {
-      const rig = rigs[state.asset] as LeanHunterRig | EliteEnemyAsset | VenomSpitterAsset | BruteAsset;
+      const rig = rigs[state.asset] as EnemyAsset;
       if (state.animation === "base-pose") {
         rig.applyBasePose();
       } else {
-        rig.update(leanHunterAnimationState(), dt);
+        rig.update(enemyAnimationState(), dt);
       }
     }
     boneHelpers[state.asset]?.updateMatrixWorld(true);
@@ -974,7 +983,8 @@ function camelToKebab(value: string): string {
 }
 
 function labelFromAssetId(id: AssetId): string {
-  if (id === "elite-enemy") return "Elite Hunter";
+  const enemyContent = enemyContentForAssetId(id);
+  if (enemyContent) return enemyContent.label;
   return id
     .split("-")
     .map((word) => word[0].toUpperCase() + word.slice(1))
@@ -1127,9 +1137,8 @@ function statefulAssetSettings(asset: AssetId): AssetSettings {
 
 function boneHelperColor(asset: AssetId): THREE.ColorRepresentation {
   if (asset === "player") return 0xffc857;
-  if (asset === "brute") return 0x86ff52;
-  if (asset === "venom-spitter") return 0x8dff38;
-  if (asset === "elite-enemy") return 0xff3434;
+  const enemyContent = enemyContentForAssetId(asset);
+  if (enemyContent) return enemyContent.previewColor;
   return 0xff5a8a;
 }
 
@@ -1585,7 +1594,15 @@ function isAssetId(value: string | null | undefined): value is AssetId {
 }
 
 function isEditorAssetId(value: string | null | undefined): value is AssetId {
-  return typeof value === "string" && value in EDITOR_ASSET_CREATORS;
+  return (
+    value === "player" ||
+    isEnemyAssetId(value) ||
+    value === "health-pickup" ||
+    value === "ammo-pickup" ||
+    value === "energy-pickup" ||
+    value === "industrial-crate" ||
+    value === "exit-portal"
+  );
 }
 
 function toAngleId(value: string | null | undefined): AngleId {
@@ -1628,7 +1645,7 @@ function isAnimationStateId(value: string | null | undefined): value is Animatio
   );
 }
 
-function isLeanHunterAnimationId(animation: AnimationStateId): animation is LeanHunterAnimationId {
+function isEnemyAnimationId(animation: AnimationStateId): animation is EnemyAssetAnimation {
   return animation === "idle" || animation === "walk" || animation === "melee" || animation === "death";
 }
 

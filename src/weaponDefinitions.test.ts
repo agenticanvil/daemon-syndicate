@@ -1,7 +1,7 @@
 import * as THREE from "three";
 import { describe, expect, it, vi } from "vitest";
 import { WEAPON_BALANCE } from "./balance";
-import type { GameplayView } from "./gameView";
+import type { GameEffect } from "./gameEffects";
 import { ABILITY_DEFINITIONS, type CombatContext } from "./weaponDefinitions";
 import type { PlayerResources } from "./resourceTypes";
 import type { Enemy } from "./enemyTypes";
@@ -29,30 +29,12 @@ function enemyAt(id: number, x: number, z: number, collisionLayer: number): Enem
 
 function combatContext(overrides: Partial<CombatContext> = {}): CombatContext {
   const resources: PlayerResources = { health: 100, ammo: 80, energy: 100 };
+  const playerPosition = new THREE.Vector3(0, 0, 0);
   return {
-    view: {
-      player: {
-        position: new THREE.Vector3(0, 0, 0),
-        rotation: new THREE.Euler(),
-        setBodyColor: vi.fn(),
-        lerpBodyColor: vi.fn(),
-        updateRig: vi.fn(),
-        triggerFire: vi.fn(),
-      },
-      renderLevel: vi.fn(),
-      resetReticle: vi.fn(),
-      createEnemyView: vi.fn(),
-      createProjectileView: vi.fn(),
-      createPickupView: vi.fn(),
-      spawnDamageText: vi.fn(),
-      spawnNova: vi.fn(),
-      updateEffects: vi.fn(),
-      clearEffects: vi.fn(),
-      snapshotEffects: vi.fn(() => ({ damageTexts: [], novaMeshes: [] })),
-    } as unknown as GameplayView,
     resources,
+    playerPosition,
     playerCollisionBody: {
-      position: new THREE.Vector3(0, 0, 0),
+      position: playerPosition,
       radius: 0.55,
       collisionLayer: 1,
     },
@@ -61,6 +43,7 @@ function combatContext(overrides: Partial<CombatContext> = {}): CombatContext {
     stats: derivePlayerStats(createUpgradeRanks()),
     damageEnemy: vi.fn(),
     addProjectile: vi.fn(),
+    emitEffect: vi.fn(),
     ...overrides,
   };
 }
@@ -100,7 +83,6 @@ describe("ABILITY_DEFINITIONS", () => {
     expect(projectile?.position.x).toBeCloseTo(WEAPON_BALANCE.primary.spawnOffset);
     expect(projectile?.position.y).toBeCloseTo(WEAPON_BALANCE.primary.spawnHeight);
     expect(projectile?.velocity.length()).toBeCloseTo(WEAPON_BALANCE.primary.projectileSpeed);
-    expect(context.view.createProjectileView).not.toHaveBeenCalled();
     expect(context.resources.ammo).toBe(80 - WEAPON_BALANCE.primary.ammoCost);
   });
 
@@ -110,9 +92,11 @@ describe("ABILITY_DEFINITIONS", () => {
     const closeOtherLayer = enemyAt(3, 2, 0, 2);
     const deadSameLayer = { ...enemyAt(4, 2, 0, 1), deathTimer: 0.2 };
     const damageEnemy = vi.fn();
+    const effects: GameEffect[] = [];
     const context = combatContext({
       enemies: [closeSameLayer, farSameLayer, closeOtherLayer, deadSameLayer],
       damageEnemy,
+      emitEffect: (effect) => effects.push(effect),
     });
 
     const fired = ABILITY_DEFINITIONS.nova.fire(context, new THREE.Vector3());
@@ -121,6 +105,7 @@ describe("ABILITY_DEFINITIONS", () => {
     expect(damageEnemy).toHaveBeenCalledOnce();
     expect(damageEnemy).toHaveBeenCalledWith(closeSameLayer, WEAPON_BALANCE.nova.damage, true);
     expect(closeSameLayer.position.x).toBeCloseTo(2 + WEAPON_BALANCE.nova.pushDistance);
+    expect(effects).toEqual([{ type: "nova", position: context.playerPosition }]);
     expect(context.resources.energy).toBe(100 - WEAPON_BALANCE.nova.energyCost);
   });
 });

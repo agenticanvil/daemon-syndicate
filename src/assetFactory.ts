@@ -1,8 +1,5 @@
 import * as THREE from "three";
-import { createBruteAsset, type BruteAsset } from "./assets/enemies/brute/bruteAsset";
-import { createEliteEnemyAsset, type EliteEnemyAsset } from "./assets/enemies/eliteEnemy/eliteEnemyAsset";
-import { loadLeanHunterRig, type LeanHunterRig } from "./assets/enemies/leanHunter/leanHunterAsset";
-import { createVenomSpitterAsset, type VenomSpitterAsset } from "./assets/enemies/venomSpitter/venomSpitterAsset";
+import { enemyContentFor, type EnemyAsset, type EnemyKind } from "./assets/enemies/enemyContent";
 import {
   createIndustrialCrateAsset,
   type EnvironmentAssetKind,
@@ -20,10 +17,7 @@ export type EnvironmentAsset = IndustrialCrateAsset;
 
 export type AssetFactory = {
   createPlayerRig: () => PlayerRig;
-  createLeanHunterRig: () => LeanHunterRig;
-  createEliteEnemyAsset: () => EliteEnemyAsset;
-  createVenomSpitterAsset: () => VenomSpitterAsset;
-  createBruteAsset: () => BruteAsset;
+  createEnemyAsset: (kind: EnemyKind) => EnemyAsset;
   createPickupAsset: (kind: ResourceKind) => PickupAsset;
   createEnvironmentAsset: (kind: EnvironmentAssetKind) => EnvironmentAsset;
   createExitPortalAsset: () => ExitPortalAsset;
@@ -32,10 +26,7 @@ export type AssetFactory = {
 export function createAssetFactory(loader: THREE.TextureLoader, anisotropy: number): AssetFactory {
   return {
     createPlayerRig: () => loadPlayerRig(loader, anisotropy),
-    createLeanHunterRig: () => loadLeanHunterRig(loader, anisotropy),
-    createEliteEnemyAsset: () => createEliteEnemyAsset(loader, anisotropy),
-    createVenomSpitterAsset: () => createVenomSpitterAsset(loader, anisotropy),
-    createBruteAsset: () => createBruteAsset(loader, anisotropy),
+    createEnemyAsset: (kind) => enemyContentFor(kind).createAsset(loader, anisotropy),
     createPickupAsset: (kind) => {
       if (kind === "ammo") return createAmmoPickupAsset();
       if (kind === "energy") return createEnergyPickupAsset();
@@ -46,4 +37,4 @@ export function createAssetFactory(loader: THREE.TextureLoader, anisotropy: numb
   };
 }
 
-export type { BruteAsset, EliteEnemyAsset, EnvironmentAssetKind, LeanHunterRig, PlayerRig, VenomSpitterAsset };
+export type { EnemyAsset, EnvironmentAssetKind, PlayerRig };

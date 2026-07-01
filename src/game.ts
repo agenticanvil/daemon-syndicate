@@ -1,5 +1,8 @@
 import * as THREE from "three";
 import type { GameAudio, SoundId } from "./audio";
+import { TILE_SIZE } from "./constants";
+import { EntityViewSync } from "./entityViewSync";
+import type { GameEffect } from "./gameEffects";
 import { createThreeGameplayView, type GameplayView } from "./gameView";
 import { GameSimulation, type DebugSpawnPosition, type GameSimulationSnapshot, type GameStepResult } from "./gameSimulation";
 import { InputState } from "./inputState";
@@ -32,6 +35,7 @@ export class Game {
   private readonly input = new InputState();
   private readonly view: GameplayView;
   private readonly simulation: GameSimulation;
+  private readonly entityViews: EntityViewSync;
   private readonly audio?: GameAudio;
 
   private fpsVisible = false;
@@ -46,7 +50,9 @@ export class Game {
   ) {
     this.audio = options.audio;
     this.view = createThreeGameplayView(world);
-    this.simulation = new GameSimulation(this.view, options);
+    this.entityViews = new EntityViewSync(this.view);
+    this.simulation = new GameSimulation(options);
+    this.resetViewForSimulation();
   }
 
   bindEvents(): void {
@@ -71,6 +77,7 @@ export class Game {
   startNewRun(mapDepth = 1): void {
     this.simulation.startNewRun({ mapDepth });
     this.selectingUpgrade = false;
+    this.resetViewForSimulation();
     this.ui.hideOverlay();
     this.ui.hideUpgradeSelection();
     this.ui.setHudVisible(true);
@@ -229,6 +236,25 @@ export class Game {
     }
   }
 
+  private applyStepEffects(effects: readonly GameEffect[]): void {
+    for (const effect of effects) {
+      switch (effect.type) {
+        case "damageText":
+          this.view.spawnDamageText(effect.position, effect.text);
+          break;
+        case "nova":
+          this.view.spawnNova(effect.position);
+          break;
+        case "projectileImpact":
+          this.view.spawnProjectileImpact(effect.position, effect.incomingVelocity);
+          break;
+        case "playerFlash":
+          this.view.flashPlayerColor(effect.color);
+          break;
+      }
+    }
+  }
+
   private buildPlayerCommand(): PlayerCommand {
     if (!this.canAct()) {
       return idlePlayerCommand(this.simulation.playerPosition);
@@ -254,9 +280,25 @@ export class Game {
   }
 
   private updateCamera(): void {
-    const offset = new THREE.Vector3(25, 26, 25);
+    const offset = new THREE.Vector3(15, 16, 15);
     this.world.camera.position.copy(this.simulation.playerPosition).add(offset);
     this.world.camera.lookAt(this.simulation.playerPosition);
+  }
+
+  private resetViewForSimulation(): void {
+    this.entityViews.clear();
+    this.view.clearEffects();
+    this.view.renderLevel(this.simulation.level);
+    this.view.resetReticle(this.simulation.playerPosition.clone().add(new THREE.Vector3(0, 0, -TILE_SIZE)));
+    this.view.updateFog(this.simulation.playerPosition, 0, true);
+    this.syncView(0, true);
+  }
+
+  private syncView(dt: number, instantPlayer = false): void {
+    this.view.syncPlayer(this.simulation.playerRenderState(), dt, instantPlayer);
+    this.view.updateFog(this.simulation.playerPosition, dt);
+    this.entityViews.sync(this.simulation.entityState(), dt);
+    this.view.updateEffects(dt);
   }
 
   private updateHud(): void {
@@ -302,8 +344,8 @@ export class Game {
       enemies: this.simulation.enemyCount,
       projectiles: this.simulation.projectileCount,
       pickups: this.simulation.pickupCount,
-      damageTexts: this.simulation.damageTextCount,
-      novaMeshes: this.simulation.novaCount,
+      damageTexts: this.view.snapshotEffects().damageTexts.length,
+      novaMeshes: this.view.snapshotEffects().novaMeshes.length,
       mapDepth: this.simulation.currentMapDepth,
       kills: this.simulation.killCount,
       renderCalls: this.world.renderer.info.render.calls,
@@ -324,6 +366,14 @@ export class Game {
       const command = this.buildPlayerCommand();
       if (this.simulation.isStarted && !this.simulation.isGameOver && !this.simulation.isPaused) {
         const result = this.perf.span("simulation.step", () => this.simulation.step(dt, command));
+        if (result.mapDepthChanged) {
+          this.resetViewForSimulation();
+        }
+        if (result.primaryFired) {
+          this.view.triggerPlayerFire();
+        }
+        this.applyStepEffects(result.effects);
+        this.syncView(dt, result.mapDepthChanged);
         this.playStepAudio(result);
         this.perf.span("camera", () => this.updateCamera());
         this.perf.span("pointer.world", () => this.updatePointerWorldFromCamera());
@@ -336,6 +386,7 @@ export class Game {
       }
 
       if (!this.simulation.isStarted || this.simulation.isGameOver || this.simulation.isPaused) {
+        this.syncView(dt);
         this.perf.span("camera", () => this.updateCamera());
       }
       this.world.updatePlayerLocalAmbient(this.simulation.playerPosition);

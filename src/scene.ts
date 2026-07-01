@@ -2,15 +2,13 @@ import * as THREE from "three";
 import { LEVEL_HEIGHT, LEVEL_WIDTH, RETICLE_FLOOR_OFFSET, TILE_SIZE } from "./constants";
 import {
   createAssetFactory,
-  type BruteAsset,
-  type EliteEnemyAsset,
+  type EnemyAsset,
   type EnvironmentAsset,
   type EnvironmentAssetKind,
-  type LeanHunterRig,
   type PickupAsset,
   type PlayerRig,
-  type VenomSpitterAsset,
 } from "./assetFactory";
+import type { EnemyKind } from "./enemyDefinitions";
 import type { ExitPortalAsset } from "./assets/environment/exitPortal/exitPortalAsset";
 import { exitGateToWorld, key, tileToWorld, worldToTile, type ExitDirection, type LevelData, type TileCoord } from "./level";
 import { FogOfWar } from "./fogOfWar";
@@ -33,10 +31,7 @@ export type GameScene = {
   playerBody: THREE.Mesh<THREE.BufferGeometry, THREE.MeshStandardMaterial>;
   reticle: THREE.Mesh;
   renderLevel: (level: LevelData) => void;
-  createLeanHunterRig: () => LeanHunterRig;
-  createEliteEnemyAsset: () => EliteEnemyAsset;
-  createVenomSpitterAsset: () => VenomSpitterAsset;
-  createBruteAsset: () => BruteAsset;
+  createEnemyAsset: (kind: EnemyKind) => EnemyAsset;
   createPickupAsset: (kind: ResourceKind) => PickupAsset;
   createEnvironmentAsset: (kind: EnvironmentAssetKind) => EnvironmentAsset;
   createExitPortalAsset: () => ExitPortalAsset;
@@ -63,7 +58,7 @@ export function createGameScene(app: HTMLDivElement): GameScene {
   const assetFactory = createAssetFactory(loader, anisotropy);
   const materials = createSceneMaterials(loader, anisotropy);
   const playerLocalAmbient = createPlayerLocalAmbient();
-  playerLocalAmbient.applyToMaterial(materials.level.floor);
+  Object.values(materials.level.floors).forEach((material) => playerLocalAmbient.applyToMaterial(material));
   playerLocalAmbient.applyToMaterial(materials.level.edge);
   playerLocalAmbient.applyToMaterial(materials.gameplay.enemy);
   playerLocalAmbient.applyToMaterial(materials.gameplay.gate);
@@ -102,23 +97,8 @@ export function createGameScene(app: HTMLDivElement): GameScene {
     }
   };
 
-  const createLeanHunterRig = (): LeanHunterRig => {
-    const rig = assetFactory.createLeanHunterRig();
-    playerLocalAmbient.applyToObject(rig.root);
-    return rig;
-  };
-  const createEliteEnemyAsset = (): EliteEnemyAsset => {
-    const asset = assetFactory.createEliteEnemyAsset();
-    playerLocalAmbient.applyToObject(asset.root);
-    return asset;
-  };
-  const createVenomSpitterAsset = (): VenomSpitterAsset => {
-    const asset = assetFactory.createVenomSpitterAsset();
-    playerLocalAmbient.applyToObject(asset.root);
-    return asset;
-  };
-  const createBruteAsset = (): BruteAsset => {
-    const asset = assetFactory.createBruteAsset();
+  const createEnemyAsset = (kind: EnemyKind): EnemyAsset => {
+    const asset = assetFactory.createEnemyAsset(kind);
     playerLocalAmbient.applyToObject(asset.root);
     return asset;
   };
@@ -190,10 +170,7 @@ export function createGameScene(app: HTMLDivElement): GameScene {
     playerBody,
     reticle,
     renderLevel,
-    createLeanHunterRig,
-    createEliteEnemyAsset,
-    createVenomSpitterAsset,
-    createBruteAsset,
+    createEnemyAsset,
     createPickupAsset,
     createEnvironmentAsset,
     createExitPortalAsset,

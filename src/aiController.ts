@@ -137,6 +137,7 @@ function levelFromSnapshot(snapshot: GameSimulationSnapshot): LevelData {
     start: { ...snapshot.level.start },
     end: { ...snapshot.level.end },
     walkable: new Set(snapshot.level.walkable),
+    floorVariants: new Map(snapshot.level.floorVariants.map(({ tileKey, variant }) => [tileKey, variant])),
     blocked: new Set(snapshot.level.blocked),
     environmentalObjects: snapshot.level.environmentalObjects.map((object) => ({
       kind: object.kind as LevelData["environmentalObjects"][number]["kind"],

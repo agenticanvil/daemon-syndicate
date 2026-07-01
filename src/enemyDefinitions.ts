@@ -1,11 +1,8 @@
-import { BRUTE_SETTINGS } from "./assets/enemies/brute/bruteAsset";
-import { ELITE_ENEMY_SETTINGS } from "./assets/enemies/eliteEnemy/eliteEnemyAsset";
-import { LEAN_HUNTER_SETTINGS } from "./assets/enemies/leanHunter/leanHunterAsset";
-import { VENOM_SPITTER_SETTINGS } from "./assets/enemies/venomSpitter/venomSpitterAsset";
+import { ENEMY_CONTENT, type EnemyKind } from "./assets/enemies/enemyContent";
 import type { DropTable, EnemyAssetSettings, EnemyAttackDefinition, EnemySpawnWeightSettings } from "./assetSettings";
 import type { Rng } from "./rng";
 
-export type EnemyKind = "leanHunter" | "venomSpitter" | "elite" | "brute";
+export type { EnemyKind };
 
 export type EnemyDefinition = {
   kind: EnemyKind;
@@ -28,80 +25,9 @@ const ENEMY_DIFFICULTY_TUNING = {
   damageMultiplier: 1.2,
 } as const;
 
-export const ENEMY_DEFINITIONS: EnemyDefinition[] = [
-  {
-    kind: "leanHunter",
-    radius: LEAN_HUNTER_SETTINGS.collision.radius,
-    unlockMapDepth: 1,
-    budgetCost: 1,
-    spawnWeight: spawnWeightFromSettings(LEAN_HUNTER_SETTINGS.spawnWeight, 1),
-    health: (enemyLevel) =>
-      scaleEnemyHealth(LEAN_HUNTER_SETTINGS.health.base + enemyLevel * LEAN_HUNTER_SETTINGS.health.levelGrowth),
-    speed: (enemyLevel) =>
-      scaleEnemySpeed(
-        LEAN_HUNTER_SETTINGS.movement.speed,
-        LEAN_HUNTER_SETTINGS.movement.levelSpeedGrowth,
-        enemyLevel,
-      ),
-    attackDamage: (enemyLevel) => scaledAttackDamage(LEAN_HUNTER_SETTINGS, enemyLevel, 3),
-    xpReward: (enemyLevel) => Math.round(6 + enemyLevel * 1.5),
-    attack: primaryEnemyAttack(LEAN_HUNTER_SETTINGS),
-    dropTable: LEAN_HUNTER_SETTINGS.dropTable,
-  },
-  {
-    kind: "venomSpitter",
-    radius: VENOM_SPITTER_SETTINGS.collision.radius,
-    unlockMapDepth: 2,
-    budgetCost: 1.35,
-    spawnWeight: spawnWeightFromSettings(VENOM_SPITTER_SETTINGS.spawnWeight, 2),
-    health: (enemyLevel) =>
-      scaleEnemyHealth(VENOM_SPITTER_SETTINGS.health.base + enemyLevel * VENOM_SPITTER_SETTINGS.health.levelGrowth),
-    speed: (enemyLevel) =>
-      scaleEnemySpeed(
-        VENOM_SPITTER_SETTINGS.movement.speed,
-        VENOM_SPITTER_SETTINGS.movement.levelSpeedGrowth,
-        enemyLevel,
-      ),
-    attackDamage: (enemyLevel) => scaledAttackDamage(VENOM_SPITTER_SETTINGS, enemyLevel, 2),
-    xpReward: (enemyLevel) => Math.round(10 + enemyLevel * 2.2),
-    attack: primaryEnemyAttack(VENOM_SPITTER_SETTINGS),
-    dropTable: VENOM_SPITTER_SETTINGS.dropTable,
-  },
-  {
-    kind: "elite",
-    radius: ELITE_ENEMY_SETTINGS.collision.radius,
-    unlockMapDepth: 3,
-    budgetCost: 2.4,
-    spawnWeight: spawnWeightFromSettings(ELITE_ENEMY_SETTINGS.spawnWeight, 3),
-    health: (enemyLevel) =>
-      scaleEnemyHealth(ELITE_ENEMY_SETTINGS.health.base + enemyLevel * ELITE_ENEMY_SETTINGS.health.levelGrowth),
-    speed: (enemyLevel) =>
-      scaleEnemySpeed(
-        ELITE_ENEMY_SETTINGS.movement.speed,
-        ELITE_ENEMY_SETTINGS.movement.levelSpeedGrowth,
-        enemyLevel,
-      ),
-    attackDamage: (enemyLevel) => scaledAttackDamage(ELITE_ENEMY_SETTINGS, enemyLevel, 4),
-    xpReward: (enemyLevel) => Math.round(14 + enemyLevel * 3),
-    attack: primaryEnemyAttack(ELITE_ENEMY_SETTINGS),
-    dropTable: ELITE_ENEMY_SETTINGS.dropTable,
-  },
-  {
-    kind: "brute",
-    radius: BRUTE_SETTINGS.collision.radius,
-    unlockMapDepth: 5,
-    budgetCost: 3.4,
-    spawnWeight: spawnWeightFromSettings(BRUTE_SETTINGS.spawnWeight, 5),
-    health: (enemyLevel) =>
-      scaleEnemyHealth(BRUTE_SETTINGS.health.base + enemyLevel * BRUTE_SETTINGS.health.levelGrowth),
-    speed: (enemyLevel) =>
-      scaleEnemySpeed(BRUTE_SETTINGS.movement.speed, BRUTE_SETTINGS.movement.levelSpeedGrowth, enemyLevel),
-    attackDamage: (enemyLevel) => scaledAttackDamage(BRUTE_SETTINGS, enemyLevel, 6),
-    xpReward: (enemyLevel) => Math.round(24 + enemyLevel * 4.2),
-    attack: primaryEnemyAttack(BRUTE_SETTINGS),
-    dropTable: BRUTE_SETTINGS.dropTable,
-  },
-];
+export const ENEMY_DEFINITIONS: EnemyDefinition[] = ENEMY_CONTENT.map((content) =>
+  createEnemyDefinition(content.kind, content.settings),
+);
 
 export function chooseEnemyDefinition(
   mapDepth: number,
@@ -138,9 +64,28 @@ function primaryEnemyAttack(settings: EnemyAssetSettings): EnemyAttackDefinition
   return melee ?? settings.attacks[0];
 }
 
-function scaledAttackDamage(settings: EnemyAssetSettings, enemyLevel: number, levelGrowth: number): number {
+function createEnemyDefinition(kind: EnemyKind, settings: EnemyAssetSettings): EnemyDefinition {
+  return {
+    kind,
+    radius: settings.collision.radius,
+    unlockMapDepth: settings.gameplay.unlockMapDepth,
+    budgetCost: settings.gameplay.budgetCost,
+    spawnWeight: spawnWeightFromSettings(settings.spawnWeight, settings.gameplay.unlockMapDepth),
+    health: (enemyLevel) => scaleEnemyHealth(settings.health.base + enemyLevel * settings.health.levelGrowth),
+    speed: (enemyLevel) =>
+      scaleEnemySpeed(settings.movement.speed, settings.movement.levelSpeedGrowth, enemyLevel),
+    attackDamage: (enemyLevel) => scaledAttackDamage(settings, enemyLevel),
+    xpReward: (enemyLevel) =>
+      Math.round(settings.gameplay.xpReward.base + enemyLevel * settings.gameplay.xpReward.levelGrowth),
+    attack: primaryEnemyAttack(settings),
+    dropTable: settings.dropTable,
+  };
+}
+
+function scaledAttackDamage(settings: EnemyAssetSettings, enemyLevel: number): number {
   return Math.round(
-    (primaryEnemyAttack(settings).damage + enemyLevel * levelGrowth) * ENEMY_DIFFICULTY_TUNING.damageMultiplier,
+    (primaryEnemyAttack(settings).damage + enemyLevel * settings.gameplay.attackDamageLevelGrowth) *
+      ENEMY_DIFFICULTY_TUNING.damageMultiplier,
   );
 }
 

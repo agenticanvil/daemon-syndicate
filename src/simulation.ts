@@ -1,7 +1,6 @@
 import { BasicPlayerAi } from "./aiController";
 import { WEAPON_BALANCE } from "./balance";
 import type { EnemyKind } from "./enemyDefinitions";
-import { createHeadlessGameplayView } from "./gameView";
 import { GameSimulation, type GameSimulationSnapshot } from "./gameSimulation";
 import { seededRandom } from "./rng";
 import type { ResourceKind } from "./resourceTypes";
@@ -68,7 +67,7 @@ export function runHeadlessSimulation(options: SimulationRunOptions): Simulation
   const fixedDt = options.fixedDt ?? DEFAULT_DT;
   const frames = Math.floor(seconds / fixedDt);
   const controller = options.controller ?? new BasicPlayerAi();
-  const simulation = new GameSimulation(createHeadlessGameplayView(), {
+  const simulation = new GameSimulation({
     seed: options.seed,
     rng: seededRandom(options.seed),
   });

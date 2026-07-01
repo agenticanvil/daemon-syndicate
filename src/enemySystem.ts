@@ -11,7 +11,7 @@ import {
   type EnemyDefinition,
   type EnemyKind,
 } from "./enemyDefinitions";
-import type { GameplayView } from "./gameView";
+import type { GameEffect } from "./gameEffects";
 import { tileToWorld, type LevelData } from "./level";
 import type { EventQueue } from "./eventQueue";
 import type { Rng } from "./rng";
@@ -61,9 +61,10 @@ export class EnemySystem {
   private nextEnemyProjectileId = 1;
 
   constructor(
-    private readonly view: GameplayView,
+    private readonly emitEffect: (effect: GameEffect) => void,
     private readonly events: EventQueue,
     private readonly playerCollisionBody: CollisionBody2D,
+    private readonly getPlayerPosition: () => THREE.Vector3,
     private readonly getLevel: () => LevelData,
     private readonly getCollisionLayer: () => CollisionLayer,
     private readonly canDamagePlayer: () => boolean,
@@ -89,7 +90,7 @@ export class EnemySystem {
   spawnLevelEnemies(): void {
     const candidates = this.getLevel().spawnPoints
       .map(tileToWorld)
-      .filter((position) => distance2D(position, this.view.player.position) >= ENEMY_BALANCE.minSpawnDistance);
+      .filter((position) => distance2D(position, this.getPlayerPosition()) >= ENEMY_BALANCE.minSpawnDistance);
     const mapDepth = this.getLevel().mapDepth;
     let remainingBudget = encounterBudgetForMapDepth(mapDepth);
     const maxCount = Math.min(ENEMY_BALANCE.maxLevelEnemyCount, candidates.length);
@@ -142,7 +143,7 @@ export class EnemySystem {
         enemy,
         dt,
         level: this.getLevel(),
-        playerPosition: this.view.player.position,
+        playerPosition: this.getPlayerPosition(),
         playerCollisionBody: this.playerCollisionBody,
         canDamagePlayer: this.canDamagePlayer(),
         damagedPlayerThisFrame,
@@ -250,7 +251,7 @@ export class EnemySystem {
 
     for (let index = 0; index < candidates.length; index += 1) {
       const candidate = candidates[index];
-      const playerDistance = distance2D(candidate, this.view.player.position);
+      const playerDistance = distance2D(candidate, this.getPlayerPosition());
       const nearestSpawnDistance =
         selectedSpawns.length === 0
           ? ENEMY_BALANCE.spawnSpreadDistance
@@ -302,7 +303,11 @@ export class EnemySystem {
       if (wallImpact) {
         projectile.position.copy(wallImpact.position);
         projectile.life = 0;
-        this.view.spawnProjectileImpact(wallImpact.position, projectile.velocity);
+        this.emitEffect({
+          type: "projectileImpact",
+          position: wallImpact.position.clone(),
+          incomingVelocity: projectile.velocity.clone(),
+        });
         continue;
       }
 
@@ -313,7 +318,11 @@ export class EnemySystem {
         withinRadius2D(projectile, this.playerCollisionBody, projectile.radius + this.playerCollisionBody.radius)
       ) {
         this.events.emit({ type: "playerDamaged", amount: projectile.damage });
-        this.view.spawnProjectileImpact(projectile.position, projectile.velocity);
+        this.emitEffect({
+          type: "projectileImpact",
+          position: projectile.position.clone(),
+          incomingVelocity: projectile.velocity.clone(),
+        });
         projectile.life = 0;
         damagedPlayerThisFrame = true;
       }

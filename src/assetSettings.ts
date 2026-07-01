@@ -32,8 +32,19 @@ export type EnemySpawnWeightSettings = {
   max?: number;
 };
 
+type EnemyGameplaySettings = {
+  unlockMapDepth: number;
+  budgetCost: number;
+  attackDamageLevelGrowth: number;
+  xpReward: {
+    base: number;
+    levelGrowth: number;
+  };
+};
+
 export type EnemyAssetSettings = {
   kind: "enemy";
+  gameplay: EnemyGameplaySettings;
   collision: CollisionSettings;
   health: EnemyHealthSettings;
   movement: {

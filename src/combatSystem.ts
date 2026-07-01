@@ -1,7 +1,7 @@
 import * as THREE from "three";
 import { TILE_SIZE } from "./constants";
 import { overlaps2D, type CollisionBody2D, type CollisionLayer } from "./collision";
-import type { GameplayView } from "./gameView";
+import type { GameEffect } from "./gameEffects";
 import { key, worldToTile, type LevelData } from "./level";
 import type { PlayerResources } from "./resourceTypes";
 import type { Enemy } from "./enemyTypes";
@@ -37,9 +37,10 @@ export class CombatSystem {
   private nextProjectileId = 1;
 
   constructor(
-    private readonly view: GameplayView,
+    private readonly emitEffect: (effect: GameEffect) => void,
     private readonly resources: PlayerResources,
     private readonly playerCollisionBody: CollisionBody2D,
+    private readonly getPlayerPosition: () => THREE.Vector3,
     private readonly getCollisionLayer: () => CollisionLayer,
     private readonly getLevel: () => LevelData,
     private readonly getStats: () => PlayerDerivedStats,
@@ -84,7 +85,7 @@ export class CombatSystem {
   }
 
   fireNova(): boolean {
-    return this.fireAbility("nova", this.view.player.position);
+    return this.fireAbility("nova", this.getPlayerPosition());
   }
 
   updateProjectiles(dt: number): number {
@@ -99,7 +100,11 @@ export class CombatSystem {
       if (wallImpact) {
         projectile.position.copy(wallImpact.position);
         projectile.life = 0;
-        this.view.spawnProjectileImpact(wallImpact.position, projectile.velocity);
+        this.emitEffect({
+          type: "projectileImpact",
+          position: wallImpact.position.clone(),
+          incomingVelocity: projectile.velocity.clone(),
+        });
         impactCount += 1;
         continue;
       }
@@ -109,7 +114,11 @@ export class CombatSystem {
         if (projectile.hitEnemyIds?.has(enemy.id)) continue;
         if (overlaps2D(projectile, enemy)) {
           this.damageEnemy(enemy, projectile.damage, true);
-          this.view.spawnProjectileImpact(projectile.position, projectile.velocity);
+          this.emitEffect({
+            type: "projectileImpact",
+            position: projectile.position.clone(),
+            incomingVelocity: projectile.velocity.clone(),
+          });
           impactCount += 1;
           projectile.hitEnemyIds?.add(enemy.id);
           if ((projectile.pierceRemaining ?? 0) > 0) {
@@ -163,14 +172,15 @@ export class CombatSystem {
 
     const fired = ability.fire(
       {
-        view: this.view,
         resources: this.resources,
         playerCollisionBody: this.playerCollisionBody,
+        playerPosition: this.getPlayerPosition(),
         collisionLayer: this.getCollisionLayer(),
         enemies: this.enemies(),
         stats: this.getStats(),
         damageEnemy: this.damageEnemy,
         addProjectile: (projectile) => this.addProjectile(projectile),
+        emitEffect: this.emitEffect,
       },
       aimWorld,
     );

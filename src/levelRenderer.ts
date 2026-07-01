@@ -1,12 +1,19 @@
 import * as THREE from "three";
 import { LEVEL_HEIGHT, LEVEL_WIDTH, TILE_SIZE } from "./constants";
+import { DEFAULT_FLOOR_VARIANT_ID, FLOOR_VARIANTS, type FloorVariantId } from "./floorVariants";
 import { key, neighbors, tileToWorld, type LevelData, type TileCoord } from "./level";
 
 export type LevelRenderMaterials = {
-  floor: THREE.MeshStandardMaterial;
+  floors: Record<FloorVariantId, THREE.MeshStandardMaterial>;
   edge: THREE.MeshStandardMaterial;
   void: THREE.MeshBasicMaterial;
   rim: THREE.MeshBasicMaterial;
+};
+
+type FloorBatch = {
+  mesh: THREE.InstancedMesh;
+  ownerKeys: string[];
+  transforms: THREE.Matrix4[];
 };
 
 export type LevelEdgeVisibility = {
@@ -27,22 +34,34 @@ export function renderLevel(root: THREE.Group, level: LevelData, materials: Leve
   root.add(voidPlane);
 
   const tileGeometry = new THREE.PlaneGeometry(TILE_SIZE, TILE_SIZE);
-  const floorTiles = new THREE.InstancedMesh(tileGeometry, materials.floor, level.walkable.size);
-  floorTiles.receiveShadow = true;
-  floorTiles.frustumCulled = false;
-
-  const floorTransforms: THREE.Matrix4[] = [];
-  const floorOwnerKeys: string[] = [];
+  const floorTransformsByVariant = new Map<FloorVariantId, Array<{ ownerKey: string; transform: THREE.Matrix4 }>>();
   for (const tileKey of level.walkable) {
     const [x, y] = tileKey.split(",").map(Number);
+    const variant = level.floorVariants?.get(tileKey) ?? DEFAULT_FLOOR_VARIANT_ID;
     const position = tileToWorld({ x, y });
     const matrix = new THREE.Matrix4();
     matrix.makeRotationX(-Math.PI / 2);
     matrix.setPosition(position.x, 0, position.z);
-    floorTransforms.push(matrix);
-    floorOwnerKeys.push(tileKey);
+    const transforms = floorTransformsByVariant.get(variant) ?? [];
+    transforms.push({ ownerKey: tileKey, transform: matrix });
+    floorTransformsByVariant.set(variant, transforms);
   }
-  root.add(floorTiles);
+
+  const floorBatches: FloorBatch[] = [];
+  for (const variant of FLOOR_VARIANTS) {
+    const transforms = floorTransformsByVariant.get(variant.id);
+    if (!transforms || transforms.length === 0) continue;
+
+    const floorTiles = new THREE.InstancedMesh(tileGeometry, materials.floors[variant.id], transforms.length);
+    floorTiles.receiveShadow = true;
+    floorTiles.frustumCulled = false;
+    floorBatches.push({
+      mesh: floorTiles,
+      ownerKeys: transforms.map((item) => item.ownerKey),
+      transforms: transforms.map((item) => item.transform),
+    });
+    root.add(floorTiles);
+  }
 
   const edgeGeometry = new THREE.BoxGeometry(TILE_SIZE, 0.8, 0.22);
   const rimGeometry = new THREE.BoxGeometry(TILE_SIZE, 0.04, 0.08);
@@ -81,15 +100,17 @@ export function renderLevel(root: THREE.Group, level: LevelData, materials: Leve
   addStartPad(root, level.start);
 
   const updateExploredTiles = (exploredKeys: ReadonlySet<string>): void => {
-    floorTransforms.forEach((floorTransform, index) => {
-      floorTiles.setMatrixAt(index, exploredKeys.has(floorOwnerKeys[index]) ? floorTransform : HIDDEN_MATRIX);
+    floorBatches.forEach((batch) => {
+      batch.transforms.forEach((floorTransform, index) => {
+        batch.mesh.setMatrixAt(index, exploredKeys.has(batch.ownerKeys[index]) ? floorTransform : HIDDEN_MATRIX);
+      });
+      batch.mesh.instanceMatrix.needsUpdate = true;
     });
     edgeTransforms.forEach((edgeTransform, index) => {
       const visible = exploredKeys.has(edgeOwnerKeys[index]);
       edges.setMatrixAt(index, visible ? edgeTransform : HIDDEN_MATRIX);
       rims.setMatrixAt(index, visible ? rimTransforms[index] : HIDDEN_MATRIX);
     });
-    floorTiles.instanceMatrix.needsUpdate = true;
     edges.instanceMatrix.needsUpdate = true;
     rims.instanceMatrix.needsUpdate = true;
   };
