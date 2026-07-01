@@ -19,7 +19,7 @@ export type CircleCollisionSettings = {
   radius: number;
 };
 
-export type AssetSidecarBase = Omit<AssetSettings, "collision"> & {
+type AssetSidecarMetadata = {
   schemaVersion: 1;
   id: string;
   category: AssetCategory;
@@ -29,7 +29,13 @@ export type AssetSidecarBase = Omit<AssetSettings, "collision"> & {
   collision: CircleCollisionSettings;
 };
 
-export type AssetSidecar = AssetSidecarBase;
+type SidecarFor<TSettings extends AssetSettings> = Omit<TSettings, "collision"> & AssetSidecarMetadata;
+
+export type AssetSidecar =
+  | SidecarFor<Extract<AssetSettings, { kind: "enemy" }>>
+  | SidecarFor<Extract<AssetSettings, { kind: "pickup" }>>
+  | SidecarFor<Extract<AssetSettings, { kind: "player" }>>
+  | SidecarFor<Extract<AssetSettings, { kind: "environment" }>>;
 
 export type EditorAssetRecord = {
   id: string;
