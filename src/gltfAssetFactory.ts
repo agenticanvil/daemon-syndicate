@@ -21,6 +21,9 @@ export type GltfAssetLibrary = {
 
 const RUNTIME_GLB_ASSETS = [
   { category: "enemies", name: "lean-hunter" },
+  { category: "enemies", name: "venom-spitter" },
+  { category: "enemies", name: "elite-enemy" },
+  { category: "enemies", name: "brute" },
   { category: "environment", name: "industrial-crate" },
   { category: "environment", name: "exit-portal" },
   { category: "pickups", name: "health-pickup" },

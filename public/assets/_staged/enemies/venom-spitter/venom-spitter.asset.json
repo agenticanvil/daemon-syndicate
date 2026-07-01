@@ -1,0 +1,74 @@
+{
+  "schemaVersion": 1,
+  "id": "venom-spitter",
+  "category": "enemies",
+  "label": "Venom Spitter",
+  "kind": "enemy",
+  "model": {
+    "file": "venom-spitter.glb",
+    "scale": 1,
+    "rotationY": 0,
+    "floorOffset": 0
+  },
+  "preview": {
+    "targetY": 0.55,
+    "defaultAnimation": "idle"
+  },
+  "collision": {
+    "type": "circle",
+    "radius": 0.68
+  },
+  "gameplay": {
+    "unlockMapDepth": 2,
+    "budgetCost": 1.35,
+    "attackDamageLevelGrowth": 2,
+    "xpReward": {
+      "base": 10,
+      "levelGrowth": 2.2
+    }
+  },
+  "health": {
+    "base": 58,
+    "levelGrowth": 14
+  },
+  "movement": {
+    "speed": 2.35,
+    "levelSpeedGrowth": 0.05
+  },
+  "spawnWeight": {
+    "base": 0.22,
+    "levelGrowth": 0.018,
+    "max": 0.38
+  },
+  "attacks": [
+    {
+      "kind": "ranged",
+      "damage": 7,
+      "cooldown": 1.35,
+      "range": 8.6,
+      "projectileSpeed": 9.5,
+      "projectileRadius": 0.24,
+      "windup": 0.28
+    }
+  ],
+  "dropTable": {
+    "chance": 0.74,
+    "entries": [
+      {
+        "kind": "health",
+        "weight": 10,
+        "amount": 22
+      },
+      {
+        "kind": "ammo",
+        "weight": 38,
+        "amount": 24
+      },
+      {
+        "kind": "energy",
+        "weight": 28,
+        "amount": 34
+      }
+    ]
+  }
+}
