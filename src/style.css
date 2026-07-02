@@ -910,6 +910,10 @@ canvas {
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
+.lighting-controls {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
 .segmented-controls button,
 .asset-settings-actions button {
   min-height: 28px;
@@ -1008,6 +1012,216 @@ canvas {
   line-height: 28px;
 }
 
+.dev-assets {
+  color: #e8f7ff;
+  font-size: 0.9rem;
+  background:
+    radial-gradient(circle at 20% 12%, rgba(145, 255, 240, 0.1), transparent 25rem),
+    linear-gradient(135deg, #05080a 0%, #101412 52%, #050709 100%);
+}
+
+.dev-assets-shell {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
+  gap: 14px;
+  overflow: hidden;
+  padding: 18px;
+}
+
+.dev-assets-header,
+.dev-assets-summary,
+.dev-assets-status {
+  border: 1px solid rgba(142, 255, 236, 0.16);
+  border-radius: 6px;
+  background: rgba(4, 10, 12, 0.68);
+  backdrop-filter: blur(14px);
+}
+
+.dev-assets-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px;
+}
+
+.dev-assets-header p,
+.dev-assets-summary span,
+.dev-assets-table th,
+.dev-assets-table td span {
+  margin: 0;
+  color: #8ca8ad;
+  font-size: 0.66rem;
+  text-transform: uppercase;
+}
+
+.dev-assets-header h1 {
+  margin: 3px 0 0;
+  color: #f4fbff;
+  font-size: 1.25rem;
+  line-height: 1;
+}
+
+.dev-assets-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.dev-assets-actions button {
+  min-height: 32px;
+  border: 1px solid rgba(142, 255, 236, 0.26);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.04);
+  color: #d7f5ff;
+  padding: 6px 10px;
+  font: inherit;
+  font-size: 0.76rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.dev-assets-actions button:last-child,
+.dev-assets-row-actions button:last-child {
+  border-color: rgba(155, 240, 223, 0.72);
+  background: #9bf0df;
+  color: #06100f;
+}
+
+.dev-assets-actions button:disabled,
+.dev-assets-row-actions button:disabled {
+  cursor: default;
+  opacity: 0.42;
+}
+
+.dev-assets-summary {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 1px;
+  overflow: hidden;
+}
+
+.dev-assets-summary div {
+  min-width: 0;
+  background: rgba(255, 255, 255, 0.03);
+  padding: 10px;
+}
+
+.dev-assets-summary strong {
+  display: block;
+  margin-top: 4px;
+  color: #f4fbff;
+  font-size: 1.25rem;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+.dev-assets-table-wrap {
+  min-height: 0;
+  overflow: auto;
+  border: 1px solid rgba(142, 255, 236, 0.16);
+  border-radius: 6px;
+  background: rgba(4, 10, 12, 0.72);
+}
+
+.dev-assets-table {
+  width: 100%;
+  min-width: 780px;
+  border-collapse: collapse;
+}
+
+.dev-assets-table th,
+.dev-assets-table td {
+  border-bottom: 1px solid rgba(142, 255, 236, 0.12);
+  padding: 10px;
+  text-align: left;
+  vertical-align: middle;
+}
+
+.dev-assets-table th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: rgba(4, 10, 12, 0.94);
+}
+
+.dev-assets-table td {
+  color: #d7f5ff;
+  font-size: 0.78rem;
+}
+
+.dev-assets-table td strong {
+  display: block;
+  color: #f4fbff;
+  font-size: 0.82rem;
+}
+
+.dev-assets-row-actions {
+  display: flex;
+  gap: 6px;
+  justify-content: flex-end;
+  width: 84px;
+}
+
+.dev-assets-row-actions button {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border: 1px solid rgba(142, 255, 236, 0.26);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.04);
+  color: #d7f5ff;
+  padding: 0;
+  font: inherit;
+  font-size: 1rem;
+  font-weight: 800;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.dev-assets-status-pill {
+  display: inline-block;
+  border: 1px solid rgba(142, 255, 236, 0.18);
+  border-radius: 999px;
+  padding: 3px 7px;
+  color: #d7f5ff;
+  font-size: 0.66rem;
+  font-weight: 700;
+  line-height: 1.2;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.dev-assets-status-pill.ok {
+  border-color: rgba(155, 240, 223, 0.46);
+  background: rgba(55, 193, 146, 0.16);
+}
+
+.dev-assets-status-pill.pending {
+  border-color: rgba(255, 210, 119, 0.42);
+  background: rgba(255, 210, 119, 0.12);
+}
+
+.dev-assets-status-pill.error {
+  border-color: rgba(255, 117, 117, 0.48);
+  background: rgba(255, 117, 117, 0.14);
+}
+
+.dev-assets-empty-cell {
+  height: 180px;
+  text-align: center !important;
+}
+
+.dev-assets-status {
+  min-height: 36px;
+  padding: 9px 12px;
+  color: #b9d0d4;
+  font-size: 0.76rem;
+}
+
 @media (max-width: 760px) {
   .topbar {
     display: block;
@@ -1036,6 +1250,18 @@ canvas {
     left: 16px;
     right: auto;
     bottom: 16px;
+  }
+
+  .dev-assets-shell {
+    padding: 10px;
+  }
+
+  .dev-assets-header {
+    display: grid;
+  }
+
+  .dev-assets-summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .ability {

@@ -1,7 +1,0 @@
-{
-  "kind": "environment",
-  "collision": {
-    "radius": 1.4,
-    "height": 3
-  }
-}

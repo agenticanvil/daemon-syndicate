@@ -40,6 +40,17 @@ async function startApp(app: HTMLDivElement, routePath: string): Promise<void> {
     return;
   }
 
+  if (routePath === "/dev/assets") {
+    document.title = "Assets | Daemon Syndicate";
+    if (import.meta.env.DEV) {
+      const { startDevAssets } = await import("./devAssets");
+      await startDevAssets(app);
+    } else {
+      app.innerHTML = "";
+    }
+    return;
+  }
+
   await startGame(app);
 }
 

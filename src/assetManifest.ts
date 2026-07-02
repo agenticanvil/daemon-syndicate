@@ -1,20 +1,20 @@
 import type { AssetSettings } from "./assetSettings";
 
-export type AssetCategory = "player" | "enemies" | "pickups" | "environment";
+type AssetCategory = "player" | "enemies" | "pickups" | "environment";
 
-export type AssetModelMetadata = {
+type AssetModelMetadata = {
   file: string;
   scale?: number;
   rotationY?: number;
   floorOffset?: number;
 };
 
-export type AssetPreviewMetadata = {
+type AssetPreviewMetadata = {
   targetY?: number;
   defaultAnimation?: string;
 };
 
-export type CircleCollisionSettings = {
+type CircleCollisionSettings = {
   type: "circle";
   radius: number;
 };
@@ -45,6 +45,17 @@ export type EditorAssetRecord = {
   modelUrl: string;
   sidecarUrl: string;
   sidecarExists: boolean;
+  sidecarError?: string;
+  liveModelExists?: boolean;
+  liveSidecarExists?: boolean;
+  modelComparison?: AssetFileComparison;
+  sidecarComparison?: AssetFileComparison;
   staged: boolean;
   sidecar: AssetSidecar;
+};
+
+type AssetFileComparison = {
+  status: "missing" | "current" | "newer" | "older" | "changed";
+  stagedUpdatedAt: string;
+  liveUpdatedAt?: string;
 };

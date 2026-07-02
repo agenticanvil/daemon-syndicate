@@ -63,7 +63,7 @@ export type PickupAssetSettings = {
   lifetime?: number;
 };
 
-export type PlayerAssetSettings = {
+type PlayerAssetSettings = {
   kind: "player";
   collision: CollisionSettings;
   health: number;
@@ -72,7 +72,7 @@ export type PlayerAssetSettings = {
   };
 };
 
-export type EnvironmentAssetSettings = {
+type EnvironmentAssetSettings = {
   kind: "environment";
   collision: CollisionSettings;
 };

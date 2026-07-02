@@ -53,14 +53,11 @@ function createFloorMaterials(
   return Object.fromEntries(
     FLOOR_VARIANTS.map((variant) => {
       const map = loadRepeatingTexture(loader, variant.mapUrl, anisotropy, true);
-      const normalMap = loadRepeatingTexture(loader, variant.normalMapUrl, anisotropy, false);
 
       return [
         variant.id,
         new THREE.MeshStandardMaterial({
           map,
-          normalMap,
-          normalScale: new THREE.Vector2(...variant.normalScale),
           roughness: variant.roughness,
           metalness: variant.metalness,
         }),

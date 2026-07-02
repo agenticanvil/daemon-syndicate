@@ -35,6 +35,11 @@ const RUNTIME_GLB_ASSETS = [
   { category: "pickups", name: "energy-pickup" },
 ] as const;
 
+export type RuntimeGltfAssetDescriptor = (typeof RUNTIME_GLB_ASSETS)[number] & {
+  sidecarUrl: string;
+  modelUrl: string;
+};
+
 const PICKUP_ASSET_NAME_BY_KIND = {
   health: "health-pickup",
   ammo: "ammo-pickup",
@@ -48,6 +53,14 @@ const ENEMY_ASSET_NAME_BY_KIND = {
   brute: "brute",
 } as const satisfies Record<EnemyKind, string>;
 
+export function runtimeGltfAssetDescriptors(): RuntimeGltfAssetDescriptor[] {
+  return RUNTIME_GLB_ASSETS.map((asset) => ({
+    ...asset,
+    sidecarUrl: `/assets/${asset.category}/${asset.name}/${asset.name}.asset.json`,
+    modelUrl: `/assets/${asset.category}/${asset.name}/${asset.name}.glb`,
+  }));
+}
+
 export async function loadGltfAssetLibrary(): Promise<GltfAssetLibrary> {
   const loader = new GLTFLoader();
   let playerAsset: RuntimeGltfAsset | null = null;
@@ -57,11 +70,11 @@ export async function loadGltfAssetLibrary(): Promise<GltfAssetLibrary> {
 
   await Promise.all(
     RUNTIME_GLB_ASSETS.map(async (asset) => {
-      const sidecarUrl = `/assets/${asset.category}/${asset.name}/${asset.name}.asset.json`;
+      const sidecarUrl = runtimeAssetSidecarUrl(asset);
       const sidecarResponse = await fetch(sidecarUrl);
       if (!sidecarResponse.ok) throw new Error(`Missing runtime asset sidecar: ${sidecarUrl}`);
       const sidecar = (await sidecarResponse.json()) as AssetSidecar;
-      const modelUrl = `/assets/${asset.category}/${asset.name}/${sidecar.model.file}`;
+      const modelUrl = runtimeAssetModelUrl(asset, sidecar.model.file);
       const gltf = await loadGltf(loader, modelUrl);
       applyModelConventions(gltf.scene, sidecar);
       const runtimeAsset = {
@@ -111,6 +124,14 @@ export async function loadGltfAssetLibrary(): Promise<GltfAssetLibrary> {
       };
     },
   };
+}
+
+function runtimeAssetSidecarUrl(asset: (typeof RUNTIME_GLB_ASSETS)[number]): string {
+  return `/assets/${asset.category}/${asset.name}/${asset.name}.asset.json`;
+}
+
+function runtimeAssetModelUrl(asset: (typeof RUNTIME_GLB_ASSETS)[number], file: string): string {
+  return `/assets/${asset.category}/${asset.name}/${file}`;
 }
 
 function loadGltf(loader: GLTFLoader, url: string): Promise<GLTF> {

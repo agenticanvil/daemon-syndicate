@@ -1,4 +1,4 @@
-import { mkdtemp, mkdir, writeFile, rm } from "node:fs/promises";
+import { mkdtemp, mkdir, writeFile, rm, utimes } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { afterEach, describe, expect, it } from "vitest";
@@ -7,6 +7,7 @@ import {
   discoverPublicAssets,
   normalizeAssetSidecar,
   parseAssetEndpointPath,
+  promoteStagedAssets,
   validatePublicAssets,
 } from "../vite.config.mjs";
 
@@ -47,11 +48,101 @@ describe("public asset sidecar pipeline", () => {
     ]);
     expect(assets[0].modelUrl).toBe("/assets/environment/industrial-crate/industrial-crate.glb");
     expect(assets[1].modelUrl).toBe("/assets/_staged/pickups/health-pickup/health-pickup.glb");
+    expect(assets[1].liveModelExists).toBe(false);
+    expect(assets[1].liveSidecarExists).toBe(false);
   });
 
-  it("seeds sidecars from legacy settings while dropping collision height", async () => {
+  it("reports whether staged model assets already have a live GLB and sidecar", async () => {
     const root = await createProjectRoot();
-    await writeProjectFile(root, "src/assets/enemies/leanHunter/leanHunter.settings.json", JSON.stringify(legacyEnemySettings()));
+    await writeProjectFile(root, "public/assets/_staged/environment/industrial-crate/industrial-crate.glb", "glTF");
+    await writeProjectFile(root, "public/assets/_staged/environment/industrial-crate/industrial-crate.asset.json", JSON.stringify(environmentSidecar()));
+    await writeProjectFile(root, "public/assets/environment/industrial-crate/industrial-crate.glb", "glTF");
+    await writeProjectFile(root, "public/assets/environment/industrial-crate/industrial-crate.asset.json", JSON.stringify(environmentSidecar()));
+
+    const staged = (await discoverPublicAssets(root)).find((asset) => asset.staged);
+
+    expect(staged).toMatchObject({
+      category: "environment",
+      name: "industrial-crate",
+      liveModelExists: true,
+      liveSidecarExists: true,
+      modelComparison: { status: "current" },
+      sidecarComparison: { status: "current" },
+    });
+  });
+
+  it("reports newer staged models and changed staged gameplay sidecars", async () => {
+    const root = await createProjectRoot();
+    const liveUpdatedAt = new Date("2026-01-01T00:00:00.000Z");
+    const stagedUpdatedAt = new Date("2026-01-02T00:00:00.000Z");
+    await writeProjectFile(root, "public/assets/environment/industrial-crate/industrial-crate.glb", "old-glb");
+    await writeProjectFile(root, "public/assets/environment/industrial-crate/industrial-crate.asset.json", JSON.stringify(environmentSidecar({ radius: 0.6 })));
+    await writeProjectFile(root, "public/assets/_staged/environment/industrial-crate/industrial-crate.glb", "new-glb");
+    await writeProjectFile(
+      root,
+      "public/assets/_staged/environment/industrial-crate/industrial-crate.asset.json",
+      JSON.stringify(environmentSidecar({ radius: 0.72 })),
+    );
+    await touchProjectFile(root, "public/assets/environment/industrial-crate/industrial-crate.glb", liveUpdatedAt);
+    await touchProjectFile(root, "public/assets/environment/industrial-crate/industrial-crate.asset.json", liveUpdatedAt);
+    await touchProjectFile(root, "public/assets/_staged/environment/industrial-crate/industrial-crate.glb", stagedUpdatedAt);
+    await touchProjectFile(root, "public/assets/_staged/environment/industrial-crate/industrial-crate.asset.json", stagedUpdatedAt);
+
+    const staged = (await discoverPublicAssets(root)).find((asset) => asset.staged);
+
+    expect(staged).toMatchObject({
+      category: "environment",
+      name: "industrial-crate",
+      modelComparison: {
+        status: "newer",
+        stagedUpdatedAt: stagedUpdatedAt.toISOString(),
+        liveUpdatedAt: liveUpdatedAt.toISOString(),
+      },
+      sidecarComparison: {
+        status: "newer",
+        stagedUpdatedAt: stagedUpdatedAt.toISOString(),
+        liveUpdatedAt: liveUpdatedAt.toISOString(),
+      },
+    });
+  });
+
+  it("promotes valid staged assets without inventing sidecars", async () => {
+    const root = await createProjectRoot();
+    await writeProjectFile(root, "public/assets/_staged/environment/industrial-crate/industrial-crate.glb", "glTF");
+    await writeProjectFile(root, "public/assets/_staged/environment/industrial-crate/industrial-crate.asset.json", JSON.stringify(environmentSidecar()));
+    await writeProjectFile(root, "public/assets/_staged/pickups/health-pickup/health-pickup.glb", "glTF");
+    await writeProjectFile(root, "public/assets/_staged/environment/exit-portal/exit-portal.glb", "glTF");
+    await writeProjectFile(
+      root,
+      "public/assets/_staged/environment/exit-portal/exit-portal.asset.json",
+      JSON.stringify({ ...environmentSidecar(), id: "exit-portal", model: { file: "wrong.glb" } }),
+    );
+
+    const report = await promoteStagedAssets(root, { all: true });
+    const assets = await discoverPublicAssets(root);
+    const liveCrate = assets.find((asset) => !asset.staged && asset.category === "environment" && asset.name === "industrial-crate");
+    const liveHealth = assets.find((asset) => !asset.staged && asset.category === "pickups" && asset.name === "health-pickup");
+    const stagedExitPortal = assets.find((asset) => asset.staged && asset.category === "environment" && asset.name === "exit-portal");
+
+    expect(report.ok).toBe(false);
+    expect(report.promoted).toEqual([{ category: "environment", name: "industrial-crate" }]);
+    expect(report.issues).toContainEqual({
+      severity: "error",
+      asset: "_staged/pickups/health-pickup",
+      message: "Staged sidecar must exist before promotion",
+    });
+    expect(report.issues).toContainEqual({
+      severity: "error",
+      asset: "_staged/environment/exit-portal",
+      message: "model.file must be exit-portal.glb",
+    });
+    expect(liveCrate?.sidecarExists).toBe(true);
+    expect(liveHealth).toBeUndefined();
+    expect(stagedExitPortal?.sidecarError).toBe("model.file must be exit-portal.glb");
+  });
+
+  it("seeds sidecars from category defaults when no daemon sidecar exists", async () => {
+    const root = await createProjectRoot();
 
     const sidecar = await createDefaultSidecar(root, {
       category: "enemies",
@@ -67,12 +158,17 @@ describe("public asset sidecar pipeline", () => {
       kind: "enemy",
       model: { file: "lean-hunter.glb" },
       collision: { type: "circle", radius: 0.7 },
-      gameplay: legacyEnemySettings().gameplay,
-      health: legacyEnemySettings().health,
-      movement: legacyEnemySettings().movement,
-      spawnWeight: legacyEnemySettings().spawnWeight,
-      attacks: legacyEnemySettings().attacks,
-      dropTable: legacyEnemySettings().dropTable,
+      gameplay: {
+        unlockMapDepth: 1,
+        budgetCost: 1,
+        attackDamageLevelGrowth: 0,
+        xpReward: { base: 1, levelGrowth: 0 },
+      },
+      health: { base: 50, levelGrowth: 10 },
+      movement: { speed: 2.5, levelSpeedGrowth: 0 },
+      spawnWeight: { base: 1, levelGrowth: 0 },
+      attacks: [{ kind: "melee", damage: 5, cooldown: 1, range: 0.5 }],
+      dropTable: { chance: 0, entries: [{ kind: "health", weight: 1, amount: 1 }] },
     });
     expect(sidecar.collision.height).toBeUndefined();
   });
@@ -157,6 +253,10 @@ async function writeProjectFile(root, relativePath, content) {
   await writeFile(filePath, content);
 }
 
+async function touchProjectFile(root, relativePath, date) {
+  await utimes(join(root, relativePath), date, date);
+}
+
 function legacyEnemySettings() {
   return {
     kind: "enemy",
@@ -188,5 +288,17 @@ function legacyEnemySettings() {
         { kind: "ammo", weight: 38, amount: 24 },
       ],
     },
+  };
+}
+
+function environmentSidecar(options = {}) {
+  return {
+    kind: "environment",
+    schemaVersion: 1,
+    id: "industrial-crate",
+    category: "environment",
+    label: "Industrial Crate",
+    model: { file: "industrial-crate.glb", scale: 1 },
+    collision: { type: "circle", radius: options.radius ?? 0.6 },
   };
 }

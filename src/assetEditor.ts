@@ -4,13 +4,13 @@ import type { EnemyAttackDefinition, PickupAssetSettings } from "./assetSettings
 import type { AssetSidecar, EditorAssetRecord } from "./assetManifest";
 import { applyExitPortalFieldMaterial } from "./exitPortalFieldMaterial";
 import { createRenderer } from "./renderer";
-import { addGameplayLighting } from "./sceneLighting";
 import type { ResourceKind } from "./resourceTypes";
 
 type EnemySidecar = Extract<AssetSidecar, { kind: "enemy" }>;
 type PlayerSidecar = Extract<AssetSidecar, { kind: "player" }>;
 type AngleId = "head-on" | "side" | "behind" | "isometric";
 type RenderModeId = "shaded" | "wireframe" | "bones";
+type LightingModeId = "dark" | "normal" | "bright";
 type CameraPose = {
   label: string;
   position: [number, number, number];
@@ -46,6 +46,7 @@ type AssetEditorState = {
   speed: number;
   playing: boolean;
   renderMode: RenderModeId;
+  lighting: LightingModeId;
   collisionVisible: boolean;
   collisionEditMode: boolean;
   assetSettings: Record<string, AssetSidecar>;
@@ -54,6 +55,13 @@ type CollisionPreview = {
   root: THREE.Group;
   ring: THREE.Mesh<THREE.RingGeometry, THREE.MeshBasicMaterial>;
   handle: THREE.Mesh<THREE.SphereGeometry, THREE.MeshStandardMaterial>;
+};
+type PreviewLighting = {
+  ambient: THREE.HemisphereLight;
+  keyLight: THREE.DirectionalLight;
+  alertLight: THREE.PointLight;
+  armorFlashlight: THREE.SpotLight;
+  localFill: THREE.PointLight;
 };
 
 const STANDARD_CAMERA_DISTANCE = 1;
@@ -83,6 +91,12 @@ const RENDER_MODES: Array<{ id: RenderModeId; label: string }> = [
   { id: "shaded", label: "Shaded" },
   { id: "wireframe", label: "Wireframe" },
   { id: "bones", label: "Bones" },
+];
+
+const LIGHTING_MODES: Array<{ id: LightingModeId; label: string }> = [
+  { id: "dark", label: "Dark" },
+  { id: "normal", label: "Normal" },
+  { id: "bright", label: "Bright" },
 ];
 
 export function startAssetEditor(app: HTMLDivElement): void {
@@ -163,7 +177,8 @@ async function startAssetEditorAsync(app: HTMLDivElement): Promise<void> {
   const dragPoint = new THREE.Vector3();
 
   scene.add(floor, collisionPreview.root, lightAnchor);
-  addGameplayLighting(scene, lightAnchor);
+  const previewLighting = createPreviewLighting(scene, lightAnchor);
+  applyLightingMode(previewLighting, state.lighting);
   addAxisMarkers(scene);
 
   const clock = new THREE.Clock();
@@ -296,6 +311,9 @@ async function startAssetEditorAsync(app: HTMLDivElement): Promise<void> {
     for (const button of app.querySelectorAll<HTMLButtonElement>("[data-render-mode]")) {
       button.classList.toggle("selected", button.dataset.renderMode === state.renderMode);
     }
+    for (const button of app.querySelectorAll<HTMLButtonElement>("[data-lighting]")) {
+      button.classList.toggle("selected", button.dataset.lighting === state.lighting);
+    }
   }
 
   function syncEnemyGameplayInputs(settings: EnemySidecar): void {
@@ -319,6 +337,7 @@ async function startAssetEditorAsync(app: HTMLDivElement): Promise<void> {
     if (record.staged) params.set("staged", "1");
     if (state.cameraDistance !== STANDARD_CAMERA_DISTANCE) params.set("distance", state.cameraDistance.toFixed(2));
     if (state.renderMode !== "shaded") params.set("mode", state.renderMode);
+    if (state.lighting !== "dark") params.set("light", state.lighting);
     if (!state.collisionVisible) params.set("hideCollision", "1");
     if (state.collisionEditMode) params.set("editCollision", "1");
     if (!state.playing) params.set("paused", "1");
@@ -366,6 +385,13 @@ async function startAssetEditorAsync(app: HTMLDivElement): Promise<void> {
   function setRenderMode(renderMode: RenderModeId): void {
     state.renderMode = renderMode;
     applyRenderMode();
+    applyStateToControls();
+    syncUrl();
+  }
+
+  function setLightingMode(lighting: LightingModeId): void {
+    state.lighting = lighting;
+    applyLightingMode(previewLighting, state.lighting);
     applyStateToControls();
     syncUrl();
   }
@@ -608,6 +634,9 @@ async function startAssetEditorAsync(app: HTMLDivElement): Promise<void> {
   for (const button of app.querySelectorAll<HTMLButtonElement>("[data-render-mode]")) {
     button.addEventListener("click", () => setRenderMode(toRenderModeId(button.dataset.renderMode)));
   }
+  for (const button of app.querySelectorAll<HTMLButtonElement>("[data-lighting]")) {
+    button.addEventListener("click", () => setLightingMode(toLightingModeId(button.dataset.lighting)));
+  }
   cameraCloserButton.addEventListener("click", () => moveCameraDistance(-CAMERA_DISTANCE_STEP));
   cameraResetButton.addEventListener("click", resetCameraPosition);
   cameraAwayButton.addEventListener("click", () => moveCameraDistance(CAMERA_DISTANCE_STEP));
@@ -747,6 +776,9 @@ function createAssetEditorMarkup(state: AssetEditorState, records: EditorAssetRe
   const renderModeButtons = RENDER_MODES.map(
     (mode) => `<button type="button" data-render-mode="${mode.id}" class="${mode.id === state.renderMode ? "selected" : ""}">${mode.label}</button>`,
   ).join("");
+  const lightingButtons = LIGHTING_MODES.map(
+    (mode) => `<button type="button" data-lighting="${mode.id}" class="${mode.id === state.lighting ? "selected" : ""}">${mode.label}</button>`,
+  ).join("");
   const settings = state.assetSettings[state.assetKey];
 
   return `
@@ -775,6 +807,7 @@ function createAssetEditorMarkup(state: AssetEditorState, records: EditorAssetRe
           </div>
           <label><span>Animation</span><select id="animationSelect"></select></label>
           <div class="control-group"><span>Render Mode</span><div class="segmented-controls">${renderModeButtons}</div></div>
+          <div class="control-group"><span>Lighting</span><div class="segmented-controls lighting-controls">${lightingButtons}</div></div>
           <label class="toggle-row"><span>Show Collision Circle</span><input id="collisionToggle" type="checkbox" ${state.collisionVisible ? "checked" : ""} /></label>
           <label class="toggle-row"><span>Edit Collision Radius</span><input id="collisionEditToggle" type="checkbox" ${state.collisionEditMode ? "checked" : ""} /></label>
           <label class="toggle-row"><span>Playback</span><input id="playToggle" type="checkbox" ${state.playing ? "checked" : ""} /></label>
@@ -837,6 +870,7 @@ function readStateFromUrl(records: EditorAssetRecord[]): AssetEditorState {
     speed: clamp(Number(params.get("speed") ?? "1"), 0.1, 2.5),
     playing: params.get("paused") !== "1",
     renderMode: toRenderModeId(params.get("mode")),
+    lighting: toLightingModeId(params.get("light")),
     collisionVisible: params.get("hideCollision") !== "1",
     collisionEditMode: params.get("editCollision") === "1",
     assetSettings: Object.fromEntries(records.map((record) => [assetKey(record), structuredClone(record.sidecar)])),
@@ -1315,6 +1349,62 @@ function updateCollisionPreview(preview: CollisionPreview, radius: number): void
   preview.handle.position.z = 0;
 }
 
+function createPreviewLighting(scene: THREE.Scene, lightAnchor: THREE.Group): PreviewLighting {
+  const ambient = new THREE.HemisphereLight(0x9cf3ff, 0x07110d, 0.55);
+  scene.add(ambient);
+
+  const keyLight = new THREE.DirectionalLight(0xe6fffa, 1.55);
+  keyLight.position.set(13, 22, 8);
+  keyLight.castShadow = true;
+  keyLight.shadow.mapSize.set(2048, 2048);
+  keyLight.shadow.camera.left = -26;
+  keyLight.shadow.camera.right = 26;
+  keyLight.shadow.camera.top = 26;
+  keyLight.shadow.camera.bottom = -26;
+  scene.add(keyLight);
+
+  const alertLight = new THREE.PointLight(0xff3344, 18, 18);
+  alertLight.position.set(-9, 5, -9);
+  scene.add(alertLight);
+
+  const armorFlashlight = new THREE.SpotLight(0xa8fff4, 48, 28, 0.62, 0.48, 1.7);
+  armorFlashlight.position.set(0, 1.35, -0.28);
+  armorFlashlight.target.position.set(0, 0.8, -14);
+  lightAnchor.add(armorFlashlight, armorFlashlight.target);
+
+  const localFill = new THREE.PointLight(0xbffcff, 0, 8, 1.8);
+  localFill.position.set(0, 1.15, -0.8);
+  lightAnchor.add(localFill);
+
+  return { ambient, keyLight, alertLight, armorFlashlight, localFill };
+}
+
+function applyLightingMode(lighting: PreviewLighting, mode: LightingModeId): void {
+  if (mode === "dark") {
+    lighting.ambient.intensity = 0.55;
+    lighting.keyLight.intensity = 1.55;
+    lighting.alertLight.intensity = 18;
+    lighting.armorFlashlight.intensity = 48;
+    lighting.localFill.intensity = 0;
+    return;
+  }
+
+  if (mode === "normal") {
+    lighting.ambient.intensity = 0.9;
+    lighting.keyLight.intensity = 1.75;
+    lighting.alertLight.intensity = 10;
+    lighting.armorFlashlight.intensity = 58;
+    lighting.localFill.intensity = 4.5;
+    return;
+  }
+
+  lighting.ambient.intensity = 1.85;
+  lighting.keyLight.intensity = 2.25;
+  lighting.alertLight.intensity = 6;
+  lighting.armorFlashlight.intensity = 72;
+  lighting.localFill.intensity = 11;
+}
+
 function addAxisMarkers(scene: THREE.Scene): void {
   const front = new THREE.Mesh(new THREE.ConeGeometry(0.08, 0.28, 3), new THREE.MeshBasicMaterial({ color: 0x54f5ff }));
   front.position.set(0, 0.08, -1.85);
@@ -1361,6 +1451,10 @@ function toAngleId(value: string | null | undefined): AngleId {
 
 function toRenderModeId(value: string | null | undefined): RenderModeId {
   return value === "wireframe" || value === "bones" ? value : "shaded";
+}
+
+function toLightingModeId(value: string | null | undefined): LightingModeId {
+  return value === "normal" || value === "bright" ? value : "dark";
 }
 
 function labelFromSlug(value: string): string {

@@ -1,4 +1,5 @@
 import { promises as fs } from "node:fs";
+import { createHash } from "node:crypto";
 import { dirname, relative, resolve, sep } from "node:path";
 import { defineConfig } from "vite";
 
@@ -8,43 +9,14 @@ const SLUG_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 export default defineConfig({
   plugins: [
     {
-      name: "daemon-syndicate-asset-settings",
+      name: "daemon-syndicate-assets",
       apply: "serve",
       configureServer(server) {
-        let assetSettingsFilesPromise;
-
         server.middlewares.use("/__dev/assets", async (req, res) => {
           try {
             await handlePublicAssetsRequest(server.config.root, req, res);
           } catch (error) {
             sendJson(res, 400, { error: error instanceof Error ? error.message : "Invalid asset request" });
-          }
-        });
-
-        server.middlewares.use("/__dev/asset-settings", async (req, res) => {
-          const assetId = decodeURIComponent((req.url ?? "").split("?")[0].replace(/^\/+|\/+$/g, ""));
-          const assetSettingsFiles = await (
-            assetSettingsFilesPromise ?? (assetSettingsFilesPromise = discoverAssetSettingsFiles(server.config.root))
-          );
-          const settingsFile = assetSettingsFiles[assetId];
-
-          if (!settingsFile) {
-            sendJson(res, 404, { error: "Unknown asset" });
-            return;
-          }
-
-          if (req.method !== "POST") {
-            sendJson(res, 405, { error: "Method not allowed" });
-            return;
-          }
-
-          try {
-            const body = await readRequestBody(req);
-            const settings = normalizeLegacyAssetSettings(JSON.parse(body));
-            await fs.writeFile(resolve(server.config.root, settingsFile), `${JSON.stringify(settings, null, 2)}\n`);
-            sendJson(res, 200, settings);
-          } catch (error) {
-            sendJson(res, 400, { error: error instanceof Error ? error.message : "Invalid asset settings" });
           }
         });
       },
@@ -125,11 +97,31 @@ async function readPublicAssetRecord(root, request) {
   if (!isValidAssetRequest(request)) throw new Error("Invalid asset path");
   if (!(await fileExists(modelFilePath(root, request)))) return null;
 
+  const liveRequest = { category: request.category, name: request.name, staged: false };
   const sidecarPath = sidecarFilePath(root, request);
   const sidecarExists = await fileExists(sidecarPath);
-  const rawSidecar = sidecarExists ? JSON.parse(await fs.readFile(sidecarPath, "utf8")) : await createDefaultSidecar(root, request);
-  const sidecar = normalizeAssetSidecar(rawSidecar, request);
+  let rawSidecar;
+  let sidecarError;
+  if (sidecarExists) {
+    try {
+      rawSidecar = JSON.parse(await fs.readFile(sidecarPath, "utf8"));
+    } catch (error) {
+      sidecarError = error instanceof Error ? error.message : "Invalid sidecar JSON";
+      rawSidecar = await createDefaultSidecar(root, request);
+    }
+  } else {
+    rawSidecar = await createDefaultSidecar(root, request);
+  }
+  let sidecar;
+  try {
+    sidecar = normalizeAssetSidecar(rawSidecar, request);
+  } catch (error) {
+    sidecarError = error instanceof Error ? error.message : "Invalid sidecar";
+    sidecar = await createDefaultSidecar(root, request);
+  }
   const publicPrefix = request.staged ? `/assets/_staged/${request.category}/${request.name}` : `/assets/${request.category}/${request.name}`;
+  const liveModelExists = request.staged ? await fileExists(modelFilePath(root, liveRequest)) : true;
+  const liveSidecarExists = request.staged ? await fileExists(sidecarFilePath(root, liveRequest)) : sidecarExists;
 
   return {
     id: request.name,
@@ -139,9 +131,70 @@ async function readPublicAssetRecord(root, request) {
     modelUrl: `${publicPrefix}/${request.name}.glb`,
     sidecarUrl: `${publicPrefix}/${request.name}.asset.json`,
     sidecarExists,
+    ...(sidecarError ? { sidecarError } : {}),
+    liveModelExists,
+    liveSidecarExists,
+    ...(request.staged
+      ? {
+          modelComparison: await compareAssetFile(modelFilePath(root, request), liveModelExists ? modelFilePath(root, liveRequest) : null),
+          ...(sidecarExists
+            ? {
+                sidecarComparison: await compareAssetFile(
+                  sidecarPath,
+                  liveSidecarExists ? sidecarFilePath(root, liveRequest) : null,
+                  (raw, path) => canonicalSidecarForComparison(raw, path, liveRequest),
+                ),
+              }
+            : {}),
+        }
+      : {}),
     staged: request.staged,
     sidecar,
   };
+}
+
+async function compareAssetFile(stagedPath, livePath, normalizeContent) {
+  const stagedStat = await fs.stat(stagedPath);
+  if (!livePath) {
+    return {
+      status: "missing",
+      stagedUpdatedAt: stagedStat.mtime.toISOString(),
+    };
+  }
+
+  const liveStat = await fs.stat(livePath);
+  const stagedHash = await hashFile(stagedPath, normalizeContent);
+  const liveHash = await hashFile(livePath, normalizeContent);
+  if (stagedHash === liveHash) {
+    return {
+      status: "current",
+      stagedUpdatedAt: stagedStat.mtime.toISOString(),
+      liveUpdatedAt: liveStat.mtime.toISOString(),
+    };
+  }
+
+  const newerByMs = stagedStat.mtimeMs - liveStat.mtimeMs;
+  const status = newerByMs > 1000 ? "newer" : newerByMs < -1000 ? "older" : "changed";
+  return {
+    status,
+    stagedUpdatedAt: stagedStat.mtime.toISOString(),
+    liveUpdatedAt: liveStat.mtime.toISOString(),
+  };
+}
+
+async function hashFile(path, normalizeContent) {
+  const raw = await fs.readFile(path);
+  const content = normalizeContent ? normalizeContent(raw, path) : raw;
+  return createHash("sha256").update(content).digest("hex");
+}
+
+function canonicalSidecarForComparison(raw, path, liveRequest) {
+  try {
+    const parsed = JSON.parse(raw.toString("utf8"));
+    return JSON.stringify(normalizeAssetSidecar(parsed, liveRequest));
+  } catch {
+    return `${path}:${raw.toString("utf8")}`;
+  }
 }
 
 export async function validatePublicAssets(root) {
@@ -154,6 +207,9 @@ export async function validatePublicAssets(root) {
     }
     if (!record.sidecarExists) {
       issues.push({ severity: "error", asset: assetIssueId(record), message: "Missing sidecar JSON" });
+    }
+    if (record.sidecarError) {
+      issues.push({ severity: "error", asset: assetIssueId(record), message: record.sidecarError });
     }
     try {
       normalizeAssetSidecar(record.sidecar, request);
@@ -178,7 +234,7 @@ export async function validatePublicAssets(root) {
   };
 }
 
-async function promoteStagedAssets(root, options) {
+export async function promoteStagedAssets(root, options) {
   const records = (await discoverPublicAssets(root)).filter((record) => record.staged);
   const selected = records.filter((record) => {
     if (options?.all) return true;
@@ -192,17 +248,25 @@ async function promoteStagedAssets(root, options) {
     const stagedRequest = { category: record.category, name: record.name, staged: true };
     const liveRequest = { category: record.category, name: record.name, staged: false };
     const stagedSidecarPath = sidecarFilePath(root, stagedRequest);
-    if (!(await fileExists(stagedSidecarPath))) {
-      issues.push({ severity: "error", asset: assetIssueId(record), message: "Staged sidecar must exist before promotion" });
-      continue;
-    }
+    try {
+      if (!(await fileExists(stagedSidecarPath))) {
+        issues.push({ severity: "error", asset: assetIssueId(record), message: "Staged sidecar must exist before promotion" });
+        continue;
+      }
 
-    const sidecar = normalizeAssetSidecar(JSON.parse(await fs.readFile(stagedSidecarPath, "utf8")), liveRequest);
-    await assertPathInside(resolve(root, "public/assets"), modelFilePath(root, liveRequest));
-    await fs.mkdir(dirname(modelFilePath(root, liveRequest)), { recursive: true });
-    await fs.copyFile(modelFilePath(root, stagedRequest), modelFilePath(root, liveRequest));
-    await fs.writeFile(sidecarFilePath(root, liveRequest), `${JSON.stringify(sidecar, null, 2)}\n`);
-    promoted.push({ category: record.category, name: record.name });
+      const sidecar = normalizeAssetSidecar(JSON.parse(await fs.readFile(stagedSidecarPath, "utf8")), liveRequest);
+      await assertPathInside(resolve(root, "public/assets"), modelFilePath(root, liveRequest));
+      await fs.mkdir(dirname(modelFilePath(root, liveRequest)), { recursive: true });
+      await fs.copyFile(modelFilePath(root, stagedRequest), modelFilePath(root, liveRequest));
+      await fs.writeFile(sidecarFilePath(root, liveRequest), `${JSON.stringify(sidecar, null, 2)}\n`);
+      promoted.push({ category: record.category, name: record.name });
+    } catch (error) {
+      issues.push({
+        severity: "error",
+        asset: assetIssueId(record),
+        message: error instanceof Error ? error.message : "Invalid staged asset",
+      });
+    }
   }
 
   return {
@@ -243,11 +307,11 @@ function sidecarFilePath(root, request) {
   return resolve(base, `${request.name}.asset.json`);
 }
 
-export async function createDefaultSidecar(root, request) {
-  const legacy = await readLegacySettingsForAsset(root, request.name);
+export async function createDefaultSidecar(_root, request) {
+  const defaults = defaultSettingsForCategory(request.category);
   return normalizeAssetSidecar(
     {
-      ...(legacy ?? defaultSettingsForCategory(request.category)),
+      ...defaults,
       schemaVersion: 1,
       id: request.name,
       category: request.category,
@@ -261,18 +325,11 @@ export async function createDefaultSidecar(root, request) {
       preview: defaultPreviewForCategory(request.category),
       collision: {
         type: "circle",
-        radius: legacy?.collision?.radius ?? defaultSettingsForCategory(request.category).collision.radius,
+        radius: defaults.collision.radius,
       },
     },
     request,
   );
-}
-
-async function readLegacySettingsForAsset(root, assetName) {
-  const files = await discoverAssetSettingsFiles(root);
-  const settingsFile = files[assetName];
-  if (!settingsFile) return null;
-  return JSON.parse(await fs.readFile(resolve(root, settingsFile), "utf8"));
 }
 
 function defaultSettingsForCategory(category) {
@@ -395,34 +452,6 @@ function kindForCategory(category) {
   if (category === "pickups") return "pickup";
   if (category === "player") return "player";
   return "environment";
-}
-
-async function discoverAssetSettingsFiles(root) {
-  const assetRoot = resolve(root, "src/assets");
-  const files = {};
-  if (!(await fileExists(assetRoot))) return files;
-  await visitAssetSettingsFolders(assetRoot, root, files);
-  return files;
-}
-
-async function visitAssetSettingsFolders(directory, root, files) {
-  const entries = await fs.readdir(directory, { withFileTypes: true });
-  for (const entry of entries) {
-    if (entry.name.startsWith(".")) continue;
-    const fullPath = resolve(directory, entry.name);
-    if (entry.isDirectory()) {
-      await visitAssetSettingsFolders(fullPath, root, files);
-      continue;
-    }
-    if (!entry.name.endsWith(".settings.json")) continue;
-    const folder = directory.split(/[/\\]/).at(-1);
-    const assetId = camelToKebab(folder);
-    files[assetId] = fullPath.slice(resolve(root).length + 1);
-  }
-}
-
-function camelToKebab(value) {
-  return value.replace(/([a-z0-9])([A-Z])/g, "$1-$2").toLowerCase();
 }
 
 function normalizeLegacyAssetSettings(value) {

@@ -145,29 +145,14 @@ export const ENEMY_CONTENT = [
 
 export type EnemyContent = (typeof ENEMY_CONTENT)[number];
 export type EnemyKind = EnemyContent["kind"];
-export type EnemyAssetId = EnemyContent["assetId"];
 
 const CONTENT_BY_KIND = new Map(ENEMY_CONTENT.map((content) => [content.kind, content])) as ReadonlyMap<
   EnemyKind,
   EnemyContent
 >;
-const CONTENT_BY_ASSET_ID = new Map(ENEMY_CONTENT.map((content) => [content.assetId, content])) as ReadonlyMap<
-  EnemyAssetId,
-  EnemyContent
->;
-
-export const ENEMY_ASSET_IDS = ENEMY_CONTENT.map((content) => content.assetId) as EnemyAssetId[];
 
 export function enemyContentFor(kind: EnemyKind): EnemyContent {
   const content = CONTENT_BY_KIND.get(kind);
   if (!content) throw new Error(`Missing enemy content: ${kind}`);
   return content;
-}
-
-export function enemyContentForAssetId(assetId: string): EnemyContent | undefined {
-  return CONTENT_BY_ASSET_ID.get(assetId as EnemyAssetId);
-}
-
-export function isEnemyAssetId(value: string | null | undefined): value is EnemyAssetId {
-  return typeof value === "string" && CONTENT_BY_ASSET_ID.has(value as EnemyAssetId);
 }
