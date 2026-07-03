@@ -390,6 +390,7 @@ export class Game {
         this.perf.span("camera", () => this.updateCamera());
       }
       this.world.updatePlayerLocalAmbient(this.simulation.playerPosition);
+      this.world.updateGameplayLighting(this.simulation.playerPosition);
       this.perf.span("three.render.cpu", () => this.world.renderer.render(this.world.scene, this.world.camera));
     });
   };

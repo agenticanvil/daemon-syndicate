@@ -736,6 +736,79 @@ canvas {
   display: none;
 }
 
+.dev-map-hud {
+  position: fixed;
+  top: 16px;
+  left: 16px;
+  z-index: 4;
+  min-width: 180px;
+  border: 1px solid rgba(142, 255, 236, 0.24);
+  border-radius: 6px;
+  background: rgba(4, 10, 12, 0.68);
+  color: #d7f5ff;
+  padding: 10px 12px;
+  backdrop-filter: blur(10px);
+  pointer-events: none;
+  text-shadow: 0 1px 8px rgba(0, 0, 0, 0.72);
+}
+
+.dev-map-hud strong,
+.dev-map-hud span,
+.dev-map-hud em {
+  display: block;
+}
+
+.dev-map-hud strong {
+  margin-bottom: 4px;
+  color: #f4fbff;
+  font-size: 0.9rem;
+  text-transform: uppercase;
+}
+
+.dev-map-hud span,
+.dev-map-hud em {
+  color: #9dbabe;
+  font-size: 0.72rem;
+  font-style: normal;
+}
+
+.dev-map-section-label,
+.dev-map-asset-label {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 3;
+  pointer-events: none;
+  white-space: nowrap;
+  color: #f4fbff;
+  text-shadow: 0 2px 8px rgba(0, 0, 0, 0.9);
+}
+
+.dev-map-section-label {
+  padding: 3px 8px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 999px;
+  background: rgba(4, 10, 12, 0.72);
+  font-size: 0.74rem;
+  text-transform: uppercase;
+}
+
+.dev-map-section-label.enemies {
+  border-color: rgba(255, 90, 138, 0.7);
+}
+
+.dev-map-section-label.pickups {
+  border-color: rgba(101, 215, 255, 0.7);
+}
+
+.dev-map-section-label.environment {
+  border-color: rgba(141, 255, 56, 0.7);
+}
+
+.dev-map-asset-label {
+  font-size: 0.64rem;
+}
+
 .asset-editor {
   color: #e8f7ff;
   font-size: 0.9rem;

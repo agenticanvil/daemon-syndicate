@@ -22,6 +22,9 @@ pnpm-debug.log*
 coverage/
 tmp/
 
+# Runtime assets
+public/assets/
+
 # Local reference art
 concept-art/
 

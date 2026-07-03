@@ -51,6 +51,17 @@ async function startApp(app: HTMLDivElement, routePath: string): Promise<void> {
     return;
   }
 
+  if (routePath === "/dev/map") {
+    document.title = "Dev Map | Daemon Syndicate";
+    if (import.meta.env.DEV) {
+      const { startDevMap } = await import("./devMap");
+      await startDevMap(app);
+    } else {
+      app.innerHTML = "";
+    }
+    return;
+  }
+
   await startGame(app);
 }
 

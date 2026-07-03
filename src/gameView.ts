@@ -4,7 +4,7 @@ import { RETICLE_FLOOR_OFFSET, TILE_SIZE } from "./constants";
 import { disposeMesh, disposeObject3D } from "./entityLifecycle";
 import type { EnemyKind } from "./enemyDefinitions";
 import type { LevelData } from "./level";
-import type { GameScene } from "./scene";
+import type { GameScene, RenderLevelOptions } from "./scene";
 import type { ResourceKind } from "./resourceTypes";
 import type { EnemyAnimation } from "./enemyTypes";
 import type { VectorSnapshot } from "./vectorTypes";
@@ -36,7 +36,7 @@ export type GameplayView = {
   syncPlayer: (state: PlayerRenderState, dt: number, instant?: boolean) => void;
   flashPlayerColor: (color: number) => void;
   triggerPlayerFire: () => void;
-  renderLevel: (level: LevelData) => void;
+  renderLevel: (level: LevelData, options?: RenderLevelOptions) => void;
   updateFog: (playerPosition: THREE.Vector3, dt: number, instant?: boolean) => void;
   resetReticle: (position: THREE.Vector3) => void;
   createEnemyView: (kind: EnemyKind, position: THREE.Vector3, facingYaw: number) => EnemyViewHandle;

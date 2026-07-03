@@ -31,17 +31,22 @@ export type GameScene = {
   playerRig: PlayerRig;
   playerBody: THREE.Mesh<THREE.BufferGeometry, THREE.MeshStandardMaterial>;
   reticle: THREE.Mesh;
-  renderLevel: (level: LevelData) => void;
+  renderLevel: (level: LevelData, options?: RenderLevelOptions) => void;
   createEnemyAsset: (kind: EnemyKind) => EnemyAsset;
   createPickupAsset: (kind: ResourceKind) => PickupAsset;
   createEnvironmentAsset: (kind: EnvironmentAssetKind) => EnvironmentAsset;
   createExitPortalAsset: () => PortalAsset;
   updateFog: (playerPosition: THREE.Vector3, dt: number, instant?: boolean) => void;
   updatePlayerLocalAmbient: (playerPosition: THREE.Vector3) => void;
+  updateGameplayLighting: (playerPosition: THREE.Vector3) => void;
   isTileExplored: (position: THREE.Vector3) => boolean;
   materials: GameplayMaterials;
   resize: () => void;
   applyGraphicsSettings: (settings: GraphicsSettings) => void;
+};
+
+export type RenderLevelOptions = {
+  includeExitPortal?: boolean;
 };
 
 export function createGameScene(app: HTMLDivElement, gltfAssets?: GltfAssetLibrary): GameScene {
@@ -85,7 +90,7 @@ export function createGameScene(app: HTMLDivElement, gltfAssets?: GltfAssetLibra
   reticle.renderOrder = 5;
   scene.add(reticle);
 
-  addGameplayLighting(scene, player);
+  const gameplayLighting = addGameplayLighting(scene, player);
 
   let fogOfWar: FogOfWar | undefined;
   let levelEdgeVisibility: LevelEdgeVisibility | undefined;
@@ -119,17 +124,20 @@ export function createGameScene(app: HTMLDivElement, gltfAssets?: GltfAssetLibra
     return asset;
   };
 
-  const renderLevel = (level: LevelData): void => {
+  const renderLevel = (level: LevelData, options: RenderLevelOptions = {}): void => {
+    const includeExitPortal = options.includeExitPortal ?? true;
     fogOfWar?.dispose();
     exploredTileKeys = new Set();
     staticVisibilityObjects = [];
     levelEdgeVisibility = renderLevelToRoot(levelRoot, level, materials.level);
-    const exitPortal = createExitPortalAsset();
-    const exitPosition = exitGateToWorld(level.end, level.exitDirection);
-    exitPortal.root.position.set(exitPosition.x, 0, exitPosition.z);
-    exitPortal.root.rotation.y = exitGateRotation(level.exitDirection);
-    levelRoot.add(exitPortal.root);
-    staticVisibilityObjects.push({ root: exitPortal.root, tile: level.end });
+    if (includeExitPortal) {
+      const exitPortal = createExitPortalAsset();
+      const exitPosition = exitGateToWorld(level.end, level.exitDirection);
+      exitPortal.root.position.set(exitPosition.x, 0, exitPosition.z);
+      exitPortal.root.rotation.y = exitGateRotation(level.exitDirection);
+      levelRoot.add(exitPortal.root);
+      staticVisibilityObjects.push({ root: exitPortal.root, tile: level.end });
+    }
     for (const object of level.environmentalObjects) {
       const asset = createEnvironmentAsset(object.kind);
       const position = tileToWorld(object.tile);
@@ -177,6 +185,7 @@ export function createGameScene(app: HTMLDivElement, gltfAssets?: GltfAssetLibra
     createExitPortalAsset,
     updateFog: (playerPosition, dt, instant = false) => fogOfWar?.update(playerPosition, dt, instant),
     updatePlayerLocalAmbient: playerLocalAmbient.update,
+    updateGameplayLighting: gameplayLighting.update,
     isTileExplored: (position) => exploredTileKeys.has(key(worldToTile(position))),
     materials: materials.gameplay,
     resize: renderContext.resize,
