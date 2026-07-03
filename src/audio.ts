@@ -1,5 +1,7 @@
+type SoundUrl = `/assets/sfx/${string}.${"mp3" | "wav"}`;
+
 const SOUND_URLS = {
-  "primary-fire": "/assets/sfx/primary-fire.wav",
+  "primary-fire": "/assets/sfx/bolt-shot.mp3",
   "primary-impact": "/assets/sfx/primary-impact.wav",
   nova: "/assets/sfx/nova.wav",
   dash: "/assets/sfx/dash.wav",
@@ -13,7 +15,8 @@ const SOUND_URLS = {
   "upgrade-select": "/assets/sfx/upgrade-select.wav",
   "ui-click": "/assets/sfx/ui-click.wav",
   "game-over": "/assets/sfx/game-over.wav",
-} as const;
+  "hunter-moving": "/assets/sfx/hunter-moving.mp3",
+} as const satisfies Record<string, SoundUrl>;
 
 export type SoundId = keyof typeof SOUND_URLS;
 
@@ -29,9 +32,16 @@ type PlaySoundOptions = {
   pan?: number;
 };
 
+export type LoopingSound = {
+  setVolume: (volume: number) => void;
+  stop: () => void;
+};
+
 export type GameAudio = {
+  preload: () => Promise<void>;
   resume: () => Promise<void>;
   play: (id: SoundId, options?: PlaySoundOptions) => void;
+  playLoop: (id: SoundId, options?: PlaySoundOptions) => LoopingSound;
   applySettings: (settings: AudioSettings) => void;
 };
 
@@ -62,18 +72,77 @@ export function createAudioSystem(): GameAudio {
   const buffers = new Map<SoundId, AudioBuffer>();
   const lastPlayedAt = new Map<SoundId, number>();
 
-  async function resume(): Promise<void> {
+  async function preload(): Promise<void> {
     const ctx = ensureContext();
     if (!ctx) return;
-    if (!loadPromise) loadPromise = loadBuffers(ctx).catch(() => undefined);
     if (ctx.state === "suspended") {
-      await ctx.resume().catch(() => undefined);
+      void ctx.resume().catch(() => undefined);
     }
+    if (!loadPromise) loadPromise = loadBuffers(ctx);
     await loadPromise;
+  }
+
+  async function resume(): Promise<void> {
+    await preload();
+    if (context?.state === "suspended") {
+      await context.resume().catch(() => undefined);
+    }
   }
 
   function play(id: SoundId, options: PlaySoundOptions = {}): void {
     void playAsync(id, options).catch(() => undefined);
+  }
+
+  function playLoop(id: SoundId, options: PlaySoundOptions = {}): LoopingSound {
+    const ctx = ensureContext();
+    let source: AudioBufferSourceNode | undefined;
+    let gain: GainNode | undefined;
+    let stopped = false;
+    let volume = clamp(options.volume ?? 1, 0, 1);
+
+    const handle: LoopingSound = {
+      setVolume(nextVolume) {
+        volume = clamp(nextVolume, 0, 1);
+        if (gain) gain.gain.value = volume;
+      },
+      stop() {
+        stopped = true;
+        try {
+          source?.stop();
+        } catch {
+          // Stopping an already-ended source is harmless; the loop should still be considered disposed.
+        }
+        source?.disconnect();
+        gain?.disconnect();
+      },
+    };
+
+    if (!ctx) return handle;
+
+    void startLoop(ctx).catch(() => undefined);
+    return handle;
+
+    async function startLoop(loopContext: AudioContext): Promise<void> {
+      if (!loadPromise) loadPromise = loadBuffers(loopContext);
+      if (loopContext.state === "suspended") {
+        await loopContext.resume().catch(() => undefined);
+      }
+      await loadPromise;
+      if (stopped || !sfxGain) return;
+
+      const buffer = buffers.get(id);
+      if (!buffer) return;
+
+      source = loopContext.createBufferSource();
+      gain = loopContext.createGain();
+      source.buffer = buffer;
+      source.loop = true;
+      source.playbackRate.value = options.playbackRate ?? 1;
+      gain.gain.value = volume;
+      source.connect(gain);
+      gain.connect(sfxGain);
+      source.start();
+    }
   }
 
   async function playAsync(id: SoundId, options: PlaySoundOptions): Promise<void> {
@@ -86,7 +155,7 @@ export function createAudioSystem(): GameAudio {
     if (nowMs - lastAt < minInterval) return;
     lastPlayedAt.set(id, nowMs);
 
-    if (!loadPromise) loadPromise = loadBuffers(ctx).catch(() => undefined);
+    if (!loadPromise) loadPromise = loadBuffers(ctx);
     if (ctx.state === "suspended") {
       await ctx.resume().catch(() => undefined);
     }
@@ -157,7 +226,7 @@ export function createAudioSystem(): GameAudio {
     );
   }
 
-  return { resume, play, applySettings };
+  return { preload, resume, play, playLoop, applySettings };
 }
 
 function clamp(value: number, min: number, max: number): number {

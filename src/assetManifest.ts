@@ -14,6 +14,13 @@ type AssetPreviewMetadata = {
   defaultAnimation?: string;
 };
 
+export type AssetBundledMaterial = {
+  id: string;
+  type: "shader";
+  mesh: string;
+  definition: string;
+};
+
 type CircleCollisionSettings = {
   type: "circle";
   radius: number;
@@ -26,6 +33,7 @@ type AssetSidecarMetadata = {
   label: string;
   model: AssetModelMetadata;
   preview?: AssetPreviewMetadata;
+  materials?: AssetBundledMaterial[];
   collision: CircleCollisionSettings;
 };
 

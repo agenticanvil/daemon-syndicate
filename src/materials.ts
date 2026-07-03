@@ -14,10 +14,30 @@ export type SceneMaterials = {
   gameplay: GameplayMaterials;
 };
 
-export function createSceneMaterials(loader: THREE.TextureLoader, anisotropy: number): SceneMaterials {
+type PreloadedFloorTextures = Partial<Record<FloorVariantId, THREE.Texture>>;
+
+export async function preloadSceneTextures(
+  loader: THREE.TextureLoader,
+  anisotropy: number,
+): Promise<PreloadedFloorTextures> {
+  const entries = await Promise.all(
+    FLOOR_VARIANTS.map(async (variant) => {
+      const texture = await loader.loadAsync(variant.mapUrl);
+      configureRepeatingTexture(texture, anisotropy, true);
+      return [variant.id, texture] as const;
+    }),
+  );
+  return Object.fromEntries(entries) as PreloadedFloorTextures;
+}
+
+export function createSceneMaterials(
+  loader: THREE.TextureLoader,
+  anisotropy: number,
+  preloadedFloorTextures: PreloadedFloorTextures = {},
+): SceneMaterials {
   return {
     level: {
-      floors: createFloorMaterials(loader, anisotropy),
+      floors: createFloorMaterials(loader, anisotropy, preloadedFloorTextures),
       edge: new THREE.MeshStandardMaterial({ color: 0x111b1e, roughness: 0.86, metalness: 0.32 }),
       void: new THREE.MeshBasicMaterial({ color: 0x010304 }),
       rim: new THREE.MeshBasicMaterial({ color: 0x2ddbd2, transparent: true, opacity: 0.36 }),
@@ -49,10 +69,11 @@ export function createSceneMaterials(loader: THREE.TextureLoader, anisotropy: nu
 function createFloorMaterials(
   loader: THREE.TextureLoader,
   anisotropy: number,
+  preloadedFloorTextures: PreloadedFloorTextures,
 ): Record<FloorVariantId, THREE.MeshStandardMaterial> {
   return Object.fromEntries(
     FLOOR_VARIANTS.map((variant) => {
-      const map = loadRepeatingTexture(loader, variant.mapUrl, anisotropy, true);
+      const map = preloadedFloorTextures[variant.id] ?? loadRepeatingTexture(loader, variant.mapUrl, anisotropy, true);
 
       return [
         variant.id,
@@ -73,10 +94,18 @@ function loadRepeatingTexture(
   useSrgbColorSpace: boolean,
 ): THREE.Texture {
   const texture = loader.load(url);
+  configureRepeatingTexture(texture, anisotropy, useSrgbColorSpace);
+  return texture;
+}
+
+function configureRepeatingTexture(
+  texture: THREE.Texture,
+  anisotropy: number,
+  useSrgbColorSpace: boolean,
+): void {
   if (useSrgbColorSpace) texture.colorSpace = THREE.SRGBColorSpace;
   texture.wrapS = THREE.RepeatWrapping;
   texture.wrapT = THREE.RepeatWrapping;
   texture.repeat.set(1, 1);
   texture.anisotropy = anisotropy;
-  return texture;
 }

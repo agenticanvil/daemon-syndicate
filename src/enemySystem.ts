@@ -31,6 +31,7 @@ export type EnemySystemSnapshot = Array<{
   collisionLayer: CollisionLayer;
   health: number;
   speed: number;
+  movementSound?: Enemy["movementSound"];
   xpReward: number;
   radius: number;
   attack: Enemy["attack"];
@@ -174,6 +175,7 @@ export class EnemySystem {
       collisionLayer: enemy.collisionLayer,
       health: enemy.health,
       speed: enemy.speed,
+      movementSound: enemy.movementSound,
       xpReward: enemy.xpReward,
       radius: enemy.radius,
       attack: { ...enemy.attack },
@@ -218,6 +220,7 @@ export class EnemySystem {
         collisionLayer: this.getCollisionLayer(),
         health: definition.health(enemyLevel),
         speed: definition.speed(enemyLevel),
+        movementSound: definition.movementSound,
         xpReward: definition.xpReward(enemyLevel),
         radius: definition.radius,
         attack: { ...definition.attack, damage: definition.attackDamage(enemyLevel) },

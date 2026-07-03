@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import type { GameAudio, SoundId } from "./audio";
+import type { GameAudio, LoopingSound, SoundId } from "./audio";
 import { TILE_SIZE } from "./constants";
 import { EntityViewSync } from "./entityViewSync";
 import type { GameEffect } from "./gameEffects";
@@ -29,6 +29,9 @@ const PICKUP_SOUNDS: Record<ResourceKind, SoundId> = {
   energy: "pickup-energy",
 };
 
+const ENEMY_MOVEMENT_FULL_VOLUME_TILES = 1;
+const ENEMY_MOVEMENT_SILENT_TILES = 10;
+
 export class Game {
   private readonly clock = new THREE.Clock();
   private readonly fpsFrameTimes: number[] = [];
@@ -37,6 +40,7 @@ export class Game {
   private readonly simulation: GameSimulation;
   private readonly entityViews: EntityViewSync;
   private readonly audio?: GameAudio;
+  private readonly enemyMovementAudio = new Map<number, { sound: SoundId; loop: LoopingSound }>();
 
   private fpsVisible = false;
   private nextFpsHudUpdateAt = 0;
@@ -62,11 +66,6 @@ export class Game {
     window.addEventListener("contextmenu", (event) => event.preventDefault());
     window.addEventListener("keydown", this.handleKeyDown);
     window.addEventListener("keyup", (event) => this.input.deleteKey(event.code));
-    this.ui.startButton.addEventListener("click", () => {
-      this.unlockAudio();
-      this.audio?.play("ui-click", { volume: 0.55 });
-      this.startNewRun(this.ui.getStartMapDepth());
-    });
     this.ui.resumeButton.addEventListener("click", () => this.setPaused(false));
   }
 
@@ -248,9 +247,6 @@ export class Game {
         case "projectileImpact":
           this.view.spawnProjectileImpact(effect.position, effect.incomingVelocity);
           break;
-        case "playerFlash":
-          this.view.flashPlayerColor(effect.color);
-          break;
       }
     }
   }
@@ -286,6 +282,7 @@ export class Game {
   }
 
   private resetViewForSimulation(): void {
+    this.stopEnemyMovementAudio();
     this.entityViews.clear();
     this.view.clearEffects();
     this.view.renderLevel(this.simulation.level);
@@ -299,6 +296,51 @@ export class Game {
     this.view.updateFog(this.simulation.playerPosition, dt);
     this.entityViews.sync(this.simulation.entityState(), dt);
     this.view.updateEffects(dt);
+  }
+
+  private updateEnemyMovementAudio(): void {
+    if (!this.audio) return;
+
+    const liveEnemyIds = new Set<number>();
+    const playerPosition = this.simulation.playerPosition;
+    for (const enemy of this.simulation.entityState().enemies) {
+      liveEnemyIds.add(enemy.id);
+      const sound = enemy.movementSound;
+      const volume =
+        sound && enemy.animation === "walk" && enemy.deathTimer === undefined
+          ? enemyMovementVolume(playerPosition.distanceTo(enemy.position) / TILE_SIZE)
+          : 0;
+
+      const existing = this.enemyMovementAudio.get(enemy.id);
+      if (!sound || volume <= 0) {
+        existing?.loop.stop();
+        this.enemyMovementAudio.delete(enemy.id);
+        continue;
+      }
+
+      if (existing && existing.sound !== sound) {
+        existing.loop.stop();
+        this.enemyMovementAudio.delete(enemy.id);
+      }
+
+      const loop = this.enemyMovementAudio.get(enemy.id)?.loop ?? this.audio.playLoop(sound, { volume });
+      loop.setVolume(volume);
+      this.enemyMovementAudio.set(enemy.id, { sound, loop });
+    }
+
+    for (const [enemyId, audio] of this.enemyMovementAudio) {
+      if (!liveEnemyIds.has(enemyId)) {
+        audio.loop.stop();
+        this.enemyMovementAudio.delete(enemyId);
+      }
+    }
+  }
+
+  private stopEnemyMovementAudio(): void {
+    for (const audio of this.enemyMovementAudio.values()) {
+      audio.loop.stop();
+    }
+    this.enemyMovementAudio.clear();
   }
 
   private updateHud(): void {
@@ -375,6 +417,7 @@ export class Game {
         this.applyStepEffects(result.effects);
         this.syncView(dt, result.mapDepthChanged);
         this.playStepAudio(result);
+        this.updateEnemyMovementAudio();
         this.perf.span("camera", () => this.updateCamera());
         this.perf.span("pointer.world", () => this.updatePointerWorldFromCamera());
         this.perf.span("hud/dom", () => this.updateHud());
@@ -387,6 +430,7 @@ export class Game {
 
       if (!this.simulation.isStarted || this.simulation.isGameOver || this.simulation.isPaused) {
         this.syncView(dt);
+        this.stopEnemyMovementAudio();
         this.perf.span("camera", () => this.updateCamera());
       }
       this.world.updatePlayerLocalAmbient(this.simulation.playerPosition);
@@ -398,4 +442,9 @@ export class Game {
 
 function randomRate(amount: number): number {
   return 1 + (Math.random() * 2 - 1) * amount;
+}
+
+function enemyMovementVolume(distanceTiles: number): number {
+  const range = ENEMY_MOVEMENT_SILENT_TILES - ENEMY_MOVEMENT_FULL_VOLUME_TILES;
+  return Math.max(0, Math.min(1, (ENEMY_MOVEMENT_SILENT_TILES - distanceTiles) / range));
 }

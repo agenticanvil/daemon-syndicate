@@ -13,7 +13,7 @@ import type { EnemyKind } from "./enemyDefinitions";
 import { exitGateToWorld, key, tileToWorld, worldToTile, type ExitDirection, type LevelData, type TileCoord } from "./level";
 import { FogOfWar } from "./fogOfWar";
 import { renderLevel as renderLevelToRoot, type LevelEdgeVisibility } from "./levelRenderer";
-import { createSceneMaterials, type GameplayMaterials } from "./materials";
+import { createSceneMaterials, preloadSceneTextures, type GameplayMaterials } from "./materials";
 import { createPlayerLocalAmbient } from "./playerLocalAmbient";
 import { createRenderContext, type GraphicsSettings } from "./renderer";
 import { addGameplayLighting } from "./sceneLighting";
@@ -49,7 +49,7 @@ export type RenderLevelOptions = {
   includeExitPortal?: boolean;
 };
 
-export function createGameScene(app: HTMLDivElement, gltfAssets?: GltfAssetLibrary): GameScene {
+export async function createGameScene(app: HTMLDivElement, gltfAssets?: GltfAssetLibrary): Promise<GameScene> {
   const renderContext = createRenderContext(app);
 
   const scene = new THREE.Scene();
@@ -62,7 +62,8 @@ export function createGameScene(app: HTMLDivElement, gltfAssets?: GltfAssetLibra
   const loader = new THREE.TextureLoader();
   const anisotropy = renderContext.renderer.capabilities.getMaxAnisotropy();
   const assetFactory = createAssetFactory(loader, anisotropy, gltfAssets);
-  const materials = createSceneMaterials(loader, anisotropy);
+  const preloadedFloorTextures = await preloadSceneTextures(loader, anisotropy);
+  const materials = createSceneMaterials(loader, anisotropy, preloadedFloorTextures);
   const playerLocalAmbient = createPlayerLocalAmbient();
   Object.values(materials.level.floors).forEach((material) => playerLocalAmbient.applyToMaterial(material));
   playerLocalAmbient.applyToMaterial(materials.level.edge);

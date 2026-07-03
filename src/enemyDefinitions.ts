@@ -1,6 +1,7 @@
 import { ENEMY_CONTENT, type EnemyKind } from "./enemyContent";
 import type { DropTable, EnemyAssetSettings, EnemyAttackDefinition, EnemySpawnWeightSettings } from "./assetSettings";
 import type { Rng } from "./rng";
+import type { SoundId } from "./audio";
 
 export type { EnemyKind };
 
@@ -12,6 +13,7 @@ export type EnemyDefinition = {
   spawnWeight: (mapDepth: number) => number;
   health: (enemyLevel: number) => number;
   speed: (enemyLevel: number) => number;
+  movementSound?: SoundId;
   attackDamage: (enemyLevel: number) => number;
   xpReward: (enemyLevel: number) => number;
   attack: EnemyAttackDefinition;
@@ -74,6 +76,7 @@ function createEnemyDefinition(kind: EnemyKind, settings: EnemyAssetSettings): E
     health: (enemyLevel) => scaleEnemyHealth(settings.health.base + enemyLevel * settings.health.levelGrowth),
     speed: (enemyLevel) =>
       scaleEnemySpeed(settings.movement.speed, settings.movement.levelSpeedGrowth, enemyLevel),
+    movementSound: settings.movement.sound,
     attackDamage: (enemyLevel) => scaledAttackDamage(settings, enemyLevel),
     xpReward: (enemyLevel) =>
       Math.round(settings.gameplay.xpReward.base + enemyLevel * settings.gameplay.xpReward.levelGrowth),

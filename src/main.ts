@@ -2,7 +2,7 @@ import { createAudioSystem } from "./audio";
 import { Game } from "./game";
 import { createPerfRecorder, type PerfRecorder } from "./perf";
 import { seededRandom } from "./rng";
-import { createGameScene } from "./scene";
+import { createGameScene, type GameScene, type GraphicsSettings } from "./scene";
 import { loadGltfAssetLibrary } from "./gltfAssetFactory";
 import "./style.css";
 import { createUi } from "./ui";
@@ -73,30 +73,85 @@ async function startGame(app: HTMLDivElement): Promise<void> {
   const perf = createPerfRecorder(perfEnabled);
   const audio = createAudioSystem();
   const ui = createUi(app);
-  const gltfAssets = await loadGltfAssetLibrary();
-  const world = createGameScene(app, gltfAssets);
+  let game: Game | undefined;
+  let world: GameScene | undefined;
+  let deploying = false;
+
   ui.onAudioSettingsChange((settings) => audio.applySettings(settings));
-  ui.onGraphicsSettingsChange((settings) => world.applyGraphicsSettings(settings));
-  const game = new Game(world, ui, perf, {
-    audio,
-    rng: seed ? seededRandom(seed) : Math.random,
-    seed: seed ?? undefined,
+  let graphicsSettings: GraphicsSettings | undefined;
+  ui.onGraphicsSettingsChange((settings) => {
+    graphicsSettings = settings;
+    world?.applyGraphicsSettings(settings);
   });
 
-  game.bindEvents();
   window.__daemonPerf = perf;
-  window.__daemonGame = {
-    startNewRun: (mapDepth) => game.startNewRun(mapDepth),
-    snapshot: () => game.snapshot(),
-    spawnEnemy: (kind, position) => game.spawnEnemy(kind, position),
-    grantResources: (resources) => game.grantResources(resources),
-  };
+  ui.startButton.addEventListener("click", () => {
+    void deploy(ui.getStartMapDepth());
+  });
 
   if (params.get("autostart") === "1") {
-    game.startNewRun(readMapDepthParam(params));
+    void deploy(readMapDepthParam(params));
   }
 
-  game.startLoop();
+  async function deploy(mapDepth: number): Promise<void> {
+    if (deploying) return;
+    deploying = true;
+
+    if (game) {
+      try {
+        await audio.preload();
+        audio.play("ui-click", { volume: 0.55 });
+        game.startNewRun(mapDepth);
+      } finally {
+        deploying = false;
+      }
+      return;
+    }
+
+    try {
+      ui.showLoading("Loading models and shader bundles...");
+      const gltfAssets = await withTimeout(loadGltfAssetLibrary(), 60_000, "Timed out loading runtime model assets.");
+      ui.showLoading("Decoding audio buffers...");
+      await withTimeout(audio.preload(), 20_000, "Timed out loading audio buffers.");
+      ui.showLoading("Warming renderer and floor textures...");
+      world = await withTimeout(createGameScene(app, gltfAssets), 20_000, "Timed out loading floor textures.");
+      if (graphicsSettings) world.applyGraphicsSettings(graphicsSettings);
+
+      game = new Game(world, ui, perf, {
+        audio,
+        rng: seed ? seededRandom(seed) : Math.random,
+        seed: seed ?? undefined,
+      });
+      game.bindEvents();
+      game.startLoop();
+      const activeGame = game;
+      window.__daemonGame = {
+        startNewRun: (nextMapDepth) => activeGame.startNewRun(nextMapDepth),
+        snapshot: () => activeGame.snapshot(),
+        spawnEnemy: (kind, position) => activeGame.spawnEnemy(kind, position),
+        grantResources: (resources) => activeGame.grantResources(resources),
+      };
+
+      audio.play("ui-click", { volume: 0.55 });
+      game.startNewRun(mapDepth);
+    } catch (error) {
+      ui.showStartError(error instanceof Error ? error.message : "Failed to prepare runtime assets.");
+    } finally {
+      deploying = false;
+    }
+  }
+}
+
+async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string): Promise<T> {
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timeoutId = setTimeout(() => reject(new Error(message)), timeoutMs);
+  });
+  try {
+    return await Promise.race([promise, timeout]);
+  } finally {
+    if (timeoutId !== undefined) clearTimeout(timeoutId);
+  }
 }
 
 function readMapDepthParam(params: URLSearchParams): number {

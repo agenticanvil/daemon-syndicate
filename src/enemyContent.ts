@@ -34,7 +34,7 @@ export const ENEMY_CONTENT = [
       },
       collision: { radius: 0.7, height: 1.1 },
       health: { base: 70, levelGrowth: 18 },
-      movement: { speed: 2.8, levelSpeedGrowth: 0.07 },
+      movement: { speed: 2.8, levelSpeedGrowth: 0.07, sound: "hunter-moving" },
       spawnWeight: { base: 0.92, levelGrowth: -0.015, min: 0.74 },
       attacks: [{ kind: "melee", damage: 9, cooldown: 0.72, range: 0.42 }],
       dropTable: {
@@ -62,7 +62,7 @@ export const ENEMY_CONTENT = [
       },
       collision: { radius: 0.68, height: 1.1 },
       health: { base: 58, levelGrowth: 14 },
-      movement: { speed: 2.35, levelSpeedGrowth: 0.05 },
+      movement: { speed: 2.35, levelSpeedGrowth: 0.05, sound: "hunter-moving" },
       spawnWeight: { base: 0.22, levelGrowth: 0.018, max: 0.38 },
       attacks: [
         {
@@ -100,7 +100,7 @@ export const ENEMY_CONTENT = [
       },
       collision: { radius: 0.7, height: 1.1 },
       health: { base: 118, levelGrowth: 36 },
-      movement: { speed: 3.5, levelSpeedGrowth: 0.05 },
+      movement: { speed: 3.5, levelSpeedGrowth: 0.05, sound: "hunter-moving" },
       spawnWeight: { base: 0.08, levelGrowth: 0.015, max: 0.26 },
       attacks: [{ kind: "melee", damage: 9, cooldown: 0.72, range: 0.42 }],
       dropTable: {

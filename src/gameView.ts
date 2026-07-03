@@ -34,7 +34,6 @@ type EffectsSnapshot = {
 
 export type GameplayView = {
   syncPlayer: (state: PlayerRenderState, dt: number, instant?: boolean) => void;
-  flashPlayerColor: (color: number) => void;
   triggerPlayerFire: () => void;
   renderLevel: (level: LevelData, options?: RenderLevelOptions) => void;
   updateFog: (playerPosition: THREE.Vector3, dt: number, instant?: boolean) => void;
@@ -65,8 +64,6 @@ const MAX_IMPACT_SPARKS = 112;
 const IMPACT_SPARK_LIFE = 0.22;
 const IMPACT_SPARK_GEOMETRY = new THREE.BoxGeometry(0.035, 0.035, 0.42);
 const HIDDEN_MATRIX = new THREE.Matrix4().makeScale(0, 0, 0);
-const PLAYER_BASE_COLOR = 0x9bf0df;
-const PLAYER_LOW_HEALTH_COLOR = 0xff7474;
 
 export function createThreeGameplayView(world: GameScene): GameplayView {
   const damageTexts: Array<{ el: HTMLDivElement; world: THREE.Vector3; life: number }> = [];
@@ -198,15 +195,9 @@ export function createThreeGameplayView(world: GameScene): GameplayView {
   }
 
   return {
-    syncPlayer(state, dt, instant = false) {
+    syncPlayer(state, dt) {
       world.player.position.copy(state.position);
       world.player.rotation.y = state.rotationY;
-      const targetColor = state.lowHealth ? PLAYER_LOW_HEALTH_COLOR : PLAYER_BASE_COLOR;
-      if (instant) {
-        world.playerBody.material.color.set(targetColor);
-      } else {
-        world.playerBody.material.color.lerp(new THREE.Color(targetColor), dt * 10);
-      }
       world.playerRig.update(
         {
           moving: state.moving,
@@ -217,7 +208,6 @@ export function createThreeGameplayView(world: GameScene): GameplayView {
         dt,
       );
     },
-    flashPlayerColor: (color) => world.playerBody.material.color.set(color),
     triggerPlayerFire: () => world.playerRig.triggerFire(),
     renderLevel: world.renderLevel,
     updateFog: world.updateFog,

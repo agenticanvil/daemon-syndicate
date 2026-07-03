@@ -2,6 +2,7 @@ import * as THREE from "three";
 import type { DropTable, EnemyAttackDefinition } from "./assetSettings";
 import type { CollisionLayer } from "./collision";
 import type { EnemyKind } from "./enemyDefinitions";
+import type { SoundId } from "./audio";
 
 export type EnemyAnimation = "idle" | "walk" | "melee" | "death";
 
@@ -14,6 +15,7 @@ export type Enemy = {
   collisionLayer: CollisionLayer;
   health: number;
   speed: number;
+  movementSound?: SoundId;
   xpReward: number;
   radius: number;
   attack: EnemyAttackDefinition;

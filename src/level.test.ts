@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { FLOOR_VARIANTS } from "./floorVariants";
-import { fromKey, generateLevel, key, type LevelData, type TileCoord } from "./level";
+import { fromKey, generateLevel, key, neighbors, type LevelData, type TileCoord } from "./level";
 import { seededRandom } from "./rng";
 
 describe("generateLevel", () => {
@@ -49,15 +49,16 @@ describe("generateLevel", () => {
     expect(exitDirections).toEqual(new Set(["north", "east", "south", "west"]));
   });
 
-  it("places a small set of non-blocking environmental crates", () => {
+  it("places a small set of non-blocking environmental objects", () => {
     for (let index = 0; index < 8; index += 1) {
       const level = generateLevel(3, seededRandom(`crate-seed-${index}`));
 
-      expect(level.environmentalObjects.length).toBeGreaterThanOrEqual(2);
-      expect(level.environmentalObjects.length).toBeLessThanOrEqual(3);
+      expect(level.environmentalObjects.filter((object) => object.kind === "industrial-crate").length).toBeGreaterThanOrEqual(2);
+      expect(level.environmentalObjects.filter((object) => object.kind === "industrial-crate").length).toBeLessThanOrEqual(3);
+      expect(level.environmentalObjects.filter((object) => object.kind === "bio-vat")).toHaveLength(2);
+      expect(isConnected(level)).toBe(true);
       for (const object of level.environmentalObjects) {
         const objectKey = `${object.tile.x},${object.tile.y}`;
-        expect(object.kind).toBe("industrial-crate");
         expect(level.walkable.has(objectKey)).toBe(true);
         expect(level.blocked.has(objectKey)).toBe(true);
         expect(level.spawnPoints.map((spawn) => `${spawn.x},${spawn.y}`)).not.toContain(objectKey);
@@ -119,6 +120,24 @@ function countTerminalCaps(level: LevelData): number {
   }
 
   return caps.size;
+}
+
+function isConnected(level: LevelData): boolean {
+  const startKey = key(level.start);
+  const openCount = [...level.walkable].filter((tileKey) => !level.blocked.has(tileKey)).length;
+  const queue = [startKey];
+  const visited = new Set<string>(queue);
+
+  for (let cursor = 0; cursor < queue.length; cursor += 1) {
+    for (const neighbor of neighbors(fromKey(queue[cursor]))) {
+      const neighborKey = key(neighbor);
+      if (!level.walkable.has(neighborKey) || level.blocked.has(neighborKey) || visited.has(neighborKey)) continue;
+      visited.add(neighborKey);
+      queue.push(neighborKey);
+    }
+  }
+
+  return visited.size === openCount;
 }
 
 function findCornerTouch(level: LevelData): { a: TileCoord; b: TileCoord } | undefined {

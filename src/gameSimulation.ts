@@ -360,9 +360,6 @@ export class GameSimulation {
         if (damage.applied) {
           result.damageTaken += event.amount;
         }
-        if (damage.flashColor !== undefined) {
-          result.effects.push({ type: "playerFlash", color: damage.flashColor });
-        }
         if (damage.gameOver) {
           this.endGame();
         }

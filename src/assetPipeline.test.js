@@ -1,4 +1,4 @@
-import { mkdtemp, mkdir, writeFile, rm, utimes } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, writeFile, rm, utimes } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { afterEach, describe, expect, it } from "vitest";
@@ -141,6 +141,57 @@ describe("public asset sidecar pipeline", () => {
     expect(stagedExitPortal?.sidecarError).toBe("model.file must be exit-portal.glb");
   });
 
+  it("promotes bundled shader material sidecars and files", async () => {
+    const root = await createProjectRoot();
+    await writeProjectFile(root, "public/assets/_staged/environment/exit-portal/exit-portal.glb", "glTF");
+    await writeProjectFile(
+      root,
+      "public/assets/_staged/environment/exit-portal/exit-portal.asset.json",
+      JSON.stringify({
+        ...environmentSidecar(),
+        id: "exit-portal",
+        label: "Exit Portal",
+        model: { file: "exit-portal.glb", scale: 1 },
+        materials: [
+          {
+            id: "portal-field",
+            type: "shader",
+            mesh: "exit-portal-field",
+            definition: "materials/portal-field.json",
+          },
+        ],
+      }),
+    );
+    await writeProjectFile(
+      root,
+      "public/assets/_staged/environment/exit-portal/materials/portal-field.json",
+      JSON.stringify({
+        vertexShader: "portal-field.vert.glsl",
+        fragmentShader: "portal-field.frag.glsl",
+        uniforms: { uTime: { type: "time" } },
+        transparent: true,
+      }),
+    );
+    await writeProjectFile(root, "public/assets/_staged/environment/exit-portal/materials/portal-field.vert.glsl", "void main() {}");
+    await writeProjectFile(root, "public/assets/_staged/environment/exit-portal/materials/portal-field.frag.glsl", "void main() {}");
+
+    const report = await promoteStagedAssets(root, { category: "environment", name: "exit-portal" });
+    const liveSidecar = JSON.parse(await readFile(join(root, "public/assets/environment/exit-portal/exit-portal.asset.json"), "utf8"));
+    const liveMaterialDefinition = JSON.parse(
+      await readFile(join(root, "public/assets/environment/exit-portal/materials/portal-field.json"), "utf8"),
+    );
+    const liveVertexShader = await readFile(join(root, "public/assets/environment/exit-portal/materials/portal-field.vert.glsl"), "utf8");
+    const liveFragmentShader = await readFile(join(root, "public/assets/environment/exit-portal/materials/portal-field.frag.glsl"), "utf8");
+
+    expect(report).toMatchObject({ ok: true, promoted: [{ category: "environment", name: "exit-portal" }], issues: [] });
+    expect(liveSidecar.materials).toEqual([
+      { id: "portal-field", type: "shader", mesh: "exit-portal-field", definition: "materials/portal-field.json" },
+    ]);
+    expect(liveMaterialDefinition.uniforms.uTime).toEqual({ type: "time" });
+    expect(liveVertexShader).toBe("void main() {}");
+    expect(liveFragmentShader).toBe("void main() {}");
+  });
+
   it("seeds sidecars from category defaults when no daemon sidecar exists", async () => {
     const root = await createProjectRoot();
 
@@ -192,6 +243,7 @@ describe("public asset sidecar pipeline", () => {
     });
 
     expect(normalized.gameplay).toEqual(settings.gameplay);
+    expect(normalized.movement.sound).toBe("hunter-moving");
     expect(normalized.attacks[0]).toMatchObject({
       kind: "ranged",
       projectileSpeed: 9.5,
@@ -268,7 +320,7 @@ function legacyEnemySettings() {
     },
     collision: { radius: 0.7, height: 1.1 },
     health: { base: 58, levelGrowth: 14 },
-    movement: { speed: 2.35, levelSpeedGrowth: 0.05 },
+    movement: { speed: 2.35, levelSpeedGrowth: 0.05, sound: "hunter-moving" },
     spawnWeight: { base: 0.22, levelGrowth: 0.018, max: 0.38 },
     attacks: [
       {

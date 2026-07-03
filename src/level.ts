@@ -51,6 +51,8 @@ const DIAGONALS: TileCoord[] = [
   { x: -1, y: -1 },
 ];
 
+const BIO_VATS_PER_LEVEL = 2;
+
 export function generateLevel(mapDepth: number, rng: Rng = Math.random): LevelData {
   const width = LEVEL_WIDTH;
   const height = LEVEL_HEIGHT;
@@ -494,7 +496,6 @@ function placeEnvironmentalObjects(
   end: TileCoord,
   rng: Rng,
 ): EnvironmentalObject[] {
-  const targetCount = 2 + Math.floor(rng() * 2);
   const candidates = shuffle(
     [...walkable]
       .map(fromKey)
@@ -502,7 +503,28 @@ function placeEnvironmentalObjects(
     rng,
   );
   const objects: EnvironmentalObject[] = [];
+  const placements: Array<{ kind: EnvironmentAssetKind; count: number }> = [
+    { kind: "industrial-crate", count: 2 + Math.floor(rng() * 2) },
+    { kind: "bio-vat", count: BIO_VATS_PER_LEVEL },
+  ];
 
+  for (const placement of placements) {
+    objects.push(...placeEnvironmentalObjectKind(walkable, blocked, start, candidates, placement.kind, placement.count, rng));
+  }
+
+  return objects;
+}
+
+function placeEnvironmentalObjectKind(
+  walkable: Set<string>,
+  blocked: Set<string>,
+  start: TileCoord,
+  candidates: TileCoord[],
+  kind: EnvironmentAssetKind,
+  targetCount: number,
+  rng: Rng,
+): EnvironmentalObject[] {
+  const objects: EnvironmentalObject[] = [];
   for (const tile of candidates) {
     if (objects.length >= targetCount) break;
     const tileKey = key(tile);
@@ -514,7 +536,7 @@ function placeEnvironmentalObjects(
     }
 
     objects.push({
-      kind: "industrial-crate",
+      kind,
       tile,
       rotation: Math.floor(rng() * 4) * (Math.PI / 2),
     });

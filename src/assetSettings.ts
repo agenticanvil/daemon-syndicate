@@ -1,4 +1,5 @@
 import type { ResourceKind } from "./resourceTypes";
+import type { SoundId } from "./audio";
 
 type CollisionSettings = {
   radius: number;
@@ -50,6 +51,7 @@ export type EnemyAssetSettings = {
   movement: {
     speed: number;
     levelSpeedGrowth: number;
+    sound?: SoundId;
   };
   spawnWeight: EnemySpawnWeightSettings;
   attacks: EnemyAttackDefinition[];

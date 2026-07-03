@@ -2,7 +2,7 @@ import * as THREE from "three";
 import { GLTFLoader, type GLTF } from "three/examples/jsm/loaders/GLTFLoader.js";
 import type { EnemyAttackDefinition, PickupAssetSettings } from "./assetSettings";
 import type { AssetSidecar, EditorAssetRecord } from "./assetManifest";
-import { applyExitPortalFieldMaterial } from "./exitPortalFieldMaterial";
+import { applyBundledMaterialConventions, applyBundledShaderMaterials } from "./bundledShaderMaterials";
 import { createRenderer } from "./renderer";
 import type { ResourceKind } from "./resourceTypes";
 
@@ -214,7 +214,7 @@ async function startAssetEditorAsync(app: HTMLDivElement): Promise<void> {
         disposeGltf(gltf);
         return;
       }
-      loadedModel = createLoadedModel(record, gltf);
+      loadedModel = await createLoadedModel(record, gltf);
       scene.add(loadedModel.root);
       applyRenderMode();
       syncAnimationOptions(animationSelect, state, loadedModel);
@@ -229,13 +229,14 @@ async function startAssetEditorAsync(app: HTMLDivElement): Promise<void> {
     applyStateToControls();
   }
 
-  function createLoadedModel(record: EditorAssetRecord, gltf: GLTF): LoadedModel {
+  async function createLoadedModel(record: EditorAssetRecord, gltf: GLTF): Promise<LoadedModel> {
     const root = gltf.scene;
     const sidecar = activeSidecar();
     root.name = `${record.category}/${record.name}`;
     root.scale.setScalar(sidecar.model.scale ?? 1);
     root.rotation.y = sidecar.model.rotationY ?? 0;
     root.position.y = sidecar.model.floorOffset ?? 0;
+    await applyBundledShaderMaterials(root, sidecar, assetBaseUrl(record));
     applyGameMaterialConventions(root);
 
     const mixer = gltf.animations.length > 0 ? new THREE.AnimationMixer(root) : null;
@@ -892,6 +893,10 @@ function assetKey(record: EditorAssetRecord): string {
   return record.staged ? `_staged/${record.category}/${record.name}` : `${record.category}/${record.name}`;
 }
 
+function assetBaseUrl(record: EditorAssetRecord): string {
+  return record.modelUrl.slice(0, record.modelUrl.lastIndexOf("/") + 1);
+}
+
 function loadGltf(loader: GLTFLoader, url: string): Promise<GLTF> {
   return new Promise((resolve, reject) => loader.load(url, resolve, undefined, reject));
 }
@@ -1001,17 +1006,7 @@ function dropTableEditorRow(kind: ResourceKind, label: string): string {
 }
 
 function applyGameMaterialConventions(root: THREE.Object3D): void {
-  applyExitPortalFieldMaterial(root);
-  root.traverse((object) => {
-    if (!(object instanceof THREE.Mesh)) return;
-    object.castShadow = true;
-    object.receiveShadow = true;
-  });
-  const portalField = root.getObjectByName("exit-portal-field");
-  if (portalField instanceof THREE.Mesh) {
-    portalField.castShadow = false;
-    portalField.receiveShadow = false;
-  }
+  applyBundledMaterialConventions(root);
 }
 
 function setWireframe(root: THREE.Object3D, enabled: boolean): void {

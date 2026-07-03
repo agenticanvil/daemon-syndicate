@@ -16,6 +16,7 @@ describe("runtime GLB asset library", () => {
       "enemies/elite-enemy",
       "enemies/brute",
       "environment/industrial-crate",
+      "environment/bio-vat",
       "environment/exit-portal",
       "pickups/health-pickup",
       "pickups/ammo-pickup",

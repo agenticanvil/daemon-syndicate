@@ -27,6 +27,8 @@ export type Ui = {
   resumeButton: HTMLButtonElement;
   overlay: HTMLDivElement;
   pauseMenu: HTMLDivElement;
+  showLoading: (message: string) => void;
+  showStartError: (message: string) => void;
   showGameOver: (kills: number) => void;
   hideOverlay: () => void;
   setHudVisible: (visible: boolean) => void;
@@ -48,6 +50,7 @@ export function createUi(app: HTMLDivElement): Ui {
       <div class="start">
         <h1>Daemon Syndicate</h1>
         <p>Clear the corporate black-site. Manage health, ammunition, and energy while escalating incursions close in.</p>
+        <div class="start-status" id="startStatus" role="status" aria-live="polite"></div>
         <div class="start-actions">
           <label class="start-level">
             <span>Start Depth</span>
@@ -201,6 +204,7 @@ export function createUi(app: HTMLDivElement): Ui {
   const upgradeOptions = document.querySelector<HTMLDivElement>("#upgradeOptions")!;
   const pausePanel = document.querySelector<HTMLDivElement>(".pause-panel")!;
   const startButton = document.querySelector<HTMLButtonElement>("#start")!;
+  const startStatus = document.querySelector<HTMLDivElement>("#startStatus")!;
   const startMapDepth = document.querySelector<HTMLSelectElement>("#startMapDepth")!;
   const resumeButton = document.querySelector<HTMLButtonElement>("#resume")!;
   const settingsButton = document.querySelector<HTMLButtonElement>("#settingsButton")!;
@@ -275,6 +279,12 @@ export function createUi(app: HTMLDivElement): Ui {
     sfxVolumeValue.textContent = `${Math.round(audioSettings.sfxVolume * 100)}%`;
   }
 
+  function setStartBusy(busy: boolean): void {
+    startButton.disabled = busy;
+    startMapDepth.disabled = busy;
+    startButton.classList.toggle("loading", busy);
+  }
+
   movementOptions.forEach((option) => {
     option.addEventListener("click", () => {
       const nextMode = option.dataset.movementMode;
@@ -332,16 +342,43 @@ export function createUi(app: HTMLDivElement): Ui {
     resumeButton,
     overlay,
     pauseMenu,
+    showLoading(message: string) {
+      overlay.classList.remove("hidden");
+      hud.classList.add("hidden");
+      overlay.querySelector("h1")!.textContent = "Deploying";
+      overlay.querySelector("p")!.textContent = "Preparing mission assets before the arena starts.";
+      startStatus.textContent = message;
+      startStatus.classList.remove("error");
+      startButton.textContent = "Loading";
+      setStartBusy(true);
+    },
+    showStartError(message: string) {
+      overlay.classList.remove("hidden");
+      hud.classList.add("hidden");
+      overlay.querySelector("h1")!.textContent = "Deployment Failed";
+      overlay.querySelector("p")!.textContent = "Asset preparation did not complete. Check the missing file or network error and try again.";
+      startStatus.textContent = message;
+      startStatus.classList.add("error");
+      startButton.textContent = "Retry";
+      setStartBusy(false);
+    },
     showGameOver(kills: number) {
       overlay.classList.remove("hidden");
       hud.classList.add("hidden");
       overlay.querySelector("h1")!.textContent = "Signal Lost";
       overlay.querySelector("p")!.textContent =
         `The syndicate contained you after ${kills} confirmed kills. Redeploy to run the arena again.`;
+      startStatus.textContent = "";
+      startStatus.classList.remove("error");
       startButton.textContent = "Redeploy";
+      setStartBusy(false);
     },
     hideOverlay() {
       overlay.classList.add("hidden");
+      startStatus.textContent = "";
+      startStatus.classList.remove("error");
+      startButton.textContent = "Redeploy";
+      setStartBusy(false);
     },
     setHudVisible(visible: boolean) {
       hud.classList.toggle("hidden", !visible);

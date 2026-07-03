@@ -61,7 +61,7 @@ export async function startDevMap(app: HTMLDivElement): Promise<void> {
   app.innerHTML = `<div class="dev-map-hud" aria-label="Dev map overview"></div>`;
   const hud = app.querySelector<HTMLDivElement>(".dev-map-hud")!;
   const gltfAssets = await loadGltfAssetLibrary();
-  const world = createGameScene(app, gltfAssets);
+  const world = await createGameScene(app, gltfAssets);
   const input = new InputState();
   const clock = new THREE.Clock();
   const items = createDevMapItems();

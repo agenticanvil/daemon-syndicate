@@ -4,7 +4,7 @@ import type { GltfAssetLibrary } from "./gltfAssetFactory";
 import type { PlayerRig } from "./playerAsset";
 import type { ResourceKind } from "./resourceTypes";
 
-export const ENVIRONMENT_ASSET_KINDS = ["industrial-crate"] as const;
+export const ENVIRONMENT_ASSET_KINDS = ["industrial-crate", "bio-vat"] as const;
 
 export type EnvironmentAssetKind = (typeof ENVIRONMENT_ASSET_KINDS)[number];
 export type PickupAsset = { root: THREE.Object3D };

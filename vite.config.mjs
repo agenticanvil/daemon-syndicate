@@ -5,6 +5,7 @@ import { defineConfig } from "vite";
 
 const ASSET_CATEGORIES = new Set(["player", "enemies", "pickups", "environment"]);
 const SLUG_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+const SOUND_ID_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
 export default defineConfig({
   plugins: [
@@ -259,6 +260,7 @@ export async function promoteStagedAssets(root, options) {
       await fs.mkdir(dirname(modelFilePath(root, liveRequest)), { recursive: true });
       await fs.copyFile(modelFilePath(root, stagedRequest), modelFilePath(root, liveRequest));
       await fs.writeFile(sidecarFilePath(root, liveRequest), `${JSON.stringify(sidecar, null, 2)}\n`);
+      await copyBundledMaterialFiles(root, stagedRequest, liveRequest, sidecar);
       promoted.push({ category: record.category, name: record.name });
     } catch (error) {
       issues.push({
@@ -305,6 +307,13 @@ function sidecarFilePath(root, request) {
     ? resolve(root, "public/assets/_staged", request.category, request.name)
     : resolve(root, "public/assets", request.category, request.name);
   return resolve(base, `${request.name}.asset.json`);
+}
+
+function assetFilePath(root, request, file) {
+  const base = request.staged
+    ? resolve(root, "public/assets/_staged", request.category, request.name)
+    : resolve(root, "public/assets", request.category, request.name);
+  return resolve(base, normalizeAssetRelativePath(file, "asset file"));
 }
 
 export async function createDefaultSidecar(_root, request) {
@@ -403,6 +412,7 @@ export function normalizeAssetSidecar(value, request) {
     kind: settings.kind,
     model,
     ...(preview ? { preview } : {}),
+    ...normalizeBundledMaterials(value?.materials),
     collision: normalizeSidecarCollision(value?.collision ?? settings.collision),
     ...settingsWithoutCollision(settings),
   };
@@ -433,6 +443,23 @@ function normalizePreview(value) {
   };
 }
 
+function normalizeBundledMaterials(value) {
+  if (value === undefined) return {};
+  if (!Array.isArray(value)) throw new Error("materials must be an array");
+  const materials = value.map((material, index) => {
+    if (material?.type !== "shader") throw new Error(`materials[${index}].type must be shader`);
+    if (typeof material.id !== "string" || !isSlug(material.id)) throw new Error(`materials[${index}].id must be a slug`);
+    if (typeof material.mesh !== "string" || !material.mesh.trim()) throw new Error(`materials[${index}].mesh must be a mesh name`);
+    return {
+      id: material.id,
+      type: "shader",
+      mesh: material.mesh.trim(),
+      definition: normalizeAssetRelativePath(material.definition, `materials[${index}].definition`),
+    };
+  });
+  return materials.length ? { materials } : {};
+}
+
 function normalizeSidecarCollision(value) {
   const radius = Number(value?.radius);
   if (value?.type !== undefined && value.type !== "circle") throw new Error('collision.type must be "circle"');
@@ -440,6 +467,27 @@ function normalizeSidecarCollision(value) {
     throw new Error("collision.radius must be between 0.1 and 1.4");
   }
   return { type: "circle", radius: round(radius, 2) };
+}
+
+async function copyBundledMaterialFiles(root, stagedRequest, liveRequest, sidecar) {
+  for (const material of sidecar.materials ?? []) {
+    if (material.type !== "shader") continue;
+    const stagedDefinitionPath = assetFilePath(root, stagedRequest, material.definition);
+    const liveDefinitionPath = assetFilePath(root, liveRequest, material.definition);
+    await fs.mkdir(dirname(liveDefinitionPath), { recursive: true });
+    await fs.copyFile(stagedDefinitionPath, liveDefinitionPath);
+
+    const definition = JSON.parse(await fs.readFile(stagedDefinitionPath, "utf8"));
+    const shaderDirectory = dirname(material.definition);
+    for (const shaderFile of [definition.vertexShader, definition.fragmentShader]) {
+      const shaderFileName = normalizeAssetRelativePath(shaderFile, `${material.id} shader file`);
+      const shaderRelativePath = assetRelativeSiblingPath(shaderDirectory, shaderFileName, `${material.id} shader file`);
+      const stagedShaderPath = assetFilePath(root, stagedRequest, shaderRelativePath);
+      const liveShaderPath = assetFilePath(root, liveRequest, shaderRelativePath);
+      await fs.mkdir(dirname(liveShaderPath), { recursive: true });
+      await fs.copyFile(stagedShaderPath, liveShaderPath);
+    }
+  }
 }
 
 function settingsWithoutCollision(settings) {
@@ -469,6 +517,7 @@ function normalizeEnemySettings(value) {
   const health = normalizeEnemyHealth(value?.health);
   const speed = Number(value?.movement?.speed);
   const levelSpeedGrowth = Number(value?.movement?.levelSpeedGrowth);
+  const movementSound = normalizeEnemyMovementSound(value?.movement?.sound);
   const spawnWeight = normalizeSpawnWeight(value?.spawnWeight);
   const attacks = normalizeEnemyAttacks(value?.attacks);
   const dropTable = normalizeDropTable(value?.dropTable);
@@ -489,11 +538,20 @@ function normalizeEnemySettings(value) {
     movement: {
       speed: round(speed, 2),
       levelSpeedGrowth: round(levelSpeedGrowth, 3),
+      ...(movementSound === undefined ? {} : { sound: movementSound }),
     },
     spawnWeight,
     attacks,
     dropTable,
   };
+}
+
+function normalizeEnemyMovementSound(value) {
+  if (value === undefined) return undefined;
+  if (typeof value !== "string" || !SOUND_ID_PATTERN.test(value)) {
+    throw new Error("movement.sound must be a sound id slug");
+  }
+  return value;
 }
 
 function normalizeEnemyGameplay(value) {
@@ -789,6 +847,23 @@ async function fileExists(path) {
 
 function isSlug(value) {
   return SLUG_PATTERN.test(value);
+}
+
+function normalizeAssetRelativePath(value, name) {
+  if (typeof value !== "string" || !value.trim()) throw new Error(`${name} must be a relative file path`);
+  const normalized = value.trim();
+  if (normalized.startsWith("/") || normalized.includes("\\") || normalized.includes("\0")) {
+    throw new Error(`${name} must stay inside the asset folder`);
+  }
+  const parts = normalized.split("/");
+  if (parts.some((part) => part === "" || part === "." || part === "..")) {
+    throw new Error(`${name} must stay inside the asset folder`);
+  }
+  return normalized;
+}
+
+function assetRelativeSiblingPath(directory, file, name) {
+  return normalizeAssetRelativePath(directory === "." ? file : `${directory}/${file}`, name);
 }
 
 function labelFromSlug(value) {

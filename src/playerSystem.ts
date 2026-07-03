@@ -11,13 +11,10 @@ import type { VectorSnapshot } from "./vectorTypes";
 import type { PlayerDerivedStats } from "./upgrades";
 
 const PLAYER_MODEL_FORWARD_OFFSET = Math.PI;
-const PLAYER_FLASH_COLOR = 0xffffff;
-const PLAYER_LOW_HEALTH_COLOR = 0xff7474;
 
 export type PlayerDamageResult = {
   applied: boolean;
   gameOver: boolean;
-  flashColor?: number;
 };
 
 export type PlayerRenderState = {
@@ -148,15 +145,13 @@ export class PlayerSystem {
       this.resources.health = Math.max(1, this.resources.health);
       this.setStatus("shield", 1.2);
       this.setStatus("invulnerable", 1.2);
-      return { applied: true, gameOver: false, flashColor: PLAYER_FLASH_COLOR };
+      return { applied: true, gameOver: false };
     }
 
     this.setStatus("invulnerable", PLAYER_BALANCE.invulnerabilityDuration);
     return {
       applied: true,
       gameOver: this.resources.health <= 0,
-      flashColor:
-        this.resources.health <= PLAYER_BALANCE.lowHealthThreshold ? PLAYER_LOW_HEALTH_COLOR : PLAYER_FLASH_COLOR,
     };
   }
 

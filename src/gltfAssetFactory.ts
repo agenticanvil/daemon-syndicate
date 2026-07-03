@@ -4,7 +4,7 @@ import { clone as cloneSkeleton } from "three/examples/jsm/utils/SkeletonUtils.j
 import type { AssetSidecar } from "./assetManifest";
 import type { EnemyAsset, EnemyAssetAnimation, EnemyKind } from "./enemyContent";
 import type { EnvironmentAssetKind } from "./assetFactory";
-import { applyExitPortalFieldMaterial } from "./exitPortalFieldMaterial";
+import { applyBundledMaterialConventions, applyBundledShaderMaterials } from "./bundledShaderMaterials";
 import type { PlayerRig } from "./playerAsset";
 import type { ResourceKind } from "./resourceTypes";
 
@@ -29,6 +29,7 @@ const RUNTIME_GLB_ASSETS = [
   { category: "enemies", name: "elite-enemy" },
   { category: "enemies", name: "brute" },
   { category: "environment", name: "industrial-crate" },
+  { category: "environment", name: "bio-vat" },
   { category: "environment", name: "exit-portal" },
   { category: "pickups", name: "health-pickup" },
   { category: "pickups", name: "ammo-pickup" },
@@ -76,6 +77,7 @@ export async function loadGltfAssetLibrary(): Promise<GltfAssetLibrary> {
       const sidecar = (await sidecarResponse.json()) as AssetSidecar;
       const modelUrl = runtimeAssetModelUrl(asset, sidecar.model.file);
       const gltf = await loadGltf(loader, modelUrl);
+      await applyBundledShaderMaterials(gltf.scene, sidecar, runtimeAssetBaseUrl(asset));
       applyModelConventions(gltf.scene, sidecar);
       const runtimeAsset = {
         sidecar,
@@ -134,6 +136,10 @@ function runtimeAssetModelUrl(asset: (typeof RUNTIME_GLB_ASSETS)[number], file: 
   return `/assets/${asset.category}/${asset.name}/${file}`;
 }
 
+function runtimeAssetBaseUrl(asset: (typeof RUNTIME_GLB_ASSETS)[number]): string {
+  return `/assets/${asset.category}/${asset.name}/`;
+}
+
 function loadGltf(loader: GLTFLoader, url: string): Promise<GLTF> {
   return new Promise((resolve, reject) => {
     loader.load(url, resolve, undefined, reject);
@@ -144,17 +150,7 @@ function applyModelConventions(root: THREE.Object3D, sidecar: AssetSidecar): voi
   root.scale.setScalar(sidecar.model.scale ?? 1);
   root.rotation.y = sidecar.model.rotationY ?? 0;
   root.position.y = sidecar.model.floorOffset ?? 0;
-  applyExitPortalFieldMaterial(root);
-  root.traverse((object) => {
-    if (!(object instanceof THREE.Mesh)) return;
-    object.castShadow = true;
-    object.receiveShadow = true;
-  });
-  const portalField = root.getObjectByName("exit-portal-field");
-  if (portalField instanceof THREE.Mesh) {
-    portalField.castShadow = false;
-    portalField.receiveShadow = false;
-  }
+  applyBundledMaterialConventions(root);
 }
 
 function createGltfEnemyAsset(asset: RuntimeGltfAsset): EnemyAsset {
@@ -251,11 +247,9 @@ function createGltfPlayerRig(asset: RuntimeGltfAsset): PlayerRig {
           ? "fire"
           : state.damaged
             ? "damaged"
-            : state.lowHealth
-              ? "low-health"
-              : state.moving
-                ? "walk"
-                : "idle";
+            : state.moving
+              ? "walk"
+              : "idle";
       if (activeAnimation !== animation) {
         activeAnimation = animation;
         playAnimation(animation);
