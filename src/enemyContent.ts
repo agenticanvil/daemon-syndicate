@@ -1,5 +1,5 @@
 import type * as THREE from "three";
-import type { EnemyAssetSettings } from "../../assetSettings";
+import type { EnemyAssetSettings } from "./assetSettings";
 
 export type EnemyAssetAnimation = "idle" | "walk" | "melee" | "death";
 

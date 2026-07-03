@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import type { EnemyAsset, EnemyKind } from "./assets/enemies/enemyContent";
+import type { EnemyAsset, EnemyKind } from "./enemyContent";
 import type { GltfAssetLibrary } from "./gltfAssetFactory";
 import type { PlayerRig } from "./playerAsset";
 import type { ResourceKind } from "./resourceTypes";

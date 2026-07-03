@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { ENEMY_CONTENT, type EnemyKind } from "./assets/enemies/enemyContent";
+import { ENEMY_CONTENT, type EnemyKind } from "./enemyContent";
 import { PLAYER_SPEED, RETICLE_FLOOR_OFFSET, TILE_SIZE } from "./constants";
 import { ENVIRONMENT_ASSET_KINDS, type EnvironmentAssetKind } from "./assetFactory";
 import { DEFAULT_FLOOR_VARIANT_ID } from "./floorVariants";

@@ -1,4 +1,4 @@
-import { ENEMY_CONTENT, type EnemyKind } from "./assets/enemies/enemyContent";
+import { ENEMY_CONTENT, type EnemyKind } from "./enemyContent";
 import type { DropTable, EnemyAssetSettings, EnemyAttackDefinition, EnemySpawnWeightSettings } from "./assetSettings";
 import type { Rng } from "./rng";
 

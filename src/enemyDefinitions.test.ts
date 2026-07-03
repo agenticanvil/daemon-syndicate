@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { enemyContentFor } from "./assets/enemies/enemyContent";
+import { enemyContentFor } from "./enemyContent";
 import type { EnemyAssetSettings } from "./assetSettings";
 import {
   chooseEnemyDefinition,
