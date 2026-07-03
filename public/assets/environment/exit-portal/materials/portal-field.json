@@ -1,0 +1,21 @@
+{
+  "vertexShader": "portal-field.vert.glsl",
+  "fragmentShader": "portal-field.frag.glsl",
+  "uniforms": {
+    "uTime": {
+      "type": "time"
+    },
+    "uColorA": {
+      "type": "color",
+      "value": "#2fffea"
+    },
+    "uColorB": {
+      "type": "color",
+      "value": "#067d91"
+    }
+  },
+  "transparent": true,
+  "depthWrite": false,
+  "side": "double",
+  "blending": "additive"
+}

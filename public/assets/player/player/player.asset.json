@@ -1,0 +1,25 @@
+{
+  "schemaVersion": 1,
+  "id": "player",
+  "category": "player",
+  "label": "Player",
+  "kind": "player",
+  "model": {
+    "file": "player.glb",
+    "scale": 1,
+    "rotationY": 0,
+    "floorOffset": 0
+  },
+  "preview": {
+    "targetY": 0.9,
+    "defaultAnimation": "idle"
+  },
+  "collision": {
+    "type": "circle",
+    "radius": 0.55
+  },
+  "health": 100,
+  "movement": {
+    "speed": 7.5
+  }
+}
