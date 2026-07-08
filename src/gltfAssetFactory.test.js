@@ -3,10 +3,10 @@ import { join } from "node:path";
 import * as THREE from "three";
 import { describe, expect, it } from "vitest";
 import { createAssetFactory } from "./assetFactory";
-import { runtimeGltfAssetDescriptors } from "./gltfAssetFactory";
+import { attachWeaponToSocket, runtimeGltfAssetDescriptors } from "./gltfAssetFactory";
 
 describe("runtime GLB asset library", () => {
-  it("defines player, enemy, pickup, and environment assets as live GLB URLs", () => {
+  it("defines player, enemy, pickup, environment, and equipment assets as live GLB URLs", () => {
     const descriptors = runtimeGltfAssetDescriptors();
 
     expect(assetKeys(descriptors)).toEqual([
@@ -21,8 +21,9 @@ describe("runtime GLB asset library", () => {
       "pickups/health-pickup",
       "pickups/ammo-pickup",
       "pickups/energy-pickup",
+      "equipment/bolt-rifle",
     ]);
-    expect(new Set(descriptors.map((asset) => asset.category))).toEqual(new Set(["player", "enemies", "pickups", "environment"]));
+    expect(new Set(descriptors.map((asset) => asset.category))).toEqual(new Set(["player", "enemies", "pickups", "environment", "equipment"]));
 
     for (const asset of descriptors) {
       expect(asset.modelUrl).toBe(`/assets/${asset.category}/${asset.name}/${asset.name}.glb`);
@@ -30,6 +31,57 @@ describe("runtime GLB asset library", () => {
       expect(asset.modelUrl).not.toContain("atlas");
       expect(asset.modelUrl).not.toMatch(/\.png$/);
     }
+  });
+
+  it("uses only idle and walk animations for the runtime player asset", async () => {
+    const playerAsset = runtimeGltfAssetDescriptors().find((asset) => asset.category === "player");
+    expect(playerAsset).toMatchObject({ category: "player", name: "player" });
+
+    const gltfJson = await readGlbJson(join(process.cwd(), "public", playerAsset.modelUrl.replace(/^\//, "")));
+
+    expect(new Set((gltfJson.animations ?? []).map((animation) => animation.name))).toEqual(new Set(["idle", "walk"]));
+  });
+
+  it("defines player and weapon socket nodes in the runtime GLBs", async () => {
+    const playerGltfJson = await readGlbJson(join(process.cwd(), "public/assets/player/player/player.glb"));
+    const rifleGltfJson = await readGlbJson(join(process.cwd(), "public/assets/equipment/bolt-rifle/bolt-rifle.glb"));
+
+    expect(findNode(playerGltfJson, "socket.weapon.primary")).toMatchObject({
+      extras: { assetAnvil: { socket: true, id: "weapon.primary" } },
+    });
+    expect(findNode(rifleGltfJson, "socket.grip")).toMatchObject({
+      extras: { assetAnvil: { socket: true, id: "grip" } },
+    });
+  });
+
+  it("aligns a weapon grip socket to the player weapon socket idempotently", () => {
+    const playerRoot = new THREE.Group();
+    playerRoot.position.set(3, 0, -2);
+    playerRoot.rotation.y = 0.35;
+    const playerSocket = new THREE.Object3D();
+    playerSocket.name = "socket.weapon.primary";
+    playerSocket.position.set(0.4, 1.2, -0.2);
+    playerSocket.rotation.set(0.1, -0.2, 0.3);
+    playerRoot.add(playerSocket);
+
+    const weaponRoot = createTestWeaponRoot();
+
+    attachWeaponToSocket({ playerRoot, weaponRoot });
+    playerRoot.updateWorldMatrix(true, true);
+
+    expect(weaponRoot.parent).toBe(playerSocket);
+    expectWorldMatricesToMatch(weaponRoot.getObjectByName("socket.grip").matrixWorld, playerSocket.matrixWorld);
+
+    attachWeaponToSocket({ playerRoot, weaponRoot });
+
+    expect(playerSocket.children.filter((child) => child === weaponRoot)).toHaveLength(1);
+
+    const nextWeaponRoot = createTestWeaponRoot();
+    attachWeaponToSocket({ playerRoot, weaponRoot: nextWeaponRoot });
+
+    expect(weaponRoot.parent).toBeNull();
+    expect(nextWeaponRoot.parent).toBe(playerSocket);
+    expect(playerSocket.children.filter((child) => child.userData.daemonSyndicateEquippedWeapon)).toHaveLength(1);
   });
 
   it("keeps the game asset factory on the GLB library path", () => {
@@ -59,6 +111,7 @@ describe("runtime GLB asset library", () => {
       }),
       createPickupAsset: () => ({ root: pickupRoot }),
       createEnvironmentAsset: () => ({ root: environmentRoot }),
+      createEquipmentAsset: () => ({ root: new THREE.Group() }),
       createExitPortalAsset: () => ({ root: portalRoot }),
     });
 
@@ -88,6 +141,32 @@ describe("runtime GLB asset library", () => {
 
 function assetKeys(descriptors) {
   return descriptors.map((asset) => `${asset.category}/${asset.name}`);
+}
+
+function findNode(gltfJson, name) {
+  return (gltfJson.nodes ?? []).find((node) => node.name === name);
+}
+
+function createTestWeaponRoot() {
+  const weaponRoot = new THREE.Group();
+  weaponRoot.position.set(-2, 0.5, 1);
+  weaponRoot.rotation.set(-0.1, 0.7, 0.2);
+  const meshNode = new THREE.Group();
+  meshNode.position.set(0.3, -0.4, 0.5);
+  meshNode.rotation.set(0.2, 0.1, -0.15);
+  weaponRoot.add(meshNode);
+  const gripSocket = new THREE.Object3D();
+  gripSocket.name = "socket.grip";
+  gripSocket.position.set(-0.05, 0.2, 0.35);
+  gripSocket.rotation.set(0.05, -0.25, 0.12);
+  meshNode.add(gripSocket);
+  return weaponRoot;
+}
+
+function expectWorldMatricesToMatch(actual, expected) {
+  for (let index = 0; index < 16; index += 1) {
+    expect(actual.elements[index]).toBeCloseTo(expected.elements[index], 5);
+  }
 }
 
 async function readGlbJson(path) {

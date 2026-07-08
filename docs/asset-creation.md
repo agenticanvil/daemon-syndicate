@@ -13,13 +13,13 @@ cd ~/Developer/assetanvil
 bun run export:daemon -- --asset industrial-crate --category environment
 ```
 
-4. Open daemon's editor:
+4. Open daemon's staged assets view:
 
 ```text
-/dev/asset-editor?asset=environment/industrial-crate&staged=1
+/dev/assets
 ```
 
-5. Edit and save the daemon sidecar:
+5. Edit and save the daemon sidecar from the staged assets table:
 
 ```text
 public/assets/_staged/environment/industrial-crate/industrial-crate.asset.json
@@ -71,6 +71,6 @@ Before promoting an asset:
 - `bun run typecheck` and `bun run build` pass in assetanvil.
 - `bun run export:daemon -- --asset <asset-id> --category <category>` succeeds.
 - `npm run build` and `npm test` pass in daemon.
-- `/dev/asset-editor` loads the GLB and sidecar.
+- `/dev/asset-preview` loads the GLB and sidecar.
 - Collision radius and gameplay settings save into `<asset-id>.asset.json`.
 - Runtime loading is wired for that asset category before removing legacy procedural code.

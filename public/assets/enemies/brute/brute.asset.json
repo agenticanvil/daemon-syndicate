@@ -33,7 +33,8 @@
   },
   "movement": {
     "speed": 1.82,
-    "levelSpeedGrowth": 0.035
+    "levelSpeedGrowth": 0.035,
+    "sound": "brute-moving"
   },
   "spawnWeight": {
     "base": 0.045,

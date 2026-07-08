@@ -5,7 +5,7 @@ import type { AssetSidecar } from "./assetManifest";
 import type { EnemyAsset, EnemyAssetAnimation, EnemyKind } from "./enemyContent";
 import type { EnvironmentAssetKind } from "./assetFactory";
 import { applyBundledMaterialConventions, applyBundledShaderMaterials } from "./bundledShaderMaterials";
-import type { PlayerRig } from "./playerAsset";
+import type { PlayerRig, WeaponAttachmentOptions } from "./playerAsset";
 import type { ResourceKind } from "./resourceTypes";
 
 type RuntimeGltfAsset = {
@@ -19,8 +19,15 @@ export type GltfAssetLibrary = {
   createEnemyAsset: (kind: EnemyKind) => EnemyAsset | null;
   createPickupAsset: (kind: ResourceKind) => { root: THREE.Object3D } | null;
   createEnvironmentAsset: (kind: EnvironmentAssetKind) => { root: THREE.Object3D } | null;
+  createEquipmentAsset: (kind: EquipmentAssetKind) => { root: THREE.Object3D } | null;
   createExitPortalAsset: () => { root: THREE.Object3D } | null;
 };
+
+const PLAYER_WEAPON_SOCKET = "socket.weapon.primary";
+const WEAPON_GRIP_SOCKET = "socket.grip";
+const DEFAULT_PLAYER_WEAPON = "bolt-rifle";
+const WEAPON_ATTACHMENT_KEY = "daemonSyndicateEquippedWeapon";
+const SOCKET_DEBUG_HELPER_PREFIX = "debug.weaponSocket.";
 
 const RUNTIME_GLB_ASSETS = [
   { category: "player", name: "player" },
@@ -34,6 +41,7 @@ const RUNTIME_GLB_ASSETS = [
   { category: "pickups", name: "health-pickup" },
   { category: "pickups", name: "ammo-pickup" },
   { category: "pickups", name: "energy-pickup" },
+  { category: "equipment", name: "bolt-rifle" },
 ] as const;
 
 export type RuntimeGltfAssetDescriptor = (typeof RUNTIME_GLB_ASSETS)[number] & {
@@ -54,6 +62,8 @@ const ENEMY_ASSET_NAME_BY_KIND = {
   brute: "brute",
 } as const satisfies Record<EnemyKind, string>;
 
+export type EquipmentAssetKind = "bolt-rifle";
+
 export function runtimeGltfAssetDescriptors(): RuntimeGltfAssetDescriptor[] {
   return RUNTIME_GLB_ASSETS.map((asset) => ({
     ...asset,
@@ -67,6 +77,7 @@ export async function loadGltfAssetLibrary(): Promise<GltfAssetLibrary> {
   let playerAsset: RuntimeGltfAsset | null = null;
   const enemyAssets = new Map<string, RuntimeGltfAsset>();
   const environmentAssets = new Map<string, RuntimeGltfAsset>();
+  const equipmentAssets = new Map<string, RuntimeGltfAsset>();
   const pickupAssets = new Map<string, RuntimeGltfAsset>();
 
   await Promise.all(
@@ -88,7 +99,13 @@ export async function loadGltfAssetLibrary(): Promise<GltfAssetLibrary> {
         playerAsset = runtimeAsset;
       } else {
         const target =
-          asset.category === "enemies" ? enemyAssets : asset.category === "pickups" ? pickupAssets : environmentAssets;
+          asset.category === "enemies"
+            ? enemyAssets
+            : asset.category === "pickups"
+              ? pickupAssets
+              : asset.category === "equipment"
+                ? equipmentAssets
+                : environmentAssets;
         target.set(asset.name, runtimeAsset);
       }
     }),
@@ -97,7 +114,7 @@ export async function loadGltfAssetLibrary(): Promise<GltfAssetLibrary> {
   return {
     createPlayerRig() {
       if (!playerAsset) return null;
-      return createGltfPlayerRig(playerAsset);
+      return createGltfPlayerRig(playerAsset, equipmentAssets.get(DEFAULT_PLAYER_WEAPON) ?? null);
     },
     createEnemyAsset(kind) {
       const asset = enemyAssets.get(ENEMY_ASSET_NAME_BY_KIND[kind]);
@@ -117,6 +134,11 @@ export async function loadGltfAssetLibrary(): Promise<GltfAssetLibrary> {
       return {
         root: asset.template.clone(true),
       };
+    },
+    createEquipmentAsset(kind) {
+      const asset = equipmentAssets.get(kind);
+      if (!asset) return null;
+      return createGltfStaticAsset(asset);
     },
     createExitPortalAsset() {
       const asset = environmentAssets.get("exit-portal");
@@ -155,6 +177,7 @@ function applyModelConventions(root: THREE.Object3D, sidecar: AssetSidecar): voi
 
 function createGltfEnemyAsset(asset: RuntimeGltfAsset): EnemyAsset {
   const root = cloneSkeleton(asset.template) as THREE.Group;
+  cloneMaterials(root);
   const mixer = new THREE.AnimationMixer(root);
   const clips = new Map(asset.animations.map((clip) => [clip.name, clip]));
   let activeAction: THREE.AnimationAction | null = null;
@@ -194,16 +217,32 @@ function createGltfEnemyAsset(asset: RuntimeGltfAsset): EnemyAsset {
   };
 }
 
-function createGltfPlayerRig(asset: RuntimeGltfAsset): PlayerRig {
+function createGltfStaticAsset(asset: RuntimeGltfAsset): { root: THREE.Object3D } {
+  const root = asset.template.clone(true);
+  cloneMaterials(root);
+  return { root };
+}
+
+function cloneMaterials(root: THREE.Object3D): void {
+  root.traverse((object) => {
+    if (!(object instanceof THREE.Mesh)) return;
+    object.material = Array.isArray(object.material)
+      ? object.material.map((material) => material.clone())
+      : object.material.clone();
+  });
+}
+
+function createGltfPlayerRig(asset: RuntimeGltfAsset, defaultWeaponAsset: RuntimeGltfAsset | null): PlayerRig {
   const root = cloneSkeleton(asset.template) as THREE.Group;
+  cloneMaterials(root);
   const mixer = new THREE.AnimationMixer(root);
   const clips = new Map(asset.animations.map((clip) => [clip.name, clip]));
   const body = findMesh(root, "body");
-  const handSocket = ensureGroup(root, "weapon-socket");
+  const handSocket = findSocket(root, PLAYER_WEAPON_SOCKET);
+  if (!handSocket) throw new Error(`Missing player socket: ${PLAYER_WEAPON_SOCKET}`);
   let activeAction: THREE.AnimationAction | null = null;
   let activeAnimation: string | null = null;
-  let fireTimer = 0;
-  let equippedWeapon = handSocket.getObjectByName("pulse-rifle") ?? null;
+  let equippedWeapon: THREE.Object3D | null = null;
 
   const playAnimation = (animation: string): void => {
     const clip = clips.get(animation);
@@ -212,44 +251,33 @@ function createGltfPlayerRig(asset: RuntimeGltfAsset): PlayerRig {
     if (activeAction === nextAction) return;
     activeAction?.fadeOut(0.08);
     nextAction.reset().fadeIn(0.08).play();
-    if (animation === "fire" || animation === "damaged") {
-      nextAction.setLoop(THREE.LoopOnce, 1);
-      nextAction.clampWhenFinished = true;
-    } else {
-      nextAction.setLoop(THREE.LoopRepeat, Number.POSITIVE_INFINITY);
-      nextAction.clampWhenFinished = false;
-    }
+    nextAction.setLoop(THREE.LoopRepeat, Number.POSITIVE_INFINITY);
+    nextAction.clampWhenFinished = false;
     activeAction = nextAction;
   };
 
-  return {
+  const setWeapon = (weapon: THREE.Object3D, options: WeaponAttachmentOptions = {}): void => {
+    equippedWeapon = weapon;
+    attachWeaponToSocket({
+      playerRoot: root,
+      weaponRoot: equippedWeapon,
+      debugSockets: options.debugSockets ?? weaponSocketDebugEnabled(),
+    });
+  };
+
+  const rig: PlayerRig = {
     root,
     body,
     handSocket,
-    setWeapon(weapon: THREE.Object3D) {
-      if (equippedWeapon) handSocket.remove(equippedWeapon);
-      equippedWeapon = weapon;
-      handSocket.add(equippedWeapon);
-    },
-    triggerFire() {
-      fireTimer = 0.18;
-    },
+    setWeapon,
+    triggerFire() {},
     applyBasePose() {
       mixer.stopAllAction();
       activeAction = null;
       activeAnimation = null;
-      fireTimer = 0;
     },
     update(state, dt) {
-      fireTimer = Math.max(0, fireTimer - dt);
-      const animation =
-        fireTimer > 0
-          ? "fire"
-          : state.damaged
-            ? "damaged"
-            : state.moving
-              ? "walk"
-              : "idle";
+      const animation = state.moving ? "walk" : "idle";
       if (activeAnimation !== animation) {
         activeAnimation = animation;
         playAnimation(animation);
@@ -257,10 +285,100 @@ function createGltfPlayerRig(asset: RuntimeGltfAsset): PlayerRig {
       mixer.update(dt * Math.max(1, state.moving ? state.moveSpeed / 5 : 1));
     },
   };
+
+  if (defaultWeaponAsset) setWeapon(createGltfStaticAsset(defaultWeaponAsset).root);
+
+  return rig;
+}
+
+export function attachWeaponToSocket({
+  playerRoot,
+  weaponRoot,
+  playerSocketName = PLAYER_WEAPON_SOCKET,
+  weaponSocketName = WEAPON_GRIP_SOCKET,
+  debugSockets = false,
+}: {
+  playerRoot: THREE.Object3D;
+  weaponRoot: THREE.Object3D;
+  playerSocketName?: string;
+  weaponSocketName?: string;
+  debugSockets?: boolean;
+}): THREE.Object3D {
+  const playerSocket = findSocket(playerRoot, playerSocketName);
+  const weaponSocket = findSocket(weaponRoot, weaponSocketName);
+
+  if (!playerSocket) throw new Error(`Missing player socket: ${playerSocketName}`);
+  if (!weaponSocket) throw new Error(`Missing weapon socket: ${weaponSocketName}`);
+
+  playerRoot.updateWorldMatrix(true, true);
+  weaponRoot.updateWorldMatrix(true, true);
+  playerSocket.updateWorldMatrix(true, false);
+  weaponSocket.updateWorldMatrix(true, false);
+
+  const socketFromWeaponRoot = weaponRoot.matrixWorld.clone().invert().multiply(weaponSocket.matrixWorld);
+  const weaponRootFromSocket = socketFromWeaponRoot.clone().invert();
+
+  removePreviousWeaponAttachments(playerSocket, weaponRoot);
+  playerSocket.add(weaponRoot);
+  weaponRoot.userData[WEAPON_ATTACHMENT_KEY] = true;
+  weaponRoot.matrixAutoUpdate = true;
+  weaponRootFromSocket.decompose(weaponRoot.position, weaponRoot.quaternion, weaponRoot.scale);
+  weaponRoot.updateMatrix();
+  playerSocket.updateWorldMatrix(true, false);
+  weaponRoot.updateWorldMatrix(true, true);
+
+  setSocketDebugHelper(playerSocket, "player", debugSockets);
+  setSocketDebugHelper(weaponSocket, "grip", debugSockets);
+
+  return playerSocket;
+}
+
+function removePreviousWeaponAttachments(playerSocket: THREE.Object3D, nextWeapon: THREE.Object3D): void {
+  for (const child of [...playerSocket.children]) {
+    if (child !== nextWeapon && child.userData[WEAPON_ATTACHMENT_KEY]) playerSocket.remove(child);
+  }
+}
+
+function findSocket(root: THREE.Object3D, socketName: string): THREE.Object3D | null {
+  const named = root.getObjectByName(socketName);
+  if (named) return named;
+
+  const expectedSocketId = socketName.replace(/^socket\./, "");
+  let socket: THREE.Object3D | null = null;
+  root.traverse((object) => {
+    if (socket) return;
+    const assetAnvil = object.userData.assetAnvil as { socket?: boolean; id?: string } | undefined;
+    if (assetAnvil?.socket === true && assetAnvil.id === expectedSocketId) socket = object;
+  });
+  return socket;
+}
+
+function setSocketDebugHelper(socket: THREE.Object3D, id: string, enabled: boolean): void {
+  const helperName = `${SOCKET_DEBUG_HELPER_PREFIX}${id}`;
+  const existing = socket.getObjectByName(helperName);
+  if (!enabled) {
+    if (existing) socket.remove(existing);
+    return;
+  }
+  if (existing) return;
+  const helper = new THREE.AxesHelper(0.35);
+  helper.name = helperName;
+  helper.renderOrder = 1000;
+  socket.add(helper);
+}
+
+function weaponSocketDebugEnabled(): boolean {
+  if (typeof window === "undefined") return false;
+  try {
+    const params = new URLSearchParams(window.location.search);
+    return params.has("debugWeaponSockets") || window.localStorage.getItem("daemonSyndicate.debugWeaponSockets") === "1";
+  } catch {
+    return false;
+  }
 }
 
 function findMesh(root: THREE.Object3D, name: string): THREE.Mesh<THREE.BufferGeometry, THREE.MeshStandardMaterial> {
-  const object = root.getObjectByName(name) ?? root.getObjectByProperty("type", "Mesh");
+  const object = root.getObjectByName(name) ?? findFirstMesh(root);
   if (!(object instanceof THREE.Mesh)) throw new Error(`Missing GLB mesh: ${name}`);
   if (!(object.material instanceof THREE.MeshStandardMaterial)) {
     object.material = new THREE.MeshStandardMaterial({ color: 0x9fb4b8, roughness: 0.5, metalness: 0.55 });
@@ -268,24 +386,10 @@ function findMesh(root: THREE.Object3D, name: string): THREE.Mesh<THREE.BufferGe
   return object as THREE.Mesh<THREE.BufferGeometry, THREE.MeshStandardMaterial>;
 }
 
-function ensureGroup(root: THREE.Object3D, name: string): THREE.Group {
-  const object = root.getObjectByName(name);
-  if (object instanceof THREE.Group) return object;
-  if (object) {
-    const group = new THREE.Group();
-    group.name = object.name;
-    group.position.copy(object.position);
-    group.quaternion.copy(object.quaternion);
-    group.scale.copy(object.scale);
-    while (object.children.length > 0) {
-      group.add(object.children[0]);
-    }
-    object.parent?.add(group);
-    object.parent?.remove(object);
-    return group;
-  }
-  const group = new THREE.Group();
-  group.name = name;
-  root.add(group);
-  return group;
+function findFirstMesh(root: THREE.Object3D): THREE.Mesh | null {
+  let mesh: THREE.Mesh | null = null;
+  root.traverse((object) => {
+    if (!mesh && object instanceof THREE.Mesh) mesh = object;
+  });
+  return mesh;
 }

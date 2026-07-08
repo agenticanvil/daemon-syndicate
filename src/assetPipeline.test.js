@@ -9,7 +9,7 @@ import {
   parseAssetEndpointPath,
   promoteStagedAssets,
   validatePublicAssets,
-} from "../vite.config.mjs";
+} from "../scripts/assetPipeline.mjs";
 
 const tempRoots = [];
 
@@ -29,6 +29,11 @@ describe("public asset sidecar pipeline", () => {
       name: "industrial-crate",
       staged: true,
     });
+    expect(parseAssetEndpointPath("_staged/equipment/pulse-rifle")).toEqual({
+      category: "equipment",
+      name: "pulse-rifle",
+      staged: true,
+    });
     expect(parseAssetEndpointPath("environment/../crate")).toBeNull();
     expect(parseAssetEndpointPath("environment/industrial_crate")).toBeNull();
     expect(parseAssetEndpointPath("sfx/ui-click")).toBeNull();
@@ -38,18 +43,21 @@ describe("public asset sidecar pipeline", () => {
     const root = await createProjectRoot();
     await writeProjectFile(root, "public/assets/environment/industrial-crate/industrial-crate.glb", "glTF");
     await writeProjectFile(root, "public/assets/environment/no-model/nope.txt", "");
+    await writeProjectFile(root, "public/assets/_staged/equipment/pulse-rifle/pulse-rifle.glb", "glTF");
     await writeProjectFile(root, "public/assets/_staged/pickups/health-pickup/health-pickup.glb", "glTF");
 
     const assets = await discoverPublicAssets(root);
 
     expect(assets.map((asset) => `${asset.staged ? "_staged/" : ""}${asset.category}/${asset.name}`)).toEqual([
       "environment/industrial-crate",
+      "_staged/equipment/pulse-rifle",
       "_staged/pickups/health-pickup",
     ]);
     expect(assets[0].modelUrl).toBe("/assets/environment/industrial-crate/industrial-crate.glb");
-    expect(assets[1].modelUrl).toBe("/assets/_staged/pickups/health-pickup/health-pickup.glb");
-    expect(assets[1].liveModelExists).toBe(false);
-    expect(assets[1].liveSidecarExists).toBe(false);
+    expect(assets[1].modelUrl).toBe("/assets/_staged/equipment/pulse-rifle/pulse-rifle.glb");
+    expect(assets[2].modelUrl).toBe("/assets/_staged/pickups/health-pickup/health-pickup.glb");
+    expect(assets[2].liveModelExists).toBe(false);
+    expect(assets[2].liveSidecarExists).toBe(false);
   });
 
   it("reports whether staged model assets already have a live GLB and sidecar", async () => {
@@ -220,6 +228,28 @@ describe("public asset sidecar pipeline", () => {
       spawnWeight: { base: 1, levelGrowth: 0 },
       attacks: [{ kind: "melee", damage: 5, cooldown: 1, range: 0.5 }],
       dropTable: { chance: 0, entries: [{ kind: "health", weight: 1, amount: 1 }] },
+    });
+    expect(sidecar.collision.height).toBeUndefined();
+  });
+
+  it("seeds equipment sidecars as static object assets", async () => {
+    const root = await createProjectRoot();
+
+    const sidecar = await createDefaultSidecar(root, {
+      category: "equipment",
+      name: "pulse-rifle",
+      staged: true,
+    });
+
+    expect(sidecar).toMatchObject({
+      schemaVersion: 1,
+      id: "pulse-rifle",
+      category: "equipment",
+      label: "Pulse Rifle",
+      kind: "environment",
+      model: { file: "pulse-rifle.glb" },
+      preview: { targetY: 0.4 },
+      collision: { type: "circle", radius: 0.45 },
     });
     expect(sidecar.collision.height).toBeUndefined();
   });

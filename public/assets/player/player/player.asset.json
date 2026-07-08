@@ -11,8 +11,8 @@
     "floorOffset": 0
   },
   "preview": {
-    "targetY": 0.9,
-    "defaultAnimation": "idle"
+    "targetY": 0.6,
+    "defaultAnimation": "walking"
   },
   "collision": {
     "type": "circle",

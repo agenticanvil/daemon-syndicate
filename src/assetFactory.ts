@@ -1,6 +1,6 @@
 import * as THREE from "three";
 import type { EnemyAsset, EnemyKind } from "./enemyContent";
-import type { GltfAssetLibrary } from "./gltfAssetFactory";
+import type { EquipmentAssetKind, GltfAssetLibrary } from "./gltfAssetFactory";
 import type { PlayerRig } from "./playerAsset";
 import type { ResourceKind } from "./resourceTypes";
 
@@ -16,6 +16,7 @@ export type AssetFactory = {
   createEnemyAsset: (kind: EnemyKind) => EnemyAsset;
   createPickupAsset: (kind: ResourceKind) => PickupAsset;
   createEnvironmentAsset: (kind: EnvironmentAssetKind) => EnvironmentAsset;
+  createEquipmentAsset: (kind: EquipmentAssetKind) => { root: THREE.Object3D };
   createExitPortalAsset: () => PortalAsset;
 };
 
@@ -33,6 +34,7 @@ export function createAssetFactory(
       return requiredAsset(gltfAssets.createPickupAsset(kind), `pickup/${kind}`);
     },
     createEnvironmentAsset: (kind) => requiredAsset(gltfAssets.createEnvironmentAsset(kind), `environment/${kind}`),
+    createEquipmentAsset: (kind) => requiredAsset(gltfAssets.createEquipmentAsset(kind), `equipment/${kind}`),
     createExitPortalAsset: () => requiredAsset(gltfAssets.createExitPortalAsset(), "environment/exit-portal"),
   };
 }

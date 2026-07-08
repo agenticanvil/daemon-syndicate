@@ -1,24 +1,24 @@
-# Asset Editor
+# Asset Preview
 
-The asset editor is a dev-only GLB and sidecar editor. Open it at:
+The asset preview is a dev-only GLB inspection view. Open it at:
 
 ```text
-/dev/asset-editor
+/dev/asset-preview
 ```
 
 Open a specific live asset with:
 
 ```text
-/dev/asset-editor?asset=environment/industrial-crate
+/dev/asset-preview?asset=environment/industrial-crate
 ```
 
 Staged assets copied from assetanvil can be opened with:
 
 ```text
-/dev/asset-editor?asset=environment/industrial-crate&staged=1
+/dev/asset-preview?asset=environment/industrial-crate&staged=1
 ```
 
-The editor discovers `.glb` models under `public/assets/<category>/<asset-id>/` and `public/assets/_staged/<category>/<asset-id>/`. It loads `<asset-id>.asset.json` when present, otherwise it synthesizes editable defaults from the category and any legacy settings.
+The preview discovers `.glb` models under `public/assets/<category>/<asset-id>/` and `public/assets/_staged/<category>/<asset-id>/`. It loads `<asset-id>.asset.json` when present, otherwise it synthesizes defaults from the category and any legacy settings.
 
 ## Controls
 
@@ -28,9 +28,9 @@ The editor discovers `.glb` models under `public/assets/<category>/<asset-id>/` 
 - Animation: previews GLB animation clips through `THREE.AnimationMixer`.
 - Render Mode: switches shaded, wireframe, and skeleton-helper inspection.
 - Collision: edits the sidecar's single 2D circle radius with a numeric input or scene handle.
-- Asset Settings: edits daemon gameplay metadata in the sidecar, including enemy gameplay, spawn weight, attacks, drops, pickup resources, health, and movement.
+- Asset Settings: previews daemon gameplay metadata in the sidecar, including enemy gameplay, spawn weight, attacks, drops, pickup resources, health, and movement.
 
-The save button writes `public/assets/.../<asset-id>.asset.json`. The GLB remains owned by assetanvil.
+Use `/dev/assets` to edit sidecar JSON, validate staged assets, and promote staged GLBs into runtime assets. The GLB remains owned by assetanvil until promotion.
 
 ## Notes
 

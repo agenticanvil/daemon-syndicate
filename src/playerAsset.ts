@@ -7,11 +7,15 @@ type PlayerAnimationState = {
   lowHealth: boolean;
 };
 
+export type WeaponAttachmentOptions = {
+  debugSockets?: boolean;
+};
+
 export type PlayerRig = {
   root: THREE.Group;
   body: THREE.Mesh<THREE.BufferGeometry, THREE.MeshStandardMaterial>;
-  handSocket: THREE.Group;
-  setWeapon: (weapon: THREE.Object3D) => void;
+  handSocket: THREE.Object3D;
+  setWeapon: (weapon: THREE.Object3D, options?: WeaponAttachmentOptions) => void;
   triggerFire: () => void;
   applyBasePose: () => void;
   update: (state: PlayerAnimationState, dt: number) => void;

@@ -1,6 +1,6 @@
 import type { AssetSettings } from "./assetSettings";
 
-type AssetCategory = "player" | "enemies" | "pickups" | "environment";
+type AssetCategory = "player" | "enemies" | "pickups" | "environment" | "equipment";
 
 type AssetModelMetadata = {
   file: string;
