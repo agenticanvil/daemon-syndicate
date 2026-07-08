@@ -4,6 +4,7 @@ import { ENEMY_CONTENT, type EnemyKind } from "./enemyContent";
 import { PLAYER_SPEED, RETICLE_FLOOR_OFFSET, TILE_SIZE } from "./constants";
 import { ENVIRONMENT_ASSET_KINDS, type EnvironmentAssetKind } from "./assetFactory";
 import { DEFAULT_FLOOR_VARIANT_ID } from "./floorVariants";
+import { CAMERA_VIEW_OFFSETS } from "./gameCamera";
 import { loadGltfAssetLibrary } from "./gltfAssetFactory";
 import { InputState } from "./inputState";
 import { fromKey, key, tileToWorld, type LevelData, type TileCoord } from "./level";
@@ -55,7 +56,7 @@ const MAX_DEV_MAP_SIZE = 45;
 const MIN_DEV_MAP_SIZE = 17;
 const SECTION_MARGIN = 2;
 const ITEM_SPACING_TILES = 3;
-const CAMERA_OFFSET = new THREE.Vector3(15, 16, 15);
+const CAMERA_OFFSET = CAMERA_VIEW_OFFSETS.depth.clone();
 const PLAYER_MODEL_FORWARD_OFFSET = Math.PI;
 
 export async function startDevMap(app: HTMLDivElement): Promise<void> {

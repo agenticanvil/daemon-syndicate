@@ -5,6 +5,7 @@ import { PLAYER_SPEED, RETICLE_FLOOR_OFFSET, TILE_SIZE } from "./constants";
 import { disposeObject3D } from "./entityLifecycle";
 import { DEFAULT_FLOOR_VARIANT_ID } from "./floorVariants";
 import { createThreeGameplayView, preloadGameplayEffectAssets } from "./gameView";
+import { CAMERA_VIEW_OFFSETS } from "./gameCamera";
 import { loadGltfAssetLibrary } from "./gltfAssetFactory";
 import { InputState } from "./inputState";
 import { fromKey, key, tileToWorld, type LevelData, type TileCoord } from "./level";
@@ -28,7 +29,7 @@ type TestCorpse = {
   life: number;
 };
 
-const CAMERA_OFFSET = new THREE.Vector3(15, 16, 15);
+const CAMERA_OFFSET = CAMERA_VIEW_OFFSETS.depth.clone();
 const PLAYER_MODEL_FORWARD_OFFSET = Math.PI;
 const TEST_LEVEL_SIZE = 45;
 

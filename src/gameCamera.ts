@@ -5,10 +5,17 @@ import type { CameraSettings } from "./ui";
 
 export type CameraViewMode = "flat" | "depth";
 
+const CAMERA_DEPTH_YAW = Math.PI / 8;
+const CAMERA_DEPTH_HORIZONTAL_DISTANCE = Math.hypot(12, 12);
+
 export const DEFAULT_CAMERA_VIEW: CameraViewMode = "depth";
 export const CAMERA_VIEW_OFFSETS: Record<CameraViewMode, THREE.Vector3> = {
   flat: new THREE.Vector3(15, 16, 15),
-  depth: new THREE.Vector3(12, 26, 12),
+  depth: new THREE.Vector3(
+    Math.sin(CAMERA_DEPTH_YAW) * CAMERA_DEPTH_HORIZONTAL_DISTANCE,
+    26,
+    Math.cos(CAMERA_DEPTH_YAW) * CAMERA_DEPTH_HORIZONTAL_DISTANCE,
+  ),
 };
 
 const CAMERA_AIM_LEAD_DISTANCE = TILE_SIZE * 2.4;
