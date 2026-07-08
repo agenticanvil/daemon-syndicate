@@ -5,14 +5,10 @@ import { key, neighbors, tileToWorld, type LevelData, type TileCoord } from "./l
 
 export type LevelRenderMaterials = {
   floors: Record<FloorVariantId, THREE.MeshStandardMaterial>;
+  floorDecal: THREE.MeshBasicMaterial;
   edge: THREE.MeshStandardMaterial;
   void: THREE.MeshBasicMaterial;
   rim: THREE.MeshBasicMaterial;
-};
-
-type FloorBatch = {
-  mesh: THREE.InstancedMesh;
-  transforms: THREE.Matrix4[];
 };
 
 type FogBatch = {
@@ -44,6 +40,29 @@ const FOG_EDGE_DIRECTIONS: TileCoord[] = [
   { x: 0, y: 1 },
   { x: 0, y: -1 },
 ];
+const FLOOR_TEXTURE_SPAN_TILES = 2;
+const FLOOR_DECAL_OFFSET = 0.026;
+const FLOOR_DECAL_MIN_COUNT = 3;
+const FLOOR_DECAL_TILES_PER_PLACEMENT = 5;
+
+type FloorDecalDefinition = {
+  rect: AtlasRect;
+  widthTiles: number;
+  depthTiles: number;
+};
+
+type AtlasRect = {
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+};
+
+const FLOOR_DECALS: FloorDecalDefinition[] = [
+  { rect: atlasCell(0, 0), widthTiles: 1.8, depthTiles: 1.35 },
+  { rect: atlasCell(0, 2), widthTiles: 1.7, depthTiles: 1.0 },
+  { rect: atlasCell(1, 3), widthTiles: 1.25, depthTiles: 0.85 },
+];
 
 export function renderLevel(root: THREE.Group, level: LevelData, materials: LevelRenderMaterials): LevelEdgeVisibility {
   disposePreviousLevelRender(root);
@@ -59,34 +78,30 @@ export function renderLevel(root: THREE.Group, level: LevelData, materials: Leve
   root.add(voidPlane);
   disposables.push(voidPlane);
 
-  const tileGeometry = new THREE.PlaneGeometry(TILE_SIZE, TILE_SIZE);
-  const floorTransformsByVariant = new Map<FloorVariantId, THREE.Matrix4[]>();
+  const floorTilesByVariant = new Map<FloorVariantId, TileCoord[]>();
   for (const tileKey of level.walkable) {
     const [x, y] = tileKey.split(",").map(Number);
     const variant = level.floorVariants?.get(tileKey) ?? DEFAULT_FLOOR_VARIANT_ID;
-    const position = tileToWorld({ x, y });
-    const matrix = new THREE.Matrix4();
-    matrix.makeRotationX(-Math.PI / 2);
-    matrix.setPosition(position.x, 0, position.z);
-    const transforms = floorTransformsByVariant.get(variant) ?? [];
-    transforms.push(matrix);
-    floorTransformsByVariant.set(variant, transforms);
+    const tiles = floorTilesByVariant.get(variant) ?? [];
+    tiles.push({ x, y });
+    floorTilesByVariant.set(variant, tiles);
   }
 
-  const floorBatches: FloorBatch[] = [];
   for (const variant of FLOOR_VARIANTS) {
-    const transforms = floorTransformsByVariant.get(variant.id);
-    if (!transforms || transforms.length === 0) continue;
+    const tiles = floorTilesByVariant.get(variant.id);
+    if (!tiles || tiles.length === 0) continue;
 
-    const floorTiles = new THREE.InstancedMesh(tileGeometry, materials.floors[variant.id], transforms.length);
+    const floorTiles = new THREE.Mesh(createFloorGeometry(tiles), materials.floors[variant.id]);
     floorTiles.receiveShadow = true;
     floorTiles.frustumCulled = false;
-    floorBatches.push({
-      mesh: floorTiles,
-      transforms,
-    });
     root.add(floorTiles);
     disposables.push(floorTiles);
+  }
+
+  const floorDecals = createFloorDecals(level, materials.floorDecal);
+  if (floorDecals) {
+    root.add(floorDecals);
+    disposables.push(floorDecals);
   }
 
   const fogBatch = createFogBatch([...level.walkable], level.walkable);
@@ -132,12 +147,6 @@ export function renderLevel(root: THREE.Group, level: LevelData, materials: Leve
   root.userData[LEVEL_RENDER_DISPOSABLES_KEY] = disposables;
 
   const updateExploredTiles = (exploredKeys: ReadonlySet<string>): void => {
-    floorBatches.forEach((batch) => {
-      batch.transforms.forEach((floorTransform, index) => {
-        batch.mesh.setMatrixAt(index, floorTransform);
-      });
-      batch.mesh.instanceMatrix.needsUpdate = true;
-    });
     updateFogBatch(fogBatch, exploredKeys);
     edgeTransforms.forEach((edgeTransform, index) => {
       const visible = isConnectedExploredTile(edgeOwnerTiles[index], exploredKeys);
@@ -150,6 +159,147 @@ export function renderLevel(root: THREE.Group, level: LevelData, materials: Leve
   updateExploredTiles(new Set());
 
   return { updateExploredTiles };
+}
+
+function createFloorGeometry(tiles: TileCoord[]): THREE.BufferGeometry {
+  const positions: number[] = [];
+  const normals: number[] = [];
+  const uvs: number[] = [];
+  const indices: number[] = [];
+  const halfTile = TILE_SIZE * 0.5;
+
+  tiles.forEach((tile, tileIndex) => {
+    const position = tileToWorld(tile);
+    const left = position.x - halfTile;
+    const right = position.x + halfTile;
+    const top = position.z - halfTile;
+    const bottom = position.z + halfTile;
+    const u0 = tile.x / FLOOR_TEXTURE_SPAN_TILES;
+    const u1 = (tile.x + 1) / FLOOR_TEXTURE_SPAN_TILES;
+    const v0 = tile.y / FLOOR_TEXTURE_SPAN_TILES;
+    const v1 = (tile.y + 1) / FLOOR_TEXTURE_SPAN_TILES;
+
+    positions.push(left, 0, top, left, 0, bottom, right, 0, bottom, right, 0, top);
+    normals.push(0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0);
+    uvs.push(u0, v0, u0, v1, u1, v1, u1, v0);
+
+    const vertexOffset = tileIndex * 4;
+    indices.push(vertexOffset, vertexOffset + 1, vertexOffset + 2, vertexOffset, vertexOffset + 2, vertexOffset + 3);
+  });
+
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+  geometry.setAttribute("normal", new THREE.Float32BufferAttribute(normals, 3));
+  geometry.setAttribute("uv", new THREE.Float32BufferAttribute(uvs, 2));
+  geometry.setIndex(indices);
+  geometry.computeBoundingSphere();
+  return geometry;
+}
+
+function createFloorDecals(level: LevelData, material: THREE.MeshBasicMaterial): THREE.Mesh<THREE.BufferGeometry, THREE.MeshBasicMaterial> | undefined {
+  const placements = chooseFloorDecalPlacements(level);
+  if (placements.length === 0) return undefined;
+
+  const geometry = createFloorDecalGeometry(placements);
+  const mesh = new THREE.Mesh(geometry, material);
+  mesh.frustumCulled = false;
+  mesh.renderOrder = 1;
+  return mesh;
+}
+
+function chooseFloorDecalPlacements(level: LevelData): Array<FloorDecalDefinition & { tile: TileCoord; rotation: number; scale: number }> {
+  const walkableTiles = [...level.walkable]
+    .map((tileKey) => {
+      const [x, y] = tileKey.split(",").map(Number);
+      return { x, y };
+    })
+    .filter((tile) => !level.blocked.has(key(tile)) && tileDistance(tile, level.start) > 4 && walkableNeighborCount(level.walkable, tile) >= 3)
+    .sort((a, b) => floorHash(a, 17) - floorHash(b, 17));
+
+  const count = Math.max(FLOOR_DECAL_MIN_COUNT, Math.floor(level.walkable.size / FLOOR_DECAL_TILES_PER_PLACEMENT));
+  const selected: Array<FloorDecalDefinition & { tile: TileCoord; rotation: number; scale: number }> = [];
+
+  for (const tile of walkableTiles) {
+    if (selected.length >= count) break;
+    if (selected.some((placement) => tileDistance(placement.tile, tile) < 5)) continue;
+
+    const decal = FLOOR_DECALS[floorHash(tile, 31) % FLOOR_DECALS.length];
+    selected.push({
+      ...decal,
+      tile,
+      rotation: (floorHash(tile, 43) / 0xffffffff) * Math.PI * 2,
+      scale: 0.82 + (floorHash(tile, 59) / 0xffffffff) * 0.24,
+    });
+  }
+
+  return selected;
+}
+
+function createFloorDecalGeometry(placements: Array<FloorDecalDefinition & { tile: TileCoord; rotation: number; scale: number }>): THREE.BufferGeometry {
+  const positions: number[] = [];
+  const normals: number[] = [];
+  const uvs: number[] = [];
+  const indices: number[] = [];
+
+  placements.forEach((placement, placementIndex) => {
+    const center = tileToWorld(placement.tile);
+    const halfWidth = (placement.widthTiles * TILE_SIZE * placement.scale) * 0.5;
+    const halfDepth = (placement.depthTiles * TILE_SIZE * placement.scale) * 0.5;
+    const cos = Math.cos(placement.rotation);
+    const sin = Math.sin(placement.rotation);
+    const corners = [
+      { x: -halfWidth, z: -halfDepth, u: placement.rect.left, v: placement.rect.top + placement.rect.height },
+      { x: -halfWidth, z: halfDepth, u: placement.rect.left, v: placement.rect.top },
+      { x: halfWidth, z: halfDepth, u: placement.rect.left + placement.rect.width, v: placement.rect.top },
+      { x: halfWidth, z: -halfDepth, u: placement.rect.left + placement.rect.width, v: placement.rect.top + placement.rect.height },
+    ];
+
+    for (const corner of corners) {
+      const rotatedX = corner.x * cos - corner.z * sin;
+      const rotatedZ = corner.x * sin + corner.z * cos;
+      positions.push(center.x + rotatedX, FLOOR_DECAL_OFFSET, center.z + rotatedZ);
+      normals.push(0, 1, 0);
+      uvs.push(corner.u, 1 - corner.v);
+    }
+
+    const vertexOffset = placementIndex * 4;
+    indices.push(vertexOffset, vertexOffset + 1, vertexOffset + 2, vertexOffset, vertexOffset + 2, vertexOffset + 3);
+  });
+
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+  geometry.setAttribute("normal", new THREE.Float32BufferAttribute(normals, 3));
+  geometry.setAttribute("uv", new THREE.Float32BufferAttribute(uvs, 2));
+  geometry.setIndex(indices);
+  geometry.computeBoundingSphere();
+  return geometry;
+}
+
+function atlasCell(column: 0 | 1, row: 0 | 1 | 2 | 3): AtlasRect {
+  const paddingX = 0.025;
+  const paddingY = 0.018;
+  const cellWidth = 0.5;
+  const cellHeight = 0.25;
+  return {
+    left: column * cellWidth + paddingX,
+    top: row * cellHeight + paddingY,
+    width: cellWidth - paddingX * 2,
+    height: cellHeight - paddingY * 2,
+  };
+}
+
+function walkableNeighborCount(walkable: ReadonlySet<string>, tile: TileCoord): number {
+  return neighbors(tile).filter((neighbor) => walkable.has(key(neighbor))).length;
+}
+
+function tileDistance(a: TileCoord, b: TileCoord): number {
+  return Math.abs(a.x - b.x) + Math.abs(a.y - b.y);
+}
+
+function floorHash(tile: TileCoord, salt: number): number {
+  let hash = Math.imul(tile.x + 0x9e3779b9 + salt, 0x85ebca6b) ^ Math.imul(tile.y + 0xc2b2ae35 + salt, 0x27d4eb2f);
+  hash ^= hash >>> 16;
+  return hash >>> 0;
 }
 
 function createFogBatch(ownerKeys: string[], walkableKeys: ReadonlySet<string>): FogBatch {

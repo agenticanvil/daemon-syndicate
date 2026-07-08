@@ -39,6 +39,7 @@ export function createSceneMaterials(
   return {
     level: {
       floors: createFloorMaterials(loader, anisotropy, preloadedFloorTextures),
+      floorDecal: createFloorDecalMaterial(loader, anisotropy),
       edge: new THREE.MeshStandardMaterial({ color: 0x111b1e, roughness: 0.86, metalness: 0.32 }),
       void: new THREE.MeshBasicMaterial({ color: 0x010304 }),
       rim: new THREE.MeshBasicMaterial({ color: 0x2ddbd2, transparent: true, opacity: 0.36 }),
@@ -254,6 +255,21 @@ function createFloorMaterials(
   ) as Record<FloorVariantId, THREE.MeshStandardMaterial>;
 }
 
+function createFloorDecalMaterial(loader: THREE.TextureLoader, anisotropy: number): THREE.MeshBasicMaterial {
+  const map = loader.load("/assets/decals/floor-stains.png");
+  configureAtlasTexture(map, anisotropy, true);
+  return new THREE.MeshBasicMaterial({
+    map,
+    color: 0x7a4a2a,
+    transparent: true,
+    opacity: 0.22,
+    alphaTest: 0.02,
+    depthWrite: false,
+    depthTest: true,
+    side: THREE.DoubleSide,
+  });
+}
+
 function loadRepeatingTexture(
   loader: THREE.TextureLoader,
   url: string,
@@ -274,5 +290,16 @@ function configureRepeatingTexture(
   texture.wrapS = THREE.RepeatWrapping;
   texture.wrapT = THREE.RepeatWrapping;
   texture.repeat.set(1, 1);
+  texture.anisotropy = anisotropy;
+}
+
+function configureAtlasTexture(
+  texture: THREE.Texture,
+  anisotropy: number,
+  useSrgbColorSpace: boolean,
+): void {
+  if (useSrgbColorSpace) texture.colorSpace = THREE.SRGBColorSpace;
+  texture.wrapS = THREE.ClampToEdgeWrapping;
+  texture.wrapT = THREE.ClampToEdgeWrapping;
   texture.anisotropy = anisotropy;
 }

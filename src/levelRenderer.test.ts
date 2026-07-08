@@ -32,6 +32,7 @@ function createMaterials(): LevelRenderMaterials {
     floors: Object.fromEntries(
       FLOOR_VARIANTS.map((variant) => [variant.id, new THREE.MeshStandardMaterial()]),
     ) as LevelRenderMaterials["floors"],
+    floorDecal: new THREE.MeshBasicMaterial(),
     edge: new THREE.MeshStandardMaterial(),
     void: new THREE.MeshBasicMaterial(),
     rim: new THREE.MeshBasicMaterial(),

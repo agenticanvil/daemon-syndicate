@@ -11,10 +11,10 @@ export type FloorVariantDefinition = {
 export const FLOOR_VARIANTS = [
   {
     id: "cyber-panel",
-    mapUrl: "/assets/floors/cyber-panel.png",
+    mapUrl: "/assets/floors/muted-cyber-floor.png",
     weight: 3,
-    roughness: 0.76,
-    metalness: 0.46,
+    roughness: 0.8,
+    metalness: 0.42,
   },
 ] as const satisfies readonly FloorVariantDefinition[];
 

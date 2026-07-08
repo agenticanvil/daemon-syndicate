@@ -1137,7 +1137,7 @@ function createDeathDecalMaterials(
         uMaskSize: { value: new THREE.Vector2(LEVEL_WIDTH, LEVEL_HEIGHT) },
         uWorldGridSize: { value: new THREE.Vector2(LEVEL_WIDTH, LEVEL_HEIGHT) },
         uTileSize: { value: TILE_SIZE },
-        uOpacity: { value: 0.9 },
+        uOpacity: { value: 0.48 },
       },
       vertexShader: `
         varying vec2 vUv;
