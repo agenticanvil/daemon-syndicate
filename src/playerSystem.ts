@@ -44,11 +44,21 @@ export class PlayerSystem {
   readonly collisionBody: CollisionBody2D;
 
   private readonly movementInput = new THREE.Vector3();
+  private readonly aimDirection = new THREE.Vector3();
+  private readonly dashDirection = new THREE.Vector3();
   private readonly statusEffects: StatusEffect[] = [];
   private rotationY = 0;
   private moving = false;
   private dashTimer = 0;
   private emergencyShieldReady = true;
+  private readonly renderStateValue: PlayerRenderState = {
+    position: this.position,
+    rotationY: 0,
+    moving: false,
+    moveSpeed: PLAYER_BALANCE.speed,
+    damaged: false,
+    lowHealth: false,
+  };
 
   constructor(
     private readonly getLevel: () => LevelData,
@@ -112,21 +122,19 @@ export class PlayerSystem {
   }
 
   updateAim(aimWorld: THREE.Vector3): void {
-    const aim = aimWorld.clone().sub(this.position).setY(0);
+    const aim = this.aimDirection.copy(aimWorld).sub(this.position).setY(0);
     if (aim.lengthSq() > 0.01) {
       this.rotationY = Math.atan2(aim.x, aim.z) + PLAYER_MODEL_FORWARD_OFFSET;
     }
   }
 
   renderState(): PlayerRenderState {
-    return {
-      position: this.position,
-      rotationY: this.rotationY,
-      moving: this.moving,
-      moveSpeed: this.getStats().movementSpeed,
-      damaged: this.hasStatus("invulnerable"),
-      lowHealth: this.resources.health <= PLAYER_BALANCE.lowHealthThreshold,
-    };
+    this.renderStateValue.rotationY = this.rotationY;
+    this.renderStateValue.moving = this.moving;
+    this.renderStateValue.moveSpeed = this.getStats().movementSpeed;
+    this.renderStateValue.damaged = this.hasStatus("invulnerable");
+    this.renderStateValue.lowHealth = this.resources.health <= PLAYER_BALANCE.lowHealthThreshold;
+    return this.renderStateValue;
   }
 
   takeDamage(amount: number): PlayerDamageResult {
@@ -159,7 +167,7 @@ export class PlayerSystem {
     const stats = this.getStats();
     if (!stats.dashUnlocked || this.dashTimer > 0 || this.resources.energy < stats.dashEnergyCost) return false;
 
-    const direction = command.movement.clone().setY(0);
+    const direction = this.dashDirection.copy(command.movement).setY(0);
     if (direction.lengthSq() <= 0.001) {
       direction.copy(command.aimWorld).sub(this.position).setY(0);
     }

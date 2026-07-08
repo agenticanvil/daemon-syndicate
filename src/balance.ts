@@ -24,6 +24,7 @@ export const WEAPON_BALANCE = {
     projectileLife: 1.05,
     projectileRadius: 0.28,
     spawnOffset: 0.8,
+    muzzleSideOffset: 0.32,
     spawnHeight: 0.88,
   },
   nova: {
@@ -31,6 +32,9 @@ export const WEAPON_BALANCE = {
     energyCost: 35,
     damage: 58,
     radius: 4.25,
+    duration: 0.58,
+    startScale: 0.28,
+    expansionPower: 2.2,
     pushDistance: 1.2,
     lingerScalePerSecond: 1.4,
     fadePerSecond: 1.2,
@@ -49,10 +53,6 @@ export const ENEMY_BALANCE = {
   pathRefreshJitter: 0.08,
   waypointReachedDistance: 0.35,
   maxLevelEnemyCount: 48,
-} as const;
-
-export const DROP_BALANCE = {
-  pickupLife: 18,
 } as const;
 
 export const EFFECT_BALANCE = {

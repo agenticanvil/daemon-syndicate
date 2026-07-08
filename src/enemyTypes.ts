@@ -27,6 +27,8 @@ export type Enemy = {
   path?: string[];
   pathTarget?: string;
   pathRefreshTimer?: number;
+  movementJukeTimer?: number;
+  movementJukeSign?: number;
   animation: EnemyAnimation;
 };
 

@@ -1,7 +1,7 @@
 import * as THREE from "three";
 import { ENEMY_BALANCE } from "./balance";
 import { distance2D, withinRadius2D, type CollisionBody2D, type CollisionLayer } from "./collision";
-import { findProjectileWallImpact } from "./combatSystem";
+import { findProjectileWallImpactPosition } from "./combatSystem";
 import { canFireEnemyProjectile, updateEnemyBehavior } from "./enemyBehavior";
 import {
   chooseEnemyDefinition,
@@ -43,6 +43,8 @@ export type EnemySystemSnapshot = Array<{
   path?: string[];
   pathTarget?: string;
   pathRefreshTimer?: number;
+  movementJukeTimer?: number;
+  movementJukeSign?: number;
 }>;
 
 export type EnemyProjectileSystemSnapshot = Array<{
@@ -58,6 +60,8 @@ export type EnemyProjectileSystemSnapshot = Array<{
 export class EnemySystem {
   private readonly enemies: Enemy[] = [];
   private readonly enemyProjectiles: EnemyProjectile[] = [];
+  private readonly previousProjectilePosition = new THREE.Vector3();
+  private readonly wallImpactPosition = new THREE.Vector3();
   private nextEnemyId = 1;
   private nextEnemyProjectileId = 1;
 
@@ -132,6 +136,7 @@ export class EnemySystem {
       if (enemy.health <= 0 && enemy.deathTimer === undefined) {
         enemy.deathTimer = ENEMY_BALANCE.deathDuration;
         enemy.animation = "death";
+        this.emitEffect({ type: "enemyDeath", position: enemy.position.clone() });
       }
 
       if (enemy.deathTimer !== undefined) {
@@ -142,6 +147,7 @@ export class EnemySystem {
 
       const behavior = updateEnemyBehavior({
         enemy,
+        enemies: this.enemies,
         dt,
         level: this.getLevel(),
         playerPosition: this.getPlayerPosition(),
@@ -190,6 +196,8 @@ export class EnemySystem {
       path: enemy.path ? [...enemy.path] : undefined,
       pathTarget: enemy.pathTarget,
       pathRefreshTimer: enemy.pathRefreshTimer,
+      movementJukeTimer: enemy.movementJukeTimer,
+      movementJukeSign: enemy.movementJukeSign,
     }));
   }
 
@@ -298,17 +306,16 @@ export class EnemySystem {
 
   private updateEnemyProjectiles(dt: number, damagedPlayerThisFrame: boolean): boolean {
     for (const projectile of this.enemyProjectiles) {
-      const previousPosition = projectile.position.clone();
+      const previousPosition = this.previousProjectilePosition.copy(projectile.position);
       projectile.position.addScaledVector(projectile.velocity, dt);
       projectile.life -= dt;
 
-      const wallImpact = findProjectileWallImpact(this.getLevel(), previousPosition, projectile.position);
-      if (wallImpact) {
-        projectile.position.copy(wallImpact.position);
+      if (findProjectileWallImpactPosition(this.getLevel(), previousPosition, projectile.position, this.wallImpactPosition)) {
+        projectile.position.copy(this.wallImpactPosition);
         projectile.life = 0;
         this.emitEffect({
           type: "projectileImpact",
-          position: wallImpact.position.clone(),
+          position: this.wallImpactPosition.clone(),
           incomingVelocity: projectile.velocity.clone(),
         });
         continue;

@@ -1,6 +1,7 @@
 import * as THREE from "three";
 import { describe, expect, it } from "vitest";
 import { CombatSystem, findProjectileWallImpact } from "./combatSystem";
+import { WEAPON_BALANCE } from "./balance";
 import type { GameEffect } from "./gameEffects";
 import { key, tileToWorld, type LevelData, type TileCoord } from "./level";
 import type { PlayerResources } from "./resourceTypes";
@@ -19,6 +20,25 @@ function levelWithWalkable(tiles: TileCoord[]): LevelData {
     blocked: new Set(),
     environmentalObjects: [],
     spawnPoints: [],
+  };
+}
+
+function enemyAt(id: number, x: number, z: number, collisionLayer = 1): Enemy {
+  return {
+    id,
+    kind: "leanHunter",
+    enemyLevel: 1,
+    position: new THREE.Vector3(x, 0, z),
+    facingYaw: 0,
+    collisionLayer,
+    health: 100,
+    speed: 0,
+    xpReward: 0,
+    radius: 0.48,
+    attack: { kind: "melee", range: 1, damage: 1, cooldown: 1 },
+    dropTable: { chance: 0, entries: [] },
+    attackTimer: 0,
+    animation: "idle",
   };
 }
 
@@ -114,5 +134,58 @@ describe("CombatSystem projectiles", () => {
     if (effects[0].type !== "projectileImpact") throw new Error("Expected projectile impact effect");
     expect(effects[0].position).toBeInstanceOf(THREE.Vector3);
     expect(effects[0].incomingVelocity).toBeInstanceOf(THREE.Vector3);
+  });
+});
+
+describe("CombatSystem nova", () => {
+  it("damages enemies that enter the upgraded nova radius while the pulse is active", () => {
+    const effects: GameEffect[] = [];
+    const playerPosition = new THREE.Vector3(0, 0, 0);
+    const resources: PlayerResources = { health: 100, ammo: 10, energy: 100 };
+    const ranks = createUpgradeRanks();
+    ranks.novaCapacitor = 2;
+    const stats = derivePlayerStats(ranks);
+    const initialEnemy = enemyAt(1, stats.novaRadius * WEAPON_BALANCE.nova.startScale - 0.1, 0);
+    const enteringEnemy = enemyAt(2, stats.novaRadius + 2, 0);
+    const delayedEnemy = enemyAt(3, stats.novaRadius - 0.05, 0);
+    const otherLayerEnemy = enemyAt(4, 1, 0, 2);
+    const enemies = [initialEnemy, enteringEnemy, delayedEnemy, otherLayerEnemy];
+    const level = levelWithWalkable([{ x: 0, y: 0 }]);
+    const hits: Array<{ id: number; amount: number }> = [];
+    const combat = new CombatSystem(
+      (effect) => effects.push(effect),
+      resources,
+      { position: playerPosition, radius: 0.55, collisionLayer: 1 },
+      () => playerPosition,
+      () => 1,
+      () => level,
+      () => stats,
+      () => enemies,
+      (target: Enemy, amount: number) => {
+        hits.push({ id: target.id, amount });
+        target.health -= amount;
+      },
+    );
+
+    expect(combat.fireNova()).toBe(true);
+    enteringEnemy.position.set(stats.novaRadius - 0.05, 0, 0);
+    expect(hits).toEqual([{ id: initialEnemy.id, amount: stats.novaDamage }]);
+
+    combat.updateProjectiles(WEAPON_BALANCE.nova.duration * 0.5);
+    expect(hits).toEqual([{ id: initialEnemy.id, amount: stats.novaDamage }]);
+
+    combat.updateProjectiles(WEAPON_BALANCE.nova.duration * 0.49);
+
+    expect(hits).toEqual([
+      { id: initialEnemy.id, amount: stats.novaDamage },
+      { id: enteringEnemy.id, amount: stats.novaDamage },
+      { id: delayedEnemy.id, amount: stats.novaDamage },
+    ]);
+    expect(effects).toEqual([{ type: "nova", position: playerPosition, radius: stats.novaRadius }]);
+    expect(resources.energy).toBe(100 - WEAPON_BALANCE.nova.energyCost);
+    expect(initialEnemy.position.x).toBeCloseTo(
+      stats.novaRadius * WEAPON_BALANCE.nova.startScale - 0.1 + WEAPON_BALANCE.nova.pushDistance,
+    );
+    expect(otherLayerEnemy.health).toBe(100);
   });
 });

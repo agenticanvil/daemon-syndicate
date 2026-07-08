@@ -1,36 +1,30 @@
 import * as THREE from "three";
-import type { GameAudio, LoopingSound, SoundId } from "./audio";
+import type { GameAudio } from "./audio";
 import { TILE_SIZE } from "./constants";
 import { EntityViewSync } from "./entityViewSync";
 import type { GameEffect } from "./gameEffects";
-import { createThreeGameplayView, type GameplayView } from "./gameView";
+import { GameAudioFeedback } from "./gameAudioFeedback";
+import { GameplayCameraController } from "./gameCamera";
+import { HudPresenter } from "./gameHud";
+import { createThreeGameplayView, type GameplayEffectAssets, type GameplayView } from "./gameView";
 import { GameSimulation, type DebugSpawnPosition, type GameSimulationSnapshot, type GameStepResult } from "./gameSimulation";
 import { InputState } from "./inputState";
-import { movementInputFor } from "./movement";
 import type { PerfRecorder } from "./perf";
-import { idlePlayerCommand, type PlayerCommand } from "./playerCommand";
+import { PlayerCommandBuilder } from "./playerCommandBuilder";
 import type { Rng } from "./rng";
 import type { GameScene } from "./scene";
-import type { PlayerResources, ResourceKind } from "./resourceTypes";
-import type { Ui } from "./ui";
+import type { PlayerResources } from "./resourceTypes";
+import { DEFAULT_CAMERA_SETTINGS, type Ui } from "./ui";
 import type { UpgradeId } from "./upgrades";
 
 type GameOptions = {
   audio?: GameAudio;
+  effectAssets?: GameplayEffectAssets;
   rng?: Rng;
   seed?: string;
 };
 
 export type { DebugSpawnPosition };
-
-const PICKUP_SOUNDS: Record<ResourceKind, SoundId> = {
-  health: "pickup-health",
-  ammo: "pickup-ammo",
-  energy: "pickup-energy",
-};
-
-const ENEMY_MOVEMENT_FULL_VOLUME_TILES = 1;
-const ENEMY_MOVEMENT_SILENT_TILES = 10;
 
 export class Game {
   private readonly clock = new THREE.Clock();
@@ -39,12 +33,16 @@ export class Game {
   private readonly view: GameplayView;
   private readonly simulation: GameSimulation;
   private readonly entityViews: EntityViewSync;
-  private readonly audio?: GameAudio;
-  private readonly enemyMovementAudio = new Map<number, { sound: SoundId; loop: LoopingSound }>();
+  private readonly camera: GameplayCameraController;
+  private readonly audioFeedback: GameAudioFeedback;
+  private readonly hud: HudPresenter;
+  private readonly commandBuilder: PlayerCommandBuilder;
+  private readonly eventDisposers: Array<() => void> = [];
 
   private fpsVisible = false;
   private nextFpsHudUpdateAt = 0;
   private selectingUpgrade = false;
+  private animationFrameId: number | undefined;
 
   constructor(
     private readonly world: GameScene,
@@ -52,25 +50,50 @@ export class Game {
     private readonly perf: PerfRecorder,
     options: GameOptions = {},
   ) {
-    this.audio = options.audio;
-    this.view = createThreeGameplayView(world);
+    this.view = createThreeGameplayView(world, options.effectAssets);
     this.entityViews = new EntityViewSync(this.view);
     this.simulation = new GameSimulation(options);
+    this.camera = new GameplayCameraController(() => world.camera, () => world.cameraView, DEFAULT_CAMERA_SETTINGS);
+    this.audioFeedback = new GameAudioFeedback(options.audio);
+    this.hud = new HudPresenter(ui);
+    this.commandBuilder = new PlayerCommandBuilder(this.input, () => world.camera);
+    this.ui.onCameraSettingsChange((settings) => {
+      this.camera.setSettings(settings);
+    });
     this.resetViewForSimulation();
   }
 
   bindEvents(): void {
-    window.addEventListener("resize", this.world.resize);
-    window.addEventListener("pointermove", this.updatePointerWorld);
-    window.addEventListener("pointerdown", this.handlePointerDown);
-    window.addEventListener("contextmenu", (event) => event.preventDefault());
-    window.addEventListener("keydown", this.handleKeyDown);
-    window.addEventListener("keyup", (event) => this.input.deleteKey(event.code));
-    this.ui.resumeButton.addEventListener("click", () => this.setPaused(false));
+    this.addWindowListener("resize", this.world.resize);
+    this.addWindowListener("pointermove", this.updatePointerWorld);
+    this.addWindowListener("pointerdown", this.handlePointerDown);
+    this.addWindowListener("contextmenu", this.preventContextMenu);
+    this.addWindowListener("keydown", this.handleKeyDown);
+    this.addWindowListener("keyup", this.handleKeyUp);
+    const handleResumeClick = (): void => this.setPaused(false);
+    const handleMainMenuClick = (): void => this.exitToMainMenu();
+    this.ui.resumeButton.addEventListener("click", handleResumeClick);
+    this.ui.mainMenuButton.addEventListener("click", handleMainMenuClick);
+    this.eventDisposers.push(() => this.ui.resumeButton.removeEventListener("click", handleResumeClick));
+    this.eventDisposers.push(() => this.ui.mainMenuButton.removeEventListener("click", handleMainMenuClick));
   }
 
   startLoop(): void {
+    if (this.animationFrameId !== undefined) return;
     this.animate();
+  }
+
+  dispose(): void {
+    if (this.animationFrameId !== undefined) {
+      cancelAnimationFrame(this.animationFrameId);
+      this.animationFrameId = undefined;
+    }
+    for (const dispose of this.eventDisposers.splice(0)) {
+      dispose();
+    }
+    this.entityViews.clear();
+    this.view.dispose();
+    this.audioFeedback.stopEnemyMovement();
   }
 
   startNewRun(mapDepth = 1): void {
@@ -81,8 +104,8 @@ export class Game {
     this.ui.hideUpgradeSelection();
     this.ui.setHudVisible(true);
     this.ui.setPaused(false);
-    this.updateHud();
-    this.audio?.play("level-transition", { volume: 0.62 });
+    this.hud.update(this.simulation);
+    this.audioFeedback.playStartRun();
   }
 
   snapshot(): GameSimulationSnapshot {
@@ -95,7 +118,7 @@ export class Game {
 
   grantResources(resources: Partial<PlayerResources>): void {
     this.simulation.grantResources(resources);
-    this.updateHud();
+    this.hud.update(this.simulation);
   }
 
   private readonly updatePointerWorld = (event: PointerEvent): void => {
@@ -106,8 +129,16 @@ export class Game {
     this.input.updatePointerWorldFromCamera(this.world.camera, this.world.floor, this.world.reticle);
   }
 
+  private addWindowListener<K extends keyof WindowEventMap>(
+    type: K,
+    listener: (event: WindowEventMap[K]) => void,
+  ): void {
+    window.addEventListener(type, listener as EventListener);
+    this.eventDisposers.push(() => window.removeEventListener(type, listener as EventListener));
+  }
+
   private readonly handlePointerDown = (event: PointerEvent): void => {
-    this.unlockAudio();
+    this.audioFeedback.unlock();
     this.updatePointerWorld(event);
     if (!this.canAct()) return;
     if (event.button === 0) this.input.requestPrimaryFire();
@@ -115,7 +146,7 @@ export class Game {
   };
 
   private readonly handleKeyDown = (event: KeyboardEvent): void => {
-    this.unlockAudio();
+    this.audioFeedback.unlock();
     if (event.code === "KeyP") {
       if (!event.repeat) {
         this.fpsVisible = !this.fpsVisible;
@@ -145,6 +176,14 @@ export class Game {
     }
   };
 
+  private readonly handleKeyUp = (event: KeyboardEvent): void => {
+    this.input.deleteKey(event.code);
+  };
+
+  private readonly preventContextMenu = (event: MouseEvent): void => {
+    event.preventDefault();
+  };
+
   private canAct(): boolean {
     return this.simulation.isStarted && !this.simulation.isGameOver && !this.simulation.isPaused;
   }
@@ -154,13 +193,25 @@ export class Game {
     this.simulation.setPaused(paused);
     this.ui.setPaused(paused);
     if (changed) {
-      this.audio?.play("ui-click", { volume: paused ? 0.42 : 0.58, playbackRate: paused ? 0.86 : 1.06 });
+      this.audioFeedback.playPauseChanged(paused);
     }
   }
 
+  private exitToMainMenu(): void {
+    this.selectingUpgrade = false;
+    this.simulation.exitToMainMenu();
+    this.input.clear();
+    this.resetViewForSimulation();
+    this.ui.hideUpgradeSelection();
+    this.ui.setPaused(false);
+    this.ui.setHudVisible(false);
+    this.ui.showMainMenu();
+  }
+
   private presentUpgradeSelection(): void {
-    const snapshot = this.simulation.snapshot();
-    if (snapshot.progression.unspentUpgradePoints <= 0 || this.simulation.availableUpgrades.length === 0) {
+    const progression = this.simulation.progressionHudState;
+    const options = this.simulation.availableUpgrades;
+    if (progression.unspentUpgradePoints <= 0 || options.length === 0) {
       this.selectingUpgrade = false;
       this.ui.hideUpgradeSelection();
       this.simulation.setPaused(false);
@@ -171,8 +222,8 @@ export class Game {
     this.simulation.setPaused(true);
     this.ui.showUpgradeSelection(
       {
-        points: snapshot.progression.unspentUpgradePoints,
-        options: this.simulation.availableUpgrades,
+        points: progression.unspentUpgradePoints,
+        options,
       },
       this.handleUpgradeSelected,
     );
@@ -181,59 +232,11 @@ export class Game {
   private readonly handleUpgradeSelected = (id: UpgradeId): void => {
     if (!this.selectingUpgrade) return;
     if (this.simulation.spendUpgrade(id)) {
-      this.updateHud();
-      this.audio?.play("upgrade-select", { volume: 0.7 });
+      this.hud.update(this.simulation);
+      this.audioFeedback.playUpgradeSelected();
     }
     this.presentUpgradeSelection();
   };
-
-  private unlockAudio(): void {
-    void this.audio?.resume().catch(() => undefined);
-  }
-
-  private playStepAudio(result: GameStepResult): void {
-    if (result.primaryFired) {
-      this.audio?.play("primary-fire", { volume: 0.68, playbackRate: randomRate(0.045) });
-    }
-    if (result.projectileImpacts > 0) {
-      this.audio?.play("primary-impact", {
-        volume: Math.min(0.42 + result.projectileImpacts * 0.08, 0.68),
-        playbackRate: randomRate(0.05),
-      });
-    }
-    if (result.novaFired) {
-      this.audio?.play("nova", { volume: 0.82 });
-    }
-    if (result.dashUsed) {
-      this.audio?.play("dash", { volume: 0.58, playbackRate: randomRate(0.04) });
-    }
-    if (result.enemyHits > 0) {
-      this.audio?.play("enemy-hit", {
-        volume: Math.min(0.32 + result.enemyHits * 0.06, 0.66),
-        playbackRate: randomRate(0.08),
-      });
-    }
-    if (result.kills > 0) {
-      this.audio?.play("enemy-death", {
-        volume: Math.min(0.46 + result.kills * 0.08, 0.78),
-        playbackRate: randomRate(0.06),
-      });
-    }
-    if (result.damageTaken > 0) {
-      this.audio?.play("player-hit", { volume: 0.82 });
-    }
-    for (const [kind, amount] of Object.entries(result.pickupsCollected) as Array<[ResourceKind, number]>) {
-      if (amount > 0) {
-        this.audio?.play(PICKUP_SOUNDS[kind], { volume: 0.56, playbackRate: randomRate(0.04) });
-      }
-    }
-    if (result.mapDepthChanged) {
-      this.audio?.play("level-transition", { volume: 0.74 });
-    }
-    if (result.gameOver) {
-      this.audio?.play("game-over", { volume: 0.82 });
-    }
-  }
 
   private applyStepEffects(effects: readonly GameEffect[]): void {
     for (const effect of effects) {
@@ -241,53 +244,42 @@ export class Game {
         case "damageText":
           this.view.spawnDamageText(effect.position, effect.text);
           break;
+        case "enemyHit":
+          this.view.flashEnemy(effect.enemyId);
+          break;
+        case "enemyDeath":
+          this.view.spawnEnemyDeath(effect.position);
+          break;
         case "nova":
-          this.view.spawnNova(effect.position);
+          this.view.spawnNova(effect.position, effect.radius);
           break;
         case "projectileImpact":
           this.view.spawnProjectileImpact(effect.position, effect.incomingVelocity);
+          break;
+        case "playerDamaged":
+          this.view.showPlayerDamage(effect.amount);
           break;
       }
     }
   }
 
-  private buildPlayerCommand(): PlayerCommand {
-    if (!this.canAct()) {
-      return idlePlayerCommand(this.simulation.playerPosition);
-    }
-
-    const strafe = (this.input.hasKey("KeyD") ? 1 : 0) - (this.input.hasKey("KeyA") ? 1 : 0);
-    const forward = (this.input.hasKey("KeyW") ? 1 : 0) - (this.input.hasKey("KeyS") ? 1 : 0);
-    return {
-      movement: movementInputFor({
-        mode: this.ui.getMovementMode(),
-        camera: this.world.camera,
-        pointerWorld: this.input.pointerWorld,
-        playerPosition: this.simulation.playerPosition,
-        playerYaw: this.simulation.playerRotationY,
-        strafe,
-        forward,
-      }),
-      aimWorld: this.input.pointerWorld.clone(),
-      firePrimary: this.input.consumePrimaryFire(),
-      fireNova: this.input.consumeNovaFire(),
-      dash: this.input.consumeDash(),
-    };
-  }
-
-  private updateCamera(): void {
-    const offset = new THREE.Vector3(15, 16, 15);
-    this.world.camera.position.copy(this.simulation.playerPosition).add(offset);
-    this.world.camera.lookAt(this.simulation.playerPosition);
+  private buildPlayerCommand() {
+    return this.commandBuilder.build({
+      canAct: this.canAct(),
+      playerPosition: this.simulation.playerPosition,
+      playerRotationY: this.simulation.playerRotationY,
+    });
   }
 
   private resetViewForSimulation(): void {
-    this.stopEnemyMovementAudio();
+    this.audioFeedback.stopEnemyMovement();
     this.entityViews.clear();
     this.view.clearEffects();
     this.view.renderLevel(this.simulation.level);
     this.view.resetReticle(this.simulation.playerPosition.clone().add(new THREE.Vector3(0, 0, -TILE_SIZE)));
     this.view.updateFog(this.simulation.playerPosition, 0, true);
+    this.camera.reset(this.simulation.playerPosition);
+    this.camera.update(0, this.simulation.playerPosition, this.input.pointerWorld, true);
     this.syncView(0, true);
   }
 
@@ -296,65 +288,6 @@ export class Game {
     this.view.updateFog(this.simulation.playerPosition, dt);
     this.entityViews.sync(this.simulation.entityState(), dt);
     this.view.updateEffects(dt);
-  }
-
-  private updateEnemyMovementAudio(): void {
-    if (!this.audio) return;
-
-    const liveEnemyIds = new Set<number>();
-    const playerPosition = this.simulation.playerPosition;
-    for (const enemy of this.simulation.entityState().enemies) {
-      liveEnemyIds.add(enemy.id);
-      const sound = enemy.movementSound;
-      const volume =
-        sound && enemy.animation === "walk" && enemy.deathTimer === undefined
-          ? enemyMovementVolume(playerPosition.distanceTo(enemy.position) / TILE_SIZE)
-          : 0;
-
-      const existing = this.enemyMovementAudio.get(enemy.id);
-      if (!sound || volume <= 0) {
-        existing?.loop.stop();
-        this.enemyMovementAudio.delete(enemy.id);
-        continue;
-      }
-
-      if (existing && existing.sound !== sound) {
-        existing.loop.stop();
-        this.enemyMovementAudio.delete(enemy.id);
-      }
-
-      const loop = this.enemyMovementAudio.get(enemy.id)?.loop ?? this.audio.playLoop(sound, { volume });
-      loop.setVolume(volume);
-      this.enemyMovementAudio.set(enemy.id, { sound, loop });
-    }
-
-    for (const [enemyId, audio] of this.enemyMovementAudio) {
-      if (!liveEnemyIds.has(enemyId)) {
-        audio.loop.stop();
-        this.enemyMovementAudio.delete(enemyId);
-      }
-    }
-  }
-
-  private stopEnemyMovementAudio(): void {
-    for (const audio of this.enemyMovementAudio.values()) {
-      audio.loop.stop();
-    }
-    this.enemyMovementAudio.clear();
-  }
-
-  private updateHud(): void {
-    this.ui.updateHud({
-      resources: this.simulation.resources,
-      maxResources: this.simulation.maxResources,
-      kills: this.simulation.killCount,
-      mapDepth: this.simulation.currentMapDepth,
-      progression: this.simulation.snapshot().progression,
-      primaryReady: this.simulation.primaryReady,
-      novaReady: this.simulation.novaReady,
-      dashUnlocked: this.simulation.dashUnlocked,
-      dashReady: this.simulation.dashReady,
-    });
   }
 
   private sampleFps(now: number): void {
@@ -378,6 +311,7 @@ export class Game {
   }
 
   private perfFrameArgs(dt: number): Record<string, number | string | boolean> {
+    const effects = this.view.snapshotEffects();
     return {
       dtMs: Math.round(dt * 100000) / 100,
       started: this.simulation.isStarted,
@@ -386,8 +320,10 @@ export class Game {
       enemies: this.simulation.enemyCount,
       projectiles: this.simulation.projectileCount,
       pickups: this.simulation.pickupCount,
-      damageTexts: this.view.snapshotEffects().damageTexts.length,
-      novaMeshes: this.view.snapshotEffects().novaMeshes.length,
+      damageTexts: effects.damageTexts.length,
+      novaMeshes: effects.novaMeshes.length,
+      enemyDeathParticles: effects.enemyDeathParticles.length,
+      enemyDeathDecals: effects.enemyDeathDecals.length,
       mapDepth: this.simulation.currentMapDepth,
       kills: this.simulation.killCount,
       renderCalls: this.world.renderer.info.render.calls,
@@ -397,54 +333,81 @@ export class Game {
     };
   }
 
+  private runFrame(dt: number): void {
+    const command = this.buildPlayerCommand();
+    if (this.simulation.isStarted && !this.simulation.isGameOver && !this.simulation.isPaused) {
+      const result = this.simulation.step(dt, command);
+      this.applySimulationResult(result, dt);
+    }
+
+    if (!this.simulation.isStarted || this.simulation.isGameOver || this.simulation.isPaused) {
+      this.syncView(dt);
+      this.audioFeedback.stopEnemyMovement();
+      this.camera.update(dt, this.simulation.playerPosition, this.input.pointerWorld);
+    }
+    this.world.updatePlayerLocalAmbient(this.simulation.playerPosition);
+    this.world.updateGameplayLighting(this.simulation.playerPosition, this.world.camera);
+    this.world.render();
+  }
+
+  private runInstrumentedFrame(dt: number): void {
+    const command = this.buildPlayerCommand();
+    if (this.simulation.isStarted && !this.simulation.isGameOver && !this.simulation.isPaused) {
+      const result = this.perf.span("simulation.step", () => this.simulation.step(dt, command));
+      this.applySimulationResult(result, dt);
+    }
+
+    if (!this.simulation.isStarted || this.simulation.isGameOver || this.simulation.isPaused) {
+      this.syncView(dt);
+      this.audioFeedback.stopEnemyMovement();
+      this.perf.span("camera", () => this.camera.update(dt, this.simulation.playerPosition, this.input.pointerWorld));
+    }
+    this.world.updatePlayerLocalAmbient(this.simulation.playerPosition);
+    this.world.updateGameplayLighting(this.simulation.playerPosition, this.world.camera);
+    this.perf.span("three.render.cpu", () => this.world.render());
+  }
+
+  private applySimulationResult(result: GameStepResult, dt: number): void {
+    if (result.mapDepthChanged) {
+      this.resetViewForSimulation();
+    }
+    if (result.primaryFired) {
+      this.view.triggerPlayerFire();
+    }
+    this.camera.applyFeedback(result);
+    this.applyStepEffects(result.effects);
+    this.syncView(dt, result.mapDepthChanged);
+    this.audioFeedback.playStep(result);
+    this.audioFeedback.updateEnemyMovement(this.simulation.playerPosition, this.simulation.entityState().enemies);
+    if (this.perf.enabled) {
+      this.perf.span("camera", () =>
+        this.camera.update(dt, this.simulation.playerPosition, this.input.pointerWorld, result.mapDepthChanged),
+      );
+      this.perf.span("pointer.world", () => this.updatePointerWorldFromCamera());
+      this.perf.span("hud/dom", () => this.hud.update(this.simulation));
+    } else {
+      this.camera.update(dt, this.simulation.playerPosition, this.input.pointerWorld, result.mapDepthChanged);
+      this.updatePointerWorldFromCamera();
+      this.hud.update(this.simulation);
+    }
+    if (this.simulation.isGameOver) {
+      this.ui.showGameOver(this.simulation.killCount);
+    } else if (result.mapDepthChanged) {
+      this.presentUpgradeSelection();
+    }
+  }
+
   private readonly animate = (): void => {
-    requestAnimationFrame(this.animate);
+    this.animationFrameId = requestAnimationFrame(this.animate);
     const now = performance.now();
     this.sampleFps(now);
     this.updateFpsHud(now);
     const dt = Math.min(this.clock.getDelta(), 0.033);
 
-    this.perf.frame(this.perfFrameArgs(dt), () => {
-      const command = this.buildPlayerCommand();
-      if (this.simulation.isStarted && !this.simulation.isGameOver && !this.simulation.isPaused) {
-        const result = this.perf.span("simulation.step", () => this.simulation.step(dt, command));
-        if (result.mapDepthChanged) {
-          this.resetViewForSimulation();
-        }
-        if (result.primaryFired) {
-          this.view.triggerPlayerFire();
-        }
-        this.applyStepEffects(result.effects);
-        this.syncView(dt, result.mapDepthChanged);
-        this.playStepAudio(result);
-        this.updateEnemyMovementAudio();
-        this.perf.span("camera", () => this.updateCamera());
-        this.perf.span("pointer.world", () => this.updatePointerWorldFromCamera());
-        this.perf.span("hud/dom", () => this.updateHud());
-        if (this.simulation.isGameOver) {
-          this.ui.showGameOver(this.simulation.killCount);
-        } else if (result.mapDepthChanged) {
-          this.presentUpgradeSelection();
-        }
-      }
-
-      if (!this.simulation.isStarted || this.simulation.isGameOver || this.simulation.isPaused) {
-        this.syncView(dt);
-        this.stopEnemyMovementAudio();
-        this.perf.span("camera", () => this.updateCamera());
-      }
-      this.world.updatePlayerLocalAmbient(this.simulation.playerPosition);
-      this.world.updateGameplayLighting(this.simulation.playerPosition);
-      this.perf.span("three.render.cpu", () => this.world.renderer.render(this.world.scene, this.world.camera));
-    });
+    if (this.perf.enabled) {
+      this.perf.frame(this.perfFrameArgs(dt), () => this.runInstrumentedFrame(dt));
+    } else {
+      this.runFrame(dt);
+    }
   };
-}
-
-function randomRate(amount: number): number {
-  return 1 + (Math.random() * 2 - 1) * amount;
-}
-
-function enemyMovementVolume(distanceTiles: number): number {
-  const range = ENEMY_MOVEMENT_SILENT_TILES - ENEMY_MOVEMENT_FULL_VOLUME_TILES;
-  return Math.max(0, Math.min(1, (ENEMY_MOVEMENT_SILENT_TILES - distanceTiles) / range));
 }

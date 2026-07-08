@@ -14,6 +14,10 @@ export class EntityViewSync {
   private readonly projectileViews = new Map<number, ProjectileViewHandle>();
   private readonly enemyProjectileViews = new Map<number, ProjectileViewHandle>();
   private readonly pickupViews = new Map<number, PickupViewHandle>();
+  private readonly liveEnemyIds = new Set<number>();
+  private readonly liveProjectileIds = new Set<number>();
+  private readonly liveEnemyProjectileIds = new Set<number>();
+  private readonly livePickupIds = new Set<number>();
 
   constructor(private readonly view: GameplayView) {}
 
@@ -32,7 +36,8 @@ export class EntityViewSync {
   }
 
   private syncEnemies(enemies: readonly Enemy[], dt: number): void {
-    const liveIds = new Set<number>();
+    const liveIds = this.liveEnemyIds;
+    liveIds.clear();
 
     for (const enemy of enemies) {
       liveIds.add(enemy.id);
@@ -46,13 +51,14 @@ export class EntityViewSync {
   }
 
   private addEnemyView(enemy: Enemy): EnemyViewHandle {
-    const view = this.view.createEnemyView(enemy.kind, enemy.position, enemy.facingYaw);
+    const view = this.view.createEnemyView(enemy.id, enemy.kind, enemy.position, enemy.facingYaw);
     this.enemyViews.set(enemy.id, view);
     return view;
   }
 
   private syncProjectiles(projectiles: readonly Projectile[]): void {
-    const liveIds = new Set<number>();
+    const liveIds = this.liveProjectileIds;
+    liveIds.clear();
 
     for (const projectile of projectiles) {
       liveIds.add(projectile.id);
@@ -71,7 +77,8 @@ export class EntityViewSync {
   }
 
   private syncEnemyProjectiles(projectiles: readonly EnemyProjectile[]): void {
-    const liveIds = new Set<number>();
+    const liveIds = this.liveEnemyProjectileIds;
+    liveIds.clear();
 
     for (const projectile of projectiles) {
       liveIds.add(projectile.id);
@@ -90,7 +97,8 @@ export class EntityViewSync {
   }
 
   private syncPickups(pickups: readonly Pickup[], dt: number): void {
-    const liveIds = new Set<number>();
+    const liveIds = this.livePickupIds;
+    liveIds.clear();
 
     for (const pickup of pickups) {
       liveIds.add(pickup.id);

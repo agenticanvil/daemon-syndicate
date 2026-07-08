@@ -1,7 +1,7 @@
 import * as THREE from "three";
 import { describe, expect, it } from "vitest";
 import { key, tileToWorld, type LevelData, type TileCoord } from "./level";
-import { moveOnWalkableLevel } from "./movement";
+import { movementInputFor, moveOnWalkableLevel } from "./movement";
 
 function levelWithWalkable(tiles: TileCoord[]): LevelData {
   return {
@@ -17,6 +17,34 @@ function levelWithWalkable(tiles: TileCoord[]): LevelData {
     spawnPoints: [],
   };
 }
+
+function screenCamera(): THREE.PerspectiveCamera {
+  const camera = new THREE.PerspectiveCamera(60, 1, 0.1, 100);
+  camera.position.set(4, 6, 8);
+  camera.lookAt(0, 0, 0);
+  camera.updateMatrixWorld();
+  return camera;
+}
+
+function movementLength(strafe: number, forward: number): number {
+  return movementInputFor({
+    camera: screenCamera(),
+    strafe,
+    forward,
+  }).length();
+}
+
+describe("movementInputFor", () => {
+  it("keeps diagonal screen WASD speed equal to straight speed", () => {
+    const straight = movementLength(0, 1);
+    const diagonal = movementLength(1, 1);
+    const oppositeDiagonal = movementLength(-1, 1);
+
+    expect(straight).toBeCloseTo(1);
+    expect(diagonal).toBeCloseTo(straight);
+    expect(oppositeDiagonal).toBeCloseTo(straight);
+  });
+});
 
 describe("moveOnWalkableLevel", () => {
   it("moves fully when the destination tile is walkable", () => {

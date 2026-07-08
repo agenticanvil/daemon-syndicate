@@ -124,4 +124,35 @@ describe("EnemySystem spawning and activation", () => {
     expect(distance2D(system.all[0].position, before)).toBeCloseTo(0);
     expect(system.all[0].path).toBeUndefined();
   });
+
+  it("emits a dramatic death effect once when an enemy enters death animation", () => {
+    const effects: GameEffect[] = [];
+    const level = levelWithWalkable(squareTiles(12), 1);
+    const playerPosition = tileToWorld({ x: 6, y: 6 });
+    const system = createEnemySystem(level, playerPosition, () => 0.5, effects);
+    system.spawnEnemyAt("leanHunter", playerPosition.clone().add(new THREE.Vector3(2.4, 0, 0)));
+
+    system.damageEnemy(system.all[0], 999, false);
+    system.update(1 / 60);
+    system.update(1 / 60);
+
+    expect(effects.filter((effect) => effect.type === "enemyDeath")).toHaveLength(1);
+  });
+
+  it("steers melee enemies apart while they pursue the player", () => {
+    const level = levelWithWalkable(squareTiles(20), 1);
+    const playerPosition = tileToWorld({ x: 10, y: 10 });
+    const system = createEnemySystem(level, playerPosition, () => 0.5);
+
+    system.spawnEnemyAt("leanHunter", playerPosition.clone().add(new THREE.Vector3(0, 0, 5.4)));
+    system.spawnEnemyAt("leanHunter", playerPosition.clone().add(new THREE.Vector3(0.8, 0, 5.4)));
+    const startDistance = distance2D(system.all[0].position, system.all[1].position);
+    const startPlayerDistances = system.all.map((enemy) => distance2D(enemy.position, playerPosition));
+
+    system.update(0.2);
+
+    expect(distance2D(system.all[0].position, system.all[1].position)).toBeGreaterThan(startDistance);
+    expect(system.all[0].position.z).toBeLessThan(playerPosition.z + startPlayerDistances[0]);
+    expect(system.all[1].position.z).toBeLessThan(playerPosition.z + startPlayerDistances[1]);
+  });
 });

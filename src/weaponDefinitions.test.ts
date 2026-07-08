@@ -4,28 +4,8 @@ import { WEAPON_BALANCE } from "./balance";
 import type { GameEffect } from "./gameEffects";
 import { ABILITY_DEFINITIONS, type CombatContext } from "./weaponDefinitions";
 import type { PlayerResources } from "./resourceTypes";
-import type { Enemy } from "./enemyTypes";
 import type { ProjectileDraft } from "./projectileTypes";
 import { createUpgradeRanks, derivePlayerStats } from "./upgrades";
-
-function enemyAt(id: number, x: number, z: number, collisionLayer: number): Enemy {
-  return {
-    id,
-    kind: "leanHunter",
-    enemyLevel: 1,
-    position: new THREE.Vector3(x, 0, z),
-    facingYaw: 0,
-    collisionLayer,
-    health: 100,
-    speed: 1,
-    xpReward: 10,
-    radius: 0.5,
-    attack: { kind: "melee", damage: 9, cooldown: 0.72, range: 0.42 },
-    dropTable: { chance: 0, entries: [{ kind: "ammo", weight: 1, amount: 1 }] },
-    attackTimer: 0,
-    animation: "idle",
-  };
-}
 
 function combatContext(overrides: Partial<CombatContext> = {}): CombatContext {
   const resources: PlayerResources = { health: 100, ammo: 80, energy: 100 };
@@ -82,19 +62,36 @@ describe("ABILITY_DEFINITIONS", () => {
     });
     expect(projectile?.position.x).toBeCloseTo(WEAPON_BALANCE.primary.spawnOffset);
     expect(projectile?.position.y).toBeCloseTo(WEAPON_BALANCE.primary.spawnHeight);
+    expect(projectile?.position.z).toBeCloseTo(WEAPON_BALANCE.primary.muzzleSideOffset);
     expect(projectile?.velocity.length()).toBeCloseTo(WEAPON_BALANCE.primary.projectileSpeed);
+    expect(projectile?.velocity.z).toBeLessThan(0);
     expect(context.resources.ammo).toBe(80 - WEAPON_BALANCE.primary.ammoCost);
   });
 
-  it("nova damages only living enemies in the same collision layer and radius", () => {
-    const closeSameLayer = enemyAt(1, 2, 0, 1);
-    const farSameLayer = enemyAt(2, 8, 0, 1);
-    const closeOtherLayer = enemyAt(3, 2, 0, 2);
-    const deadSameLayer = { ...enemyAt(4, 2, 0, 1), deathTimer: 0.2 };
+  it("keeps close-range primary shots traveling toward the aim direction", () => {
+    let projectile: ProjectileDraft | undefined;
+    const context = combatContext({
+      addProjectile: (draft) => {
+        projectile = draft;
+      },
+    });
+
+    const fired = ABILITY_DEFINITIONS.primary.fire(context, new THREE.Vector3(0.2, 0, 0));
+
+    expect(fired).toBe(true);
+    expect(projectile?.velocity.x).toBeGreaterThan(0);
+  });
+
+  it("nova emits an upgraded-radius pulse and spends energy", () => {
     const damageEnemy = vi.fn();
     const effects: GameEffect[] = [];
+    const upgradedStats = {
+      ...derivePlayerStats(createUpgradeRanks()),
+      novaDamage: WEAPON_BALANCE.nova.damage + 8,
+      novaRadius: WEAPON_BALANCE.nova.radius + 0.6,
+    };
     const context = combatContext({
-      enemies: [closeSameLayer, farSameLayer, closeOtherLayer, deadSameLayer],
+      stats: upgradedStats,
       damageEnemy,
       emitEffect: (effect) => effects.push(effect),
     });
@@ -102,10 +99,8 @@ describe("ABILITY_DEFINITIONS", () => {
     const fired = ABILITY_DEFINITIONS.nova.fire(context, new THREE.Vector3());
 
     expect(fired).toBe(true);
-    expect(damageEnemy).toHaveBeenCalledOnce();
-    expect(damageEnemy).toHaveBeenCalledWith(closeSameLayer, WEAPON_BALANCE.nova.damage, true);
-    expect(closeSameLayer.position.x).toBeCloseTo(2 + WEAPON_BALANCE.nova.pushDistance);
-    expect(effects).toEqual([{ type: "nova", position: context.playerPosition }]);
+    expect(damageEnemy).not.toHaveBeenCalled();
+    expect(effects).toEqual([{ type: "nova", position: context.playerPosition, radius: upgradedStats.novaRadius }]);
     expect(context.resources.energy).toBe(100 - WEAPON_BALANCE.nova.energyCost);
   });
 });

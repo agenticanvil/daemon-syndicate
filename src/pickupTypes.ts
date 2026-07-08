@@ -9,7 +9,6 @@ export type Pickup = {
   collisionLayer: CollisionLayer;
   amount: number;
   radius: number;
-  life: number;
 };
 
 export type PickupDraft = Omit<Pickup, "id">;

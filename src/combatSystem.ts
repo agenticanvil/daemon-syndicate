@@ -1,6 +1,7 @@
 import * as THREE from "three";
 import { TILE_SIZE } from "./constants";
-import { overlaps2D, type CollisionBody2D, type CollisionLayer } from "./collision";
+import { overlaps2D, withinRadius2D, type CollisionBody2D, type CollisionLayer } from "./collision";
+import { WEAPON_BALANCE } from "./balance";
 import type { GameEffect } from "./gameEffects";
 import { key, worldToTile, type LevelData } from "./level";
 import type { PlayerResources } from "./resourceTypes";
@@ -28,12 +29,25 @@ export type CombatSystemSnapshot = {
   }>;
 };
 
+type ActiveNova = {
+  position: THREE.Vector3;
+  collisionLayer: CollisionLayer;
+  duration: number;
+  life: number;
+  damage: number;
+  radius: number;
+  hitEnemyIds: Set<number>;
+};
+
 export class CombatSystem {
   private readonly projectiles: Projectile[] = [];
+  private readonly activeNovas: ActiveNova[] = [];
   private readonly abilityTimers: Record<AbilityId, number> = {
     primary: 0,
     nova: 0,
   };
+  private readonly previousProjectilePosition = new THREE.Vector3();
+  private readonly wallImpactPosition = new THREE.Vector3();
   private nextProjectileId = 1;
 
   constructor(
@@ -90,19 +104,19 @@ export class CombatSystem {
 
   updateProjectiles(dt: number): number {
     let impactCount = 0;
+    this.updateNovas(dt);
 
     for (const projectile of this.projectiles) {
-      const previousPosition = projectile.position.clone();
+      const previousPosition = this.previousProjectilePosition.copy(projectile.position);
       projectile.position.addScaledVector(projectile.velocity, dt);
       projectile.life -= dt;
 
-      const wallImpact = findProjectileWallImpact(this.getLevel(), previousPosition, projectile.position);
-      if (wallImpact) {
-        projectile.position.copy(wallImpact.position);
+      if (findProjectileWallImpactPosition(this.getLevel(), previousPosition, projectile.position, this.wallImpactPosition)) {
+        projectile.position.copy(this.wallImpactPosition);
         projectile.life = 0;
         this.emitEffect({
           type: "projectileImpact",
-          position: wallImpact.position.clone(),
+          position: this.wallImpactPosition.clone(),
           incomingVelocity: projectile.velocity.clone(),
         });
         impactCount += 1;
@@ -143,6 +157,7 @@ export class CombatSystem {
 
   clear(): void {
     this.projectiles.length = 0;
+    this.activeNovas.length = 0;
   }
 
   snapshot(): CombatSystemSnapshot {
@@ -186,6 +201,19 @@ export class CombatSystem {
     );
 
     if (fired) {
+      if (id === "nova") {
+        const stats = this.getStats();
+        this.activeNovas.push({
+          position: this.getPlayerPosition().clone(),
+          collisionLayer: this.getCollisionLayer(),
+          duration: WEAPON_BALANCE.nova.duration,
+          life: WEAPON_BALANCE.nova.duration,
+          damage: stats.novaDamage,
+          radius: stats.novaRadius,
+          hitEnemyIds: new Set(),
+        });
+        this.updateNovas(0);
+      }
       this.abilityTimers[id] = id === "nova" ? this.getStats().novaCooldown : ability.cooldown;
     }
     return fired;
@@ -196,6 +224,47 @@ export class CombatSystem {
     this.nextProjectileId += 1;
     this.projectiles.push({ id, ...projectile });
   }
+
+  private updateNovas(dt: number): void {
+    for (const nova of this.activeNovas) {
+      nova.life -= dt;
+      if (nova.life <= 0) continue;
+      const progress = 1 - THREE.MathUtils.clamp(nova.life / nova.duration, 0, 1);
+      const radius = nova.radius * novaExpansionScale(progress);
+
+      const novaBody = {
+        position: nova.position,
+        radius: this.playerCollisionBody.radius,
+        collisionLayer: nova.collisionLayer,
+      };
+
+      for (const enemy of this.enemies()) {
+        if (enemy.deathTimer !== undefined) continue;
+        if (nova.hitEnemyIds.has(enemy.id)) continue;
+        if (withinRadius2D(enemy, novaBody, radius)) {
+          this.damageEnemy(enemy, nova.damage, true);
+          nova.hitEnemyIds.add(enemy.id);
+
+          const push = enemy.position.clone().sub(nova.position).setY(0);
+          if (push.lengthSq() > 0.0001) {
+            push.normalize();
+            enemy.position.addScaledVector(push, WEAPON_BALANCE.nova.pushDistance);
+          }
+        }
+      }
+    }
+
+    for (let i = this.activeNovas.length - 1; i >= 0; i -= 1) {
+      if (this.activeNovas[i].life <= 0) {
+        this.activeNovas.splice(i, 1);
+      }
+    }
+  }
+}
+
+function novaExpansionScale(progress: number): number {
+  const easedProgress = 1 - Math.pow(1 - progress, WEAPON_BALANCE.nova.expansionPower);
+  return WEAPON_BALANCE.nova.startScale + easedProgress * (1 - WEAPON_BALANCE.nova.startScale);
 }
 
 function vectorSnapshot(vector: THREE.Vector3): VectorSnapshot {
@@ -207,35 +276,54 @@ export function findProjectileWallImpact(
   previousPosition: THREE.Vector3,
   nextPosition: THREE.Vector3,
 ): ProjectileWallImpact | undefined {
-  if (!isWorldPointOnPlatform(level, previousPosition)) return { position: previousPosition.clone() };
+  const position = new THREE.Vector3();
+  return findProjectileWallImpactPosition(level, previousPosition, nextPosition, position) ? { position } : undefined;
+}
 
-  let lastInside = previousPosition.clone();
-  let firstOutside = nextPosition.clone();
+const WALL_LAST_INSIDE = new THREE.Vector3();
+const WALL_FIRST_OUTSIDE = new THREE.Vector3();
+const WALL_SAMPLE = new THREE.Vector3();
+const WALL_MIDPOINT = new THREE.Vector3();
+
+export function findProjectileWallImpactPosition(
+  level: Pick<LevelData, "walkable">,
+  previousPosition: THREE.Vector3,
+  nextPosition: THREE.Vector3,
+  target: THREE.Vector3,
+): boolean {
+  if (!isWorldPointOnPlatform(level, previousPosition)) {
+    target.copy(previousPosition);
+    return true;
+  }
+
+  const lastInside = WALL_LAST_INSIDE.copy(previousPosition);
+  const firstOutside = WALL_FIRST_OUTSIDE.copy(nextPosition);
   let foundOutside = !isWorldPointOnPlatform(level, nextPosition);
   const distance = previousPosition.distanceTo(nextPosition);
   const steps = Math.max(Math.ceil(distance / (TILE_SIZE * 0.22)), 1);
 
   for (let i = 1; i <= steps; i += 1) {
-    const sample = previousPosition.clone().lerp(nextPosition, i / steps);
+    const sample = WALL_SAMPLE.copy(previousPosition).lerp(nextPosition, i / steps);
     if (!isWorldPointOnPlatform(level, sample)) {
-      firstOutside = sample;
+      firstOutside.copy(sample);
       foundOutside = true;
       break;
     }
-    lastInside = sample;
+    lastInside.copy(sample);
   }
-  if (!foundOutside) return undefined;
+  if (!foundOutside) return false;
 
   for (let i = 0; i < 5; i += 1) {
-    const midpoint = lastInside.clone().lerp(firstOutside, 0.5);
+    const midpoint = WALL_MIDPOINT.copy(lastInside).lerp(firstOutside, 0.5);
     if (isWorldPointOnPlatform(level, midpoint)) {
-      lastInside = midpoint;
+      lastInside.copy(midpoint);
     } else {
-      firstOutside = midpoint;
+      firstOutside.copy(midpoint);
     }
   }
 
-  return { position: lastInside };
+  target.copy(lastInside);
+  return true;
 }
 
 function isWorldPointOnPlatform(level: Pick<LevelData, "walkable">, position: THREE.Vector3): boolean {

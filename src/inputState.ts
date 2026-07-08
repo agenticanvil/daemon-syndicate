@@ -20,6 +20,13 @@ export class InputState {
     this.keys.delete(code);
   }
 
+  clear(): void {
+    this.keys.clear();
+    this.primaryFireRequested = false;
+    this.novaFireRequested = false;
+    this.dashRequested = false;
+  }
+
   hasKey(code: string): boolean {
     return this.keys.has(code);
   }

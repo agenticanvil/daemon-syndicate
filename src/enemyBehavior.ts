@@ -8,6 +8,23 @@ import type { Rng } from "./rng";
 import type { Enemy, EnemyAnimation } from "./enemyTypes";
 
 const MOVEMENT_EPSILON = 0.0001;
+const ZERO_DIRECTION = new THREE.Vector3();
+const PURSUIT_DIRECT = new THREE.Vector3();
+const RANGED_TO_PLAYER = new THREE.Vector3();
+const RANGED_STRAFE = new THREE.Vector3();
+const MELEE_STEER_TO_PLAYER = new THREE.Vector3();
+const MELEE_STEER_STRAFE = new THREE.Vector3();
+const MELEE_STEER_SEPARATION = new THREE.Vector3();
+const MELEE_STEER_NEIGHBOR_OFFSET = new THREE.Vector3();
+const MELEE_STEER_RESULT = new THREE.Vector3();
+const WINDUP_DIRECTION = new THREE.Vector3();
+const FACING_AIM_DIRECTION = new THREE.Vector3();
+const MELEE_SEPARATION_RADIUS = 2.15;
+const MELEE_SEPARATION_WEIGHT = 0.9;
+const MELEE_DODGE_WEIGHT = 0.38;
+const MELEE_DODGE_MIN_DISTANCE = 1.7;
+const MELEE_DODGE_MAX_DISTANCE = 11;
+const MELEE_MIN_PURSUIT_DOT = 0.64;
 
 export type EnemyBehaviorResult = {
   animation: EnemyAnimation;
@@ -16,6 +33,7 @@ export type EnemyBehaviorResult = {
 
 export type EnemyBehaviorContext = {
   enemy: Enemy;
+  enemies: readonly Enemy[];
   dt: number;
   level: LevelData;
   playerPosition: THREE.Vector3;
@@ -61,7 +79,18 @@ export function updateEnemyBehavior(context: EnemyBehaviorContext): EnemyBehavio
     movementDirection =
       enemy.attackWindupTimer === undefined
         ? getRangedEnemyMovementDirection(enemy, playerPosition, playerDistance, pursuitDirection, hasLineOfSight)
-        : new THREE.Vector3();
+        : ZERO_DIRECTION.set(0, 0, 0);
+  } else {
+    movementDirection = getMeleeEnemyMovementDirection({
+      enemy,
+      enemies: context.enemies,
+      playerPosition,
+      playerDistance,
+      pursuitDirection,
+      hasLineOfSight,
+      dt,
+      rng: context.rng,
+    });
   }
 
   if (!isRanged && playerDistance > PLAYER_BALANCE.radius + enemy.radius + ENEMY_BALANCE.stopProximity) {
@@ -87,7 +116,8 @@ export function updateEnemyBehavior(context: EnemyBehaviorContext): EnemyBehavio
       enemy.attackWindupTimer === undefined &&
       playerCollisionBody.collisionLayer === enemy.collisionLayer
     ) {
-      const direction = playerPosition.clone().sub(enemy.position).setY(0).normalize();
+      const direction = enemy.attackWindupDirection ?? new THREE.Vector3();
+      direction.copy(playerPosition).sub(enemy.position).setY(0).normalize();
       enemy.attackWindupTimer = enemy.attack.windup ?? 0.18;
       enemy.attackWindupDirection = direction;
     }
@@ -120,7 +150,7 @@ function getEnemyPursuitDirection(context: {
   rng: Rng;
 }): THREE.Vector3 {
   const { enemy, playerPosition, level, playerDistance, moveDistance, dt, rng } = context;
-  const direct = playerPosition.clone().sub(enemy.position).setY(0);
+  const direct = PURSUIT_DIRECT.copy(playerPosition).sub(enemy.position).setY(0);
   if (direct.lengthSq() <= MOVEMENT_EPSILON) return direct;
   direct.normalize();
 
@@ -158,14 +188,14 @@ function getRangedEnemyMovementDirection(
   pursuitDirection: THREE.Vector3,
   hasLineOfSight: boolean,
 ): THREE.Vector3 {
-  const toPlayer = playerPosition.clone().sub(enemy.position).setY(0);
-  if (toPlayer.lengthSq() <= MOVEMENT_EPSILON) return new THREE.Vector3();
+  const toPlayer = RANGED_TO_PLAYER.copy(playerPosition).sub(enemy.position).setY(0);
+  if (toPlayer.lengthSq() <= MOVEMENT_EPSILON) return ZERO_DIRECTION.set(0, 0, 0);
   toPlayer.normalize();
 
   const preferredMin = Math.max(enemy.attack.range * 0.46, PLAYER_BALANCE.radius + enemy.radius + 1.2);
   const preferredMax = enemy.attack.range * 0.78;
   const strafeSign = enemy.id % 2 === 0 ? 1 : -1;
-  const strafe = new THREE.Vector3(-toPlayer.z, 0, toPlayer.x).multiplyScalar(strafeSign);
+  const strafe = RANGED_STRAFE.set(-toPlayer.z, 0, toPlayer.x).multiplyScalar(strafeSign);
 
   if (playerDistance < preferredMin) {
     return toPlayer.multiplyScalar(-1).addScaledVector(strafe, 0.35).normalize();
@@ -174,6 +204,66 @@ function getRangedEnemyMovementDirection(
     return pursuitDirection;
   }
   return strafe;
+}
+
+function getMeleeEnemyMovementDirection(context: {
+  enemy: Enemy;
+  enemies: readonly Enemy[];
+  playerPosition: THREE.Vector3;
+  playerDistance: number;
+  pursuitDirection: THREE.Vector3;
+  hasLineOfSight: boolean;
+  dt: number;
+  rng: Rng;
+}): THREE.Vector3 {
+  const { enemy, enemies, playerPosition, playerDistance, pursuitDirection, hasLineOfSight, dt, rng } = context;
+  if (pursuitDirection.lengthSq() <= MOVEMENT_EPSILON) return pursuitDirection;
+
+  enemy.movementJukeTimer = (enemy.movementJukeTimer ?? 0) - dt;
+  if (enemy.movementJukeTimer <= 0 || enemy.movementJukeSign === undefined) {
+    enemy.movementJukeTimer = 0.42 + rng() * 0.46;
+    enemy.movementJukeSign = rng() < 0.5 ? -1 : 1;
+  }
+
+  const toPlayer = MELEE_STEER_TO_PLAYER.copy(playerPosition).sub(enemy.position).setY(0);
+  if (toPlayer.lengthSq() <= MOVEMENT_EPSILON) return pursuitDirection;
+  toPlayer.normalize();
+
+  const strafe = MELEE_STEER_STRAFE.set(-toPlayer.z, 0, toPlayer.x).multiplyScalar(enemy.movementJukeSign);
+  const dodgePressure =
+    hasLineOfSight && playerDistance > MELEE_DODGE_MIN_DISTANCE && playerDistance < MELEE_DODGE_MAX_DISTANCE ? 1 : 0.35;
+  const separation = meleeSeparationDirection(enemy, enemies, MELEE_STEER_SEPARATION);
+
+  const result = MELEE_STEER_RESULT.copy(pursuitDirection)
+    .addScaledVector(strafe, MELEE_DODGE_WEIGHT * dodgePressure)
+    .addScaledVector(separation, MELEE_SEPARATION_WEIGHT);
+
+  if (result.lengthSq() <= MOVEMENT_EPSILON) return pursuitDirection;
+  result.normalize();
+
+  if (result.dot(pursuitDirection) < MELEE_MIN_PURSUIT_DOT) {
+    result.multiplyScalar(0.45).addScaledVector(pursuitDirection, 0.8).normalize();
+  }
+
+  return result;
+}
+
+function meleeSeparationDirection(enemy: Enemy, enemies: readonly Enemy[], target: THREE.Vector3): THREE.Vector3 {
+  target.set(0, 0, 0);
+
+  for (const other of enemies) {
+    if (other === enemy || other.deathTimer !== undefined) continue;
+    const offset = MELEE_STEER_NEIGHBOR_OFFSET.copy(enemy.position).sub(other.position).setY(0);
+    const distanceSq = offset.lengthSq();
+    if (distanceSq <= MOVEMENT_EPSILON || distanceSq >= MELEE_SEPARATION_RADIUS * MELEE_SEPARATION_RADIUS) continue;
+
+    const distance = Math.sqrt(distanceSq);
+    const strength = (MELEE_SEPARATION_RADIUS - distance) / MELEE_SEPARATION_RADIUS;
+    target.addScaledVector(offset, strength / distance);
+  }
+
+  if (target.lengthSq() > MOVEMENT_EPSILON) target.normalize();
+  return target;
 }
 
 function updateEnemyAttackWindup(
@@ -187,11 +277,11 @@ function updateEnemyAttackWindup(
   enemy.attackWindupTimer -= dt;
   if (enemy.attackWindupTimer > 0) return;
 
-  const direction = enemy.attackWindupDirection ?? playerPosition.clone().sub(enemy.position).setY(0).normalize();
+  const direction =
+    enemy.attackWindupDirection ?? WINDUP_DIRECTION.copy(playerPosition).sub(enemy.position).setY(0).normalize();
   fireEnemyProjectile(enemy, direction);
   enemy.attackTimer = enemy.attack.cooldown;
   enemy.attackWindupTimer = undefined;
-  enemy.attackWindupDirection = undefined;
 }
 
 function updateEnemyFacing(
@@ -204,7 +294,7 @@ function updateEnemyFacing(
   dt: number,
 ): void {
   if (isRanged && (hasLineOfSight || enemy.attackWindupTimer !== undefined)) {
-    const aimDirection = playerPosition.clone().sub(enemy.position).setY(0);
+    const aimDirection = FACING_AIM_DIRECTION.copy(playerPosition).sub(enemy.position).setY(0);
     if (aimDirection.lengthSq() > MOVEMENT_EPSILON) {
       enemy.facingYaw = getEnemyFacingYaw(aimDirection.normalize());
     }

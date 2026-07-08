@@ -1,6 +1,6 @@
 import * as THREE from "three";
 import { WEAPON_BALANCE } from "./balance";
-import { withinRadius2D, type CollisionBody2D, type CollisionLayer } from "./collision";
+import type { CollisionBody2D, CollisionLayer } from "./collision";
 import type { GameEffect } from "./gameEffects";
 import type { PlayerResources, ResourceKind } from "./resourceTypes";
 import type { Enemy } from "./enemyTypes";
@@ -36,17 +36,33 @@ export const ABILITY_DEFINITIONS: Record<AbilityId, AbilityDefinition> = {
     cost: WEAPON_BALANCE.primary.ammoCost,
     cooldown: WEAPON_BALANCE.primary.cooldown,
     fire: (context, aimWorld) => {
-      const direction = aimWorld.clone().sub(context.playerPosition);
-      direction.y = 0;
-      if (direction.lengthSq() < 0.01) return false;
-      direction.normalize();
+      const aimDirection = aimWorld.clone().sub(context.playerPosition);
+      aimDirection.y = 0;
+      if (aimDirection.lengthSq() < 0.01) return false;
+      aimDirection.normalize();
 
-      const position = context.playerPosition.clone().addScaledVector(direction, WEAPON_BALANCE.primary.spawnOffset);
+      const right = new THREE.Vector3(-aimDirection.z, 0, aimDirection.x);
+      const position = context.playerPosition
+        .clone()
+        .addScaledVector(aimDirection, WEAPON_BALANCE.primary.spawnOffset)
+        .addScaledVector(right, WEAPON_BALANCE.primary.muzzleSideOffset);
       position.y = WEAPON_BALANCE.primary.spawnHeight;
+
+      const minAimDistance =
+        WEAPON_BALANCE.primary.spawnOffset + Math.abs(WEAPON_BALANCE.primary.muzzleSideOffset) + 0.5;
+      const aimDistanceSq = aimWorld.clone().sub(context.playerPosition).setY(0).lengthSq();
+      const aimTarget =
+        aimDistanceSq < minAimDistance * minAimDistance
+          ? context.playerPosition.clone().addScaledVector(aimDirection, minAimDistance)
+          : aimWorld;
+      const shotDirection = aimTarget.clone().sub(position);
+      shotDirection.y = 0;
+      if (shotDirection.lengthSq() < 0.01) return false;
+      shotDirection.normalize();
 
       context.addProjectile({
         position,
-        velocity: direction.multiplyScalar(WEAPON_BALANCE.primary.projectileSpeed),
+        velocity: shotDirection.multiplyScalar(WEAPON_BALANCE.primary.projectileSpeed),
         collisionLayer: context.collisionLayer,
         life: WEAPON_BALANCE.primary.projectileLife,
         damage: context.stats.primaryDamage,
@@ -64,17 +80,7 @@ export const ABILITY_DEFINITIONS: Record<AbilityId, AbilityDefinition> = {
     cost: WEAPON_BALANCE.nova.energyCost,
     cooldown: WEAPON_BALANCE.nova.cooldown,
     fire: (context) => {
-      context.emitEffect({ type: "nova", position: context.playerPosition.clone() });
-
-      for (const enemy of context.enemies) {
-        if (enemy.deathTimer !== undefined) continue;
-        if (withinRadius2D(enemy, context.playerCollisionBody, context.stats.novaRadius)) {
-          context.damageEnemy(enemy, context.stats.novaDamage, true);
-          const push = enemy.position.clone().sub(context.playerPosition).setY(0).normalize();
-          enemy.position.addScaledVector(push, WEAPON_BALANCE.nova.pushDistance);
-        }
-      }
-
+      context.emitEffect({ type: "nova", position: context.playerPosition.clone(), radius: context.stats.novaRadius });
       context.resources.energy -= WEAPON_BALANCE.nova.energyCost;
       return true;
     },

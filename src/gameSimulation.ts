@@ -64,7 +64,7 @@ export type GameStepResult = {
   kills: number;
   killedEnemies: Array<{ kind: EnemyKind; enemyLevel: number; xpReward: number }>;
   damageTaken: number;
-  pickupsCollected: Partial<Record<ResourceKind, number>>;
+  pickupsCollected: Record<ResourceKind, number>;
   effects: GameEffect[];
   mapDepthChanged: boolean;
   gameOver: boolean;
@@ -77,6 +77,10 @@ export class GameSimulation {
   private readonly enemies: EnemySystem;
   private readonly combat: CombatSystem;
   private readonly progression = new PlayerProgression();
+  private readonly stepResult = createStepResult();
+  private readonly drainedEvents: GameEvent[] = [];
+  private readonly entityViewState: EntityViewState = { enemies: [], projectiles: [], enemyProjectiles: [], pickups: [] };
+  private derivedStatsValue = derivePlayerStats(this.progression.currentUpgrades);
 
   private started = false;
   private paused = false;
@@ -182,7 +186,11 @@ export class GameSimulation {
   }
 
   get availableUpgrades(): UpgradeOption[] {
-    return availableUpgradeOptions(this.progression.upgrades, this.progression.level);
+    return availableUpgradeOptions(this.progression.currentUpgrades, this.progression.level);
+  }
+
+  get progressionHudState(): Pick<PlayerProgressionSnapshot, "level" | "xp" | "xpToNextLevel" | "unspentUpgradePoints"> {
+    return this.progression.hudState;
   }
 
   get playerPosition(): THREE.Vector3 {
@@ -202,12 +210,11 @@ export class GameSimulation {
   }
 
   entityState(): EntityViewState {
-    return {
-      enemies: this.enemies.all,
-      projectiles: this.combat.allProjectiles,
-      enemyProjectiles: this.enemies.allEnemyProjectiles,
-      pickups: this.pickups.all,
-    };
+    this.entityViewState.enemies = this.enemies.all;
+    this.entityViewState.projectiles = this.combat.allProjectiles;
+    this.entityViewState.enemyProjectiles = this.enemies.allEnemyProjectiles;
+    this.entityViewState.pickups = this.pickups.all;
+    return this.entityViewState;
   }
 
   setPaused(paused: boolean): void {
@@ -218,21 +225,15 @@ export class GameSimulation {
     this.reset(options);
   }
 
+  exitToMainMenu(): void {
+    this.clearEntities();
+    this.started = false;
+    this.paused = false;
+    this.gameOver = false;
+  }
+
   step(dt: number, command = idlePlayerCommand(this.player.position)): GameStepResult {
-    const result: GameStepResult = {
-      primaryFired: false,
-      novaFired: false,
-      dashUsed: false,
-      enemyHits: 0,
-      projectileImpacts: 0,
-      kills: 0,
-      killedEnemies: [],
-      damageTaken: 0,
-      pickupsCollected: {},
-      effects: [],
-      mapDepthChanged: false,
-      gameOver: false,
-    };
+    const result = resetStepResult(this.stepResult);
 
     if (this.started && !this.gameOver && !this.paused) {
       this.currentEffects = result.effects;
@@ -318,6 +319,7 @@ export class GameSimulation {
     const spent = this.progression.spendUpgrade(id);
     if (!spent) return false;
 
+    this.refreshDerivedStats();
     this.player.applyDerivedStatsChange(previous, this.derivedStats());
     return true;
   }
@@ -332,9 +334,11 @@ export class GameSimulation {
   }
 
   private processEvents(result: GameStepResult): void {
-    for (const event of this.events.drain()) {
+    this.events.drainInto(this.drainedEvents);
+    for (const event of this.drainedEvents) {
       this.processEvent(event, result);
     }
+    this.drainedEvents.length = 0;
   }
 
   private processEvent(event: GameEvent, result: GameStepResult): void {
@@ -345,6 +349,11 @@ export class GameSimulation {
           type: "damageText",
           position: event.position.clone(),
           text: Math.round(event.amount).toString(),
+        });
+        result.effects.push({
+          type: "enemyHit",
+          enemyId: event.enemyId,
+          position: event.position.clone(),
         });
         break;
       case "enemyKilled":
@@ -359,13 +368,14 @@ export class GameSimulation {
         const damage = this.player.takeDamage(event.amount);
         if (damage.applied) {
           result.damageTaken += event.amount;
+          result.effects.push({ type: "playerDamaged", amount: event.amount });
         }
         if (damage.gameOver) {
           this.endGame();
         }
         break;
       case "pickupCollected":
-        result.pickupsCollected[event.kind] = (result.pickupsCollected[event.kind] ?? 0) + event.amount;
+        result.pickupsCollected[event.kind] += event.amount;
         this.player.grantResource(event.kind, event.amount);
         break;
     }
@@ -383,6 +393,7 @@ export class GameSimulation {
     this.player.reset(tileToWorld(this.currentLevel.start), this.currentCollisionLayer());
     this.kills = 0;
     this.progression.reset();
+    this.refreshDerivedStats();
     this.enemies.spawnLevelEnemies();
     this.combat.resetTimers();
     this.gameOver = false;
@@ -411,7 +422,11 @@ export class GameSimulation {
   }
 
   private derivedStats(): PlayerDerivedStats {
-    return derivePlayerStats(this.progression.upgrades);
+    return this.derivedStatsValue;
+  }
+
+  private refreshDerivedStats(): void {
+    this.derivedStatsValue = derivePlayerStats(this.progression.currentUpgrades);
   }
 
   private maybeRefundAmmo(): void {
@@ -432,4 +447,39 @@ function debugPositionToWorld(position: DebugSpawnPosition): THREE.Vector3 {
     return new THREE.Vector3(position.x, position.y ?? 0, position.z);
   }
   return tileToWorld(position);
+}
+
+function createStepResult(): GameStepResult {
+  return {
+    primaryFired: false,
+    novaFired: false,
+    dashUsed: false,
+    enemyHits: 0,
+    projectileImpacts: 0,
+    kills: 0,
+    killedEnemies: [],
+    damageTaken: 0,
+    pickupsCollected: { health: 0, ammo: 0, energy: 0 },
+    effects: [],
+    mapDepthChanged: false,
+    gameOver: false,
+  };
+}
+
+function resetStepResult(result: GameStepResult): GameStepResult {
+  result.primaryFired = false;
+  result.novaFired = false;
+  result.dashUsed = false;
+  result.enemyHits = 0;
+  result.projectileImpacts = 0;
+  result.kills = 0;
+  result.killedEnemies.length = 0;
+  result.damageTaken = 0;
+  result.pickupsCollected.health = 0;
+  result.pickupsCollected.ammo = 0;
+  result.pickupsCollected.energy = 0;
+  result.effects.length = 0;
+  result.mapDepthChanged = false;
+  result.gameOver = false;
+  return result;
 }

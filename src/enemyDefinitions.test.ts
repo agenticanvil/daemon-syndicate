@@ -51,6 +51,7 @@ describe("ENEMY_DEFINITIONS", () => {
     expect(leanHunter.budgetCost).toBe(1);
     expect(leanHunter.attack).toBe(LEAN_HUNTER_SETTINGS.attacks[0]);
     expect(leanHunter.dropTable).toBe(LEAN_HUNTER_SETTINGS.dropTable);
+    expect(leanHunter.movementSound).toBe("hunter-moving");
 
     expect(venomSpitter.health(3)).toBe(
       health(VENOM_SPITTER_SETTINGS.health.base, VENOM_SPITTER_SETTINGS.health.levelGrowth, 3),
@@ -71,6 +72,7 @@ describe("ENEMY_DEFINITIONS", () => {
     expect(venomSpitter.budgetCost).toBe(1.35);
     expect(venomSpitter.attack).toBe(VENOM_SPITTER_SETTINGS.attacks[0]);
     expect(venomSpitter.dropTable).toBe(VENOM_SPITTER_SETTINGS.dropTable);
+    expect(venomSpitter.movementSound).toBe("hunter-moving");
 
     expect(elite.health(3)).toBe(
       health(ELITE_ENEMY_SETTINGS.health.base, ELITE_ENEMY_SETTINGS.health.levelGrowth, 3),
@@ -91,6 +93,7 @@ describe("ENEMY_DEFINITIONS", () => {
     expect(elite.budgetCost).toBe(2.4);
     expect(elite.attack).toBe(ELITE_ENEMY_SETTINGS.attacks[0]);
     expect(elite.dropTable).toBe(ELITE_ENEMY_SETTINGS.dropTable);
+    expect(elite.movementSound).toBe("hunter-moving");
 
     expect(brute.health(3)).toBe(health(BRUTE_SETTINGS.health.base, BRUTE_SETTINGS.health.levelGrowth, 3));
     expect(brute.spawnWeight(6)).toBeCloseTo(
@@ -109,6 +112,7 @@ describe("ENEMY_DEFINITIONS", () => {
     expect(brute.budgetCost).toBe(3.4);
     expect(brute.attack).toBe(BRUTE_SETTINGS.attacks[0]);
     expect(brute.dropTable).toBe(BRUTE_SETTINGS.dropTable);
+    expect(brute.movementSound).toBe("brute-moving");
   });
 
   it("keeps unlocked spawn weights positive across expected map depths", () => {

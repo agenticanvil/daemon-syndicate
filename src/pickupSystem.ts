@@ -1,6 +1,5 @@
 import * as THREE from "three";
 import type { DropTable } from "./assetSettings";
-import { DROP_BALANCE } from "./balance";
 import { overlaps2D, type CollisionBody2D, type CollisionLayer } from "./collision";
 import type { EventQueue } from "./eventQueue";
 import type { Rng } from "./rng";
@@ -9,10 +8,10 @@ import type { Pickup, PickupDraft } from "./pickupTypes";
 import type { VectorSnapshot } from "./vectorTypes";
 
 const PICKUP_SETTINGS = {
-  health: { collision: { radius: 0.62 }, lifetime: 18 },
-  ammo: { collision: { radius: 0.62 }, lifetime: 18 },
-  energy: { collision: { radius: 0.62 }, lifetime: 18 },
-} as const satisfies Record<ResourceKind, { collision: { radius: number }; lifetime: number }>;
+  health: { collision: { radius: 0.62 } },
+  ammo: { collision: { radius: 0.62 } },
+  energy: { collision: { radius: 0.62 } },
+} as const satisfies Record<ResourceKind, { collision: { radius: number } }>;
 
 export type PickupSystemSnapshot = Array<{
   id: number;
@@ -21,7 +20,6 @@ export type PickupSystemSnapshot = Array<{
   collisionLayer: CollisionLayer;
   amount: number;
   radius: number;
-  life: number;
 }>;
 
 export class PickupSystem {
@@ -56,24 +54,15 @@ export class PickupSystem {
         collisionLayer: this.getCollisionLayer(),
         amount,
         radius: settings.collision.radius,
-        life: settings.lifetime ?? DROP_BALANCE.pickupLife,
       },
     );
   }
 
-  update(dt: number): void {
-    for (const pickup of this.pickups) {
-      pickup.life -= dt;
-
-      if (overlaps2D(pickup, this.playerCollisionBody)) {
-        this.events.emit({ type: "pickupCollected", kind: pickup.kind, amount: pickup.amount });
-        pickup.life = 0;
-      }
-    }
-
+  update(_dt: number): void {
     for (let i = this.pickups.length - 1; i >= 0; i -= 1) {
       const pickup = this.pickups[i];
-      if (pickup.life <= 0) {
+      if (overlaps2D(pickup, this.playerCollisionBody)) {
+        this.events.emit({ type: "pickupCollected", kind: pickup.kind, amount: pickup.amount });
         this.pickups.splice(i, 1);
       }
     }
@@ -91,7 +80,6 @@ export class PickupSystem {
       collisionLayer: pickup.collisionLayer,
       amount: pickup.amount,
       radius: pickup.radius,
-      life: pickup.life,
     }));
   }
 

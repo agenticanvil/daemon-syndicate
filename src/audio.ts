@@ -16,6 +16,7 @@ const SOUND_URLS = {
   "ui-click": "/assets/sfx/ui-click.wav",
   "game-over": "/assets/sfx/game-over.wav",
   "hunter-moving": "/assets/sfx/hunter-moving.mp3",
+  "brute-moving": "/assets/sfx/brute-moving.mp3",
 } as const satisfies Record<string, SoundUrl>;
 
 export type SoundId = keyof typeof SOUND_URLS;

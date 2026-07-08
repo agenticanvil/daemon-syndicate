@@ -18,19 +18,27 @@ export type GameEvent =
   | { type: "pickupCollected"; kind: ResourceKind; amount: number };
 
 export class EventQueue {
-  private events: GameEvent[] = [];
+  private readonly events: GameEvent[] = [];
 
   emit(event: GameEvent): void {
     this.events.push(event);
   }
 
   drain(): GameEvent[] {
-    const drained = this.events;
-    this.events = [];
+    const drained = this.events.slice();
+    this.events.length = 0;
     return drained;
   }
 
+  drainInto(target: GameEvent[]): void {
+    target.length = 0;
+    for (const event of this.events) {
+      target.push(event);
+    }
+    this.events.length = 0;
+  }
+
   clear(): void {
-    this.events = [];
+    this.events.length = 0;
   }
 }

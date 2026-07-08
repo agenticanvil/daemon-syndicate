@@ -128,7 +128,7 @@ export const ENEMY_CONTENT = [
       },
       collision: { radius: 0.92, height: 1.72 },
       health: { base: 185, levelGrowth: 42 },
-      movement: { speed: 1.82, levelSpeedGrowth: 0.035 },
+      movement: { speed: 1.82, levelSpeedGrowth: 0.035, sound: "brute-moving" },
       spawnWeight: { base: 0.045, levelGrowth: 0.012, max: 0.16 },
       attacks: [{ kind: "melee", damage: 18, cooldown: 1.16, range: 0.76 }],
       dropTable: {

@@ -13,6 +13,15 @@ export class PlayerProgression {
   private xpValue = 0;
   private unspentUpgradePointsValue = 0;
   private readonly upgradesValue = createUpgradeRanks();
+  private readonly hudStateValue: Pick<
+    PlayerProgressionSnapshot,
+    "level" | "xp" | "xpToNextLevel" | "unspentUpgradePoints"
+  > = {
+    level: 1,
+    xp: 0,
+    xpToNextLevel: xpToNextLevel(1),
+    unspentUpgradePoints: 0,
+  };
 
   get level(): number {
     return this.levelValue;
@@ -32,6 +41,18 @@ export class PlayerProgression {
 
   get upgrades(): UpgradeRanks {
     return { ...this.upgradesValue };
+  }
+
+  get currentUpgrades(): UpgradeRanks {
+    return this.upgradesValue;
+  }
+
+  get hudState(): Pick<PlayerProgressionSnapshot, "level" | "xp" | "xpToNextLevel" | "unspentUpgradePoints"> {
+    this.hudStateValue.level = this.levelValue;
+    this.hudStateValue.xp = this.xpValue;
+    this.hudStateValue.xpToNextLevel = this.xpToNextLevel;
+    this.hudStateValue.unspentUpgradePoints = this.unspentUpgradePointsValue;
+    return this.hudStateValue;
   }
 
   grantXp(amount: number): number {

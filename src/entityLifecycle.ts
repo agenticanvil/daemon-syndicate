@@ -13,19 +13,6 @@ export function disposeObject3D(object: THREE.Object3D, disposeMaterials: boolea
   });
 }
 
-export function disposeMesh(mesh: THREE.Mesh): void {
-  mesh.geometry.dispose();
-  disposeMeshMaterial(mesh);
-}
-
-function disposeMeshMaterial(mesh: THREE.Mesh): void {
-  if (Array.isArray(mesh.material)) {
-    mesh.material.forEach(disposeMaterial);
-  } else {
-    disposeMaterial(mesh.material);
-  }
-}
-
 function disposeMaterial(material: THREE.Material): void {
   const textures = new Set<THREE.Texture>();
   for (const value of Object.values(material)) {
