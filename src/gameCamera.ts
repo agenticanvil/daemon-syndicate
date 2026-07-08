@@ -31,6 +31,12 @@ const CAMERA_SHAKE_DECAY = 2.9;
 const CAMERA_SHAKE_MAX = 1;
 const CAMERA_SHAKE_POSITION_STRENGTH = 0.42;
 const CAMERA_SHAKE_LOOK_STRENGTH = 0.18;
+const CAMERA_CURSOR_LOOK_STILL_RADIUS = TILE_SIZE * 0.15;
+const CAMERA_CURSOR_LOOK_MOVING_RADIUS = TILE_SIZE * 0.28;
+const CAMERA_CURSOR_LOOK_SPEED_FOR_MAX = PLAYER_SPEED * 0.75;
+const CAMERA_CURSOR_LOOK_GROW_SMOOTHING = 5.6;
+const CAMERA_CURSOR_LOOK_DECAY_SMOOTHING = 1.25;
+const CAMERA_CURSOR_LOOK_OFFSET_SMOOTHING = 7.4;
 
 export class GameplayCameraController {
   private readonly cameraPosition = new THREE.Vector3();
@@ -46,10 +52,13 @@ export class GameplayCameraController {
   private readonly playerVelocity = new THREE.Vector3();
   private readonly cameraShakeOffset = new THREE.Vector3();
   private readonly cameraShakeLookOffset = new THREE.Vector3();
+  private readonly cameraCursorLookOffset = new THREE.Vector3();
+  private readonly cameraCursorLookOffsetTarget = new THREE.Vector3();
   private readonly cameraFinalLookAt = new THREE.Vector3();
 
   private shake = 0;
   private shakeTime = 0;
+  private cursorLookRadius = CAMERA_CURSOR_LOOK_STILL_RADIUS;
 
   constructor(
     private readonly getCamera: () => THREE.Camera,
@@ -68,7 +77,10 @@ export class GameplayCameraController {
     this.cameraPosition.copy(playerPosition).add(this.cameraOffset());
     this.cameraTrailOffset.setScalar(0);
     this.cameraTrailOffsetTarget.setScalar(0);
+    this.cameraCursorLookOffset.setScalar(0);
+    this.cameraCursorLookOffsetTarget.setScalar(0);
     this.playerVelocity.setScalar(0);
+    this.cursorLookRadius = CAMERA_CURSOR_LOOK_STILL_RADIUS;
     this.shake = 0;
     this.shakeTime = 0;
   }
@@ -118,6 +130,7 @@ export class GameplayCameraController {
     this.cameraPosition.lerp(this.cameraPositionTarget, followAlpha);
     this.cameraLookAt.lerp(this.cameraTarget, lookAlpha);
     this.previousPlayerPosition.copy(playerPosition);
+    this.updateCursorLookOffset(dt, playerPosition, pointerWorld, instant);
 
     this.shake = this.settings.shake ? Math.max(0, this.shake - dt * CAMERA_SHAKE_DECAY) : 0;
     this.shakeTime += dt;
@@ -135,7 +148,9 @@ export class GameplayCameraController {
 
     const camera = this.getCamera();
     camera.position.copy(this.cameraPosition).add(this.cameraShakeOffset);
-    camera.lookAt(this.cameraFinalLookAt.copy(this.cameraLookAt).add(this.cameraShakeLookOffset));
+    camera.lookAt(
+      this.cameraFinalLookAt.copy(this.cameraLookAt).add(this.cameraCursorLookOffset).add(this.cameraShakeLookOffset),
+    );
   }
 
   applyFeedback(result: GameStepResult): void {
@@ -155,6 +170,41 @@ export class GameplayCameraController {
 
   private cameraOffset(): THREE.Vector3 {
     return CAMERA_VIEW_OFFSETS[this.getViewMode()];
+  }
+
+  private updateCursorLookOffset(
+    dt: number,
+    playerPosition: THREE.Vector3,
+    pointerWorld: THREE.Vector3,
+    instant: boolean,
+  ): void {
+    const speed = dt > 0 ? this.playerVelocity.length() / dt : 0;
+    const speedMix = THREE.MathUtils.clamp(speed / CAMERA_CURSOR_LOOK_SPEED_FOR_MAX, 0, 1);
+    const targetRadius = THREE.MathUtils.lerp(
+      CAMERA_CURSOR_LOOK_STILL_RADIUS,
+      CAMERA_CURSOR_LOOK_MOVING_RADIUS,
+      speedMix,
+    );
+    const radiusSmoothing =
+      targetRadius > this.cursorLookRadius ? CAMERA_CURSOR_LOOK_GROW_SMOOTHING : CAMERA_CURSOR_LOOK_DECAY_SMOOTHING;
+    this.cursorLookRadius = THREE.MathUtils.lerp(
+      this.cursorLookRadius,
+      targetRadius,
+      instant ? 1 : smoothAlpha(radiusSmoothing, dt),
+    );
+
+    this.cameraCursorLookOffsetTarget.setScalar(0);
+    if (this.settings.aimFraming && this.getViewMode() === "depth") {
+      this.cameraCursorLookOffsetTarget.copy(pointerWorld).sub(playerPosition).setY(0);
+      if (this.cameraCursorLookOffsetTarget.length() > this.cursorLookRadius) {
+        this.cameraCursorLookOffsetTarget.setLength(this.cursorLookRadius);
+      }
+    }
+
+    this.cameraCursorLookOffset.lerp(
+      this.cameraCursorLookOffsetTarget,
+      instant ? 1 : smoothAlpha(CAMERA_CURSOR_LOOK_OFFSET_SMOOTHING, dt),
+    );
   }
 }
 

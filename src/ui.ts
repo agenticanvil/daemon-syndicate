@@ -7,6 +7,7 @@ import type { UpgradeId, UpgradeOption } from "./upgrades";
 export type CameraSettings = {
   smoothFollow: boolean;
   pointerLead: boolean;
+  aimFraming: boolean;
   velocityLead: boolean;
   shake: boolean;
 };
@@ -14,6 +15,7 @@ export type CameraSettings = {
 export const DEFAULT_CAMERA_SETTINGS: CameraSettings = {
   smoothFollow: false,
   pointerLead: false,
+  aimFraming: true,
   velocityLead: true,
   shake: true,
 };
@@ -166,6 +168,10 @@ export function createUi(app: HTMLDivElement): Ui {
               <input id="cameraPointerLead" type="checkbox" />
             </label>
             <label class="setting-row setting-toggle">
+              <span class="setting-label">Aim framing</span>
+              <input id="cameraAimFraming" type="checkbox" checked />
+            </label>
+            <label class="setting-row setting-toggle">
               <span class="setting-label">Velocity lead</span>
               <input id="cameraVelocityLead" type="checkbox" checked />
             </label>
@@ -285,6 +291,7 @@ export function createUi(app: HTMLDivElement): Ui {
   const dashAbility = document.querySelector<HTMLElement>("#dashAbility")!;
   const cameraSmoothFollow = document.querySelector<HTMLInputElement>("#cameraSmoothFollow")!;
   const cameraPointerLead = document.querySelector<HTMLInputElement>("#cameraPointerLead")!;
+  const cameraAimFraming = document.querySelector<HTMLInputElement>("#cameraAimFraming")!;
   const cameraVelocityLead = document.querySelector<HTMLInputElement>("#cameraVelocityLead")!;
   const cameraShake = document.querySelector<HTMLInputElement>("#cameraShake")!;
   const preserveDrawingBuffer = document.querySelector<HTMLInputElement>("#preserveDrawingBuffer")!;
@@ -308,6 +315,7 @@ export function createUi(app: HTMLDivElement): Ui {
 
   cameraSmoothFollow.checked = cameraSettings.smoothFollow;
   cameraPointerLead.checked = cameraSettings.pointerLead;
+  cameraAimFraming.checked = cameraSettings.aimFraming;
   cameraVelocityLead.checked = cameraSettings.velocityLead;
   cameraShake.checked = cameraSettings.shake;
   audioMuted.checked = audioSettings.muted;
@@ -414,6 +422,10 @@ export function createUi(app: HTMLDivElement): Ui {
   });
   cameraPointerLead.addEventListener("change", () => {
     cameraSettings = { ...cameraSettings, pointerLead: cameraPointerLead.checked };
+    emitCameraSettings();
+  });
+  cameraAimFraming.addEventListener("change", () => {
+    cameraSettings = { ...cameraSettings, aimFraming: cameraAimFraming.checked };
     emitCameraSettings();
   });
   cameraVelocityLead.addEventListener("change", () => {
