@@ -1,9 +1,22 @@
+import { CircleHelp, LogOut, Play, Settings, createElement, type IconNode } from "lucide";
 import { DEFAULT_AUDIO_SETTINGS, type AudioSettings } from "./audio";
 import type { PlayerResources } from "./resourceTypes";
-import type { GraphicsSettings } from "./scene";
+import type { CameraViewMode, GraphicsSettings } from "./scene";
 import type { UpgradeId, UpgradeOption } from "./upgrades";
 
-export type MovementControlMode = "isometric" | "screen" | "mouse";
+export type CameraSettings = {
+  smoothFollow: boolean;
+  pointerLead: boolean;
+  velocityLead: boolean;
+  shake: boolean;
+};
+
+export const DEFAULT_CAMERA_SETTINGS: CameraSettings = {
+  smoothFollow: false,
+  pointerLead: false,
+  velocityLead: true,
+  shake: true,
+};
 
 type HudState = {
   resources: PlayerResources;
@@ -25,45 +38,65 @@ type HudState = {
 export type Ui = {
   startButton: HTMLButtonElement;
   resumeButton: HTMLButtonElement;
+  mainMenuButton: HTMLButtonElement;
   overlay: HTMLDivElement;
   pauseMenu: HTMLDivElement;
   showLoading: (message: string) => void;
   showStartError: (message: string) => void;
   showGameOver: (kills: number) => void;
+  showMainMenu: () => void;
   hideOverlay: () => void;
   setHudVisible: (visible: boolean) => void;
   setPaused: (paused: boolean) => void;
   getStartMapDepth: () => number;
-  getMovementMode: () => MovementControlMode;
   setFpsVisible: (visible: boolean) => void;
   updateFps: (fps: number) => void;
   onAudioSettingsChange: (listener: (settings: AudioSettings) => void) => void;
   onGraphicsSettingsChange: (listener: (settings: GraphicsSettings) => void) => void;
+  onCameraSettingsChange: (listener: (settings: CameraSettings) => void) => void;
   updateHud: (state: HudState) => void;
   showUpgradeSelection: (state: { points: number; options: UpgradeOption[] }, onSelect: (id: UpgradeId) => void) => void;
   hideUpgradeSelection: () => void;
 };
 
 export function createUi(app: HTMLDivElement): Ui {
+  const startDepthOptions = Array.from({ length: 10 }, (_, index) => {
+    const level = index + 1;
+    return `<option value="${level}">${level}</option>`;
+  }).join("");
+  const devStartCard = import.meta.env.DEV
+    ? `
+      <aside class="dev-start-card" aria-label="Dev environment controls">
+        <strong>Dev Menu</strong>
+        <label class="start-level">
+          <span>Start Depth</span>
+          <select id="startMapDepth">
+            ${startDepthOptions}
+          </select>
+        </label>
+        <a class="dev-menu-link" href="/dev/assets">Assets</a>
+        <a class="dev-menu-link" href="/dev/effects">Effects</a>
+      </aside>
+    `
+    : "";
+
   app.innerHTML = `
     <div class="overlay" id="overlay">
       <div class="start">
         <h1>Daemon Syndicate</h1>
-        <p>Clear the corporate black-site. Manage health, ammunition, and energy while escalating incursions close in.</p>
+        <p>Clear the alien-infested corporate black-site. Breach deeper, adapt fast, and survive whatever the syndicate buried below.</p>
         <div class="start-status" id="startStatus" role="status" aria-live="polite"></div>
         <div class="start-actions">
-          <label class="start-level">
-            <span>Start Depth</span>
-            <select id="startMapDepth">
-              ${Array.from({ length: 10 }, (_, index) => {
-                const level = index + 1;
-                return `<option value="${level}">${level}</option>`;
-              }).join("")}
-            </select>
-          </label>
           <button id="start">Deploy</button>
         </div>
       </div>
+      <div class="deploy-panel hidden" id="deployPanel" role="status" aria-live="polite" aria-atomic="true">
+        <span>Deployment</span>
+        <strong id="deployTitle">Deploying</strong>
+        <p id="deployStatus"></p>
+        <button id="deployRetry" type="button" class="hidden">Retry</button>
+      </div>
+      ${devStartCard}
     </div>
     <div class="hud hidden">
       <div class="topbar">
@@ -104,47 +137,66 @@ export function createUi(app: HTMLDivElement): Ui {
         </div>
         <nav class="pause-view pause-view-main" aria-label="Pause menu">
           <button class="pause-option" id="resume">
-            <span class="pause-icon icon-continue" aria-hidden="true"></span>
+            ${pauseIconMarkup(Play, "icon-continue")}
             <span>Continue</span>
           </button>
           <button class="pause-option" id="settingsButton">
-            <span class="pause-icon icon-settings" aria-hidden="true"></span>
+            ${pauseIconMarkup(Settings, "icon-settings")}
             <span>Settings</span>
           </button>
           <button class="pause-option" id="helpButton">
-            <span class="pause-icon icon-help" aria-hidden="true"></span>
+            ${pauseIconMarkup(CircleHelp, "icon-help")}
             <span>Help</span>
+          </button>
+          <button class="pause-option" id="mainMenuButton">
+            ${pauseIconMarkup(LogOut, "icon-main-menu")}
+            <span>Exit to Main Menu</span>
           </button>
         </nav>
         <section class="pause-view pause-view-settings" aria-label="Settings">
           <button class="pause-back" id="settingsBack" type="button">Back</button>
           <div class="pause-section">
-            <h3>Controls</h3>
-            <div class="setting-row">
-              <div>
-                <span class="setting-label">Movement</span>
-              </div>
-              <div class="movement-options" role="group" aria-label="Movement">
-                <button class="movement-option" type="button" aria-pressed="false" data-movement-mode="isometric">Isometric WASD</button>
-                <button class="movement-option selected" type="button" aria-pressed="true" data-movement-mode="screen">Screen WASD</button>
-                <button class="movement-option" type="button" aria-pressed="false" data-movement-mode="mouse">Mouse WASD</button>
-              </div>
-            </div>
+            <h3>Camera</h3>
+            <label class="setting-row setting-toggle">
+              <span class="setting-label">Smooth follow</span>
+              <input id="cameraSmoothFollow" type="checkbox" />
+            </label>
+            <label class="setting-row setting-toggle">
+              <span class="setting-label">Pointer lead</span>
+              <input id="cameraPointerLead" type="checkbox" />
+            </label>
+            <label class="setting-row setting-toggle">
+              <span class="setting-label">Velocity lead</span>
+              <input id="cameraVelocityLead" type="checkbox" checked />
+            </label>
+            <label class="setting-row setting-toggle">
+              <span class="setting-label">Impact shake</span>
+              <input id="cameraShake" type="checkbox" checked />
+            </label>
           </div>
           <div class="pause-section">
             <h3>Graphics</h3>
+            <div class="setting-row">
+              <div>
+                <span class="setting-label">View style</span>
+              </div>
+              <div class="camera-view-options" role="group" aria-label="View style">
+                <button class="graphics-camera-option selected" type="button" aria-pressed="true" data-camera-view="depth">Depth</button>
+                <button class="graphics-camera-option" type="button" aria-pressed="false" data-camera-view="flat">Flat</button>
+              </div>
+            </div>
             <label class="setting-row setting-toggle">
               <span class="setting-label">Preserve buffer</span>
-              <input id="preserveDrawingBuffer" type="checkbox" checked />
+              <input id="preserveDrawingBuffer" type="checkbox" />
             </label>
             <div class="setting-row">
               <div>
-                <span class="setting-label">Pixel ratio</span>
+                <span class="setting-label">Render scale</span>
               </div>
-              <div class="graphics-options" role="group" aria-label="Pixel ratio">
-                <button class="graphics-pixel-option" type="button" aria-pressed="false" data-pixel-ratio="1">1</button>
-                <button class="graphics-pixel-option" type="button" aria-pressed="false" data-pixel-ratio="1.5">1.5</button>
-                <button class="graphics-pixel-option selected" type="button" aria-pressed="true" data-pixel-ratio="2">2</button>
+              <div class="graphics-options" role="group" aria-label="Render scale">
+                <button class="graphics-render-scale-option" type="button" aria-pressed="false" data-render-scale="0.25">0.25x</button>
+                <button class="graphics-render-scale-option selected" type="button" aria-pressed="true" data-render-scale="0.5">0.5x</button>
+                <button class="graphics-render-scale-option" type="button" aria-pressed="false" data-render-scale="1">Native</button>
               </div>
             </div>
           </div>
@@ -205,10 +257,15 @@ export function createUi(app: HTMLDivElement): Ui {
   const pausePanel = document.querySelector<HTMLDivElement>(".pause-panel")!;
   const startButton = document.querySelector<HTMLButtonElement>("#start")!;
   const startStatus = document.querySelector<HTMLDivElement>("#startStatus")!;
-  const startMapDepth = document.querySelector<HTMLSelectElement>("#startMapDepth")!;
+  const deployPanel = document.querySelector<HTMLDivElement>("#deployPanel")!;
+  const deployTitle = document.querySelector<HTMLElement>("#deployTitle")!;
+  const deployStatus = document.querySelector<HTMLParagraphElement>("#deployStatus")!;
+  const deployRetry = document.querySelector<HTMLButtonElement>("#deployRetry")!;
+  const startMapDepth = import.meta.env.DEV ? document.querySelector<HTMLSelectElement>("#startMapDepth") : null;
   const resumeButton = document.querySelector<HTMLButtonElement>("#resume")!;
   const settingsButton = document.querySelector<HTMLButtonElement>("#settingsButton")!;
   const helpButton = document.querySelector<HTMLButtonElement>("#helpButton")!;
+  const mainMenuButton = document.querySelector<HTMLButtonElement>("#mainMenuButton")!;
   const settingsBack = document.querySelector<HTMLButtonElement>("#settingsBack")!;
   const helpBack = document.querySelector<HTMLButtonElement>("#helpBack")!;
   const healthValue = document.querySelector<HTMLElement>("#healthValue")!;
@@ -226,23 +283,33 @@ export function createUi(app: HTMLDivElement): Ui {
   const primaryAbility = document.querySelector<HTMLElement>("#primaryAbility")!;
   const novaAbility = document.querySelector<HTMLElement>("#novaAbility")!;
   const dashAbility = document.querySelector<HTMLElement>("#dashAbility")!;
-  const movementOptions = Array.from(pausePanel.querySelectorAll<HTMLButtonElement>(".movement-option"));
+  const cameraSmoothFollow = document.querySelector<HTMLInputElement>("#cameraSmoothFollow")!;
+  const cameraPointerLead = document.querySelector<HTMLInputElement>("#cameraPointerLead")!;
+  const cameraVelocityLead = document.querySelector<HTMLInputElement>("#cameraVelocityLead")!;
+  const cameraShake = document.querySelector<HTMLInputElement>("#cameraShake")!;
   const preserveDrawingBuffer = document.querySelector<HTMLInputElement>("#preserveDrawingBuffer")!;
-  const pixelRatioOptions = Array.from(pausePanel.querySelectorAll<HTMLButtonElement>(".graphics-pixel-option"));
+  const cameraViewOptions = Array.from(pausePanel.querySelectorAll<HTMLButtonElement>(".graphics-camera-option"));
+  const renderScaleOptions = Array.from(pausePanel.querySelectorAll<HTMLButtonElement>(".graphics-render-scale-option"));
   const audioMuted = document.querySelector<HTMLInputElement>("#audioMuted")!;
   const masterVolume = document.querySelector<HTMLInputElement>("#masterVolume")!;
   const masterVolumeValue = document.querySelector<HTMLElement>("#masterVolumeValue")!;
   const sfxVolume = document.querySelector<HTMLInputElement>("#sfxVolume")!;
   const sfxVolumeValue = document.querySelector<HTMLElement>("#sfxVolumeValue")!;
-  let movementMode: MovementControlMode = "screen";
   let graphicsSettings: GraphicsSettings = {
     preserveDrawingBuffer: preserveDrawingBuffer.checked,
-    pixelRatio: 2,
+    renderScale: 0.5,
+    cameraView: "depth",
   };
+  let cameraSettings: CameraSettings = { ...DEFAULT_CAMERA_SETTINGS };
   let audioSettings = loadAudioSettings();
   const graphicsSettingsListeners: Array<(settings: GraphicsSettings) => void> = [];
+  const cameraSettingsListeners: Array<(settings: CameraSettings) => void> = [];
   const audioSettingsListeners: Array<(settings: AudioSettings) => void> = [];
 
+  cameraSmoothFollow.checked = cameraSettings.smoothFollow;
+  cameraPointerLead.checked = cameraSettings.pointerLead;
+  cameraVelocityLead.checked = cameraSettings.velocityLead;
+  cameraShake.checked = cameraSettings.shake;
   audioMuted.checked = audioSettings.muted;
   masterVolume.value = audioSettings.masterVolume.toString();
   sfxVolume.value = audioSettings.sfxVolume.toString();
@@ -267,6 +334,12 @@ export function createUi(app: HTMLDivElement): Ui {
     }
   }
 
+  function emitCameraSettings(): void {
+    for (const listener of cameraSettingsListeners) {
+      listener({ ...cameraSettings });
+    }
+  }
+
   function emitAudioSettings(): void {
     saveAudioSettings(audioSettings);
     for (const listener of audioSettingsListeners) {
@@ -281,23 +354,19 @@ export function createUi(app: HTMLDivElement): Ui {
 
   function setStartBusy(busy: boolean): void {
     startButton.disabled = busy;
-    startMapDepth.disabled = busy;
+    if (startMapDepth) startMapDepth.disabled = busy;
     startButton.classList.toggle("loading", busy);
   }
 
-  movementOptions.forEach((option) => {
-    option.addEventListener("click", () => {
-      const nextMode = option.dataset.movementMode;
-      if (nextMode !== "isometric" && nextMode !== "screen" && nextMode !== "mouse") return;
-      movementMode = nextMode;
+  function resetDeployPanel(): void {
+    overlay.classList.remove("deploying", "deployment-error");
+    deployPanel.classList.add("hidden");
+    deployStatus.classList.remove("error");
+    deployRetry.classList.add("hidden");
+  }
 
-      movementOptions.forEach((button) => {
-        const selected = button === option;
-        button.classList.toggle("selected", selected);
-        button.setAttribute("aria-pressed", selected.toString());
-      });
-    });
-  });
+  deployRetry.addEventListener("click", () => startButton.click());
+
   preserveDrawingBuffer.addEventListener("change", () => {
     graphicsSettings = {
       ...graphicsSettings,
@@ -305,22 +374,55 @@ export function createUi(app: HTMLDivElement): Ui {
     };
     emitGraphicsSettings();
   });
-  pixelRatioOptions.forEach((option) => {
+  cameraViewOptions.forEach((option) => {
     option.addEventListener("click", () => {
-      const nextPixelRatio = Number(option.dataset.pixelRatio);
-      if (nextPixelRatio !== 1 && nextPixelRatio !== 1.5 && nextPixelRatio !== 2) return;
+      const nextView = cameraViewFromDataset(option.dataset.cameraView);
+      if (!nextView) return;
       graphicsSettings = {
         ...graphicsSettings,
-        pixelRatio: nextPixelRatio,
+        cameraView: nextView,
       };
 
-      pixelRatioOptions.forEach((button) => {
+      cameraViewOptions.forEach((button) => {
         const selected = button === option;
         button.classList.toggle("selected", selected);
         button.setAttribute("aria-pressed", selected.toString());
       });
       emitGraphicsSettings();
     });
+  });
+  renderScaleOptions.forEach((option) => {
+    option.addEventListener("click", () => {
+      const nextRenderScale = renderScaleFromDataset(option.dataset.renderScale);
+      if (!nextRenderScale) return;
+      graphicsSettings = {
+        ...graphicsSettings,
+        renderScale: nextRenderScale,
+      };
+
+      renderScaleOptions.forEach((button) => {
+        const selected = button === option;
+        button.classList.toggle("selected", selected);
+        button.setAttribute("aria-pressed", selected.toString());
+      });
+      emitGraphicsSettings();
+    });
+  });
+  cameraSmoothFollow.addEventListener("change", () => {
+    cameraSettings = { ...cameraSettings, smoothFollow: cameraSmoothFollow.checked };
+    emitCameraSettings();
+  });
+  cameraPointerLead.addEventListener("change", () => {
+    cameraSettings = { ...cameraSettings, pointerLead: cameraPointerLead.checked };
+    emitCameraSettings();
+  });
+  cameraVelocityLead.addEventListener("change", () => {
+    cameraSettings = { ...cameraSettings, velocityLead: cameraVelocityLead.checked };
+    emitCameraSettings();
+  });
+  cameraShake.addEventListener("change", () => {
+    cameraSettings = { ...cameraSettings, shake: cameraShake.checked };
+    emitCameraSettings();
   });
   audioMuted.addEventListener("change", () => {
     audioSettings = { ...audioSettings, muted: audioMuted.checked };
@@ -340,29 +442,39 @@ export function createUi(app: HTMLDivElement): Ui {
   return {
     startButton,
     resumeButton,
+    mainMenuButton,
     overlay,
     pauseMenu,
     showLoading(message: string) {
       overlay.classList.remove("hidden");
+      overlay.classList.add("deploying");
+      overlay.classList.remove("deployment-error");
       hud.classList.add("hidden");
-      overlay.querySelector("h1")!.textContent = "Deploying";
-      overlay.querySelector("p")!.textContent = "Preparing mission assets before the arena starts.";
+      deployPanel.classList.remove("hidden");
+      deployTitle.textContent = "Deploying";
+      deployStatus.textContent = message;
+      deployStatus.classList.remove("error");
+      deployRetry.classList.add("hidden");
       startStatus.textContent = message;
       startStatus.classList.remove("error");
-      startButton.textContent = "Loading";
       setStartBusy(true);
     },
     showStartError(message: string) {
       overlay.classList.remove("hidden");
+      overlay.classList.add("deploying", "deployment-error");
       hud.classList.add("hidden");
-      overlay.querySelector("h1")!.textContent = "Deployment Failed";
-      overlay.querySelector("p")!.textContent = "Asset preparation did not complete. Check the missing file or network error and try again.";
+      deployPanel.classList.remove("hidden");
+      deployTitle.textContent = "Deployment Failed";
+      deployStatus.textContent = message;
+      deployStatus.classList.add("error");
+      deployRetry.classList.remove("hidden");
       startStatus.textContent = message;
       startStatus.classList.add("error");
       startButton.textContent = "Retry";
       setStartBusy(false);
     },
     showGameOver(kills: number) {
+      resetDeployPanel();
       overlay.classList.remove("hidden");
       hud.classList.add("hidden");
       overlay.querySelector("h1")!.textContent = "Signal Lost";
@@ -373,7 +485,20 @@ export function createUi(app: HTMLDivElement): Ui {
       startButton.textContent = "Redeploy";
       setStartBusy(false);
     },
+    showMainMenu() {
+      resetDeployPanel();
+      overlay.classList.remove("hidden");
+      hud.classList.add("hidden");
+      overlay.querySelector("h1")!.textContent = "Daemon Syndicate";
+      overlay.querySelector("p")!.textContent =
+        "Clear the alien-infested corporate black-site. Breach deeper, adapt fast, and survive whatever the syndicate buried below.";
+      startStatus.textContent = "";
+      startStatus.classList.remove("error");
+      startButton.textContent = "Deploy";
+      setStartBusy(false);
+    },
     hideOverlay() {
+      resetDeployPanel();
       overlay.classList.add("hidden");
       startStatus.textContent = "";
       startStatus.classList.remove("error");
@@ -388,11 +513,8 @@ export function createUi(app: HTMLDivElement): Ui {
       pauseMenu.classList.toggle("hidden", !paused);
     },
     getStartMapDepth() {
-      const mapDepth = Number(startMapDepth.value);
+      const mapDepth = Number(startMapDepth?.value ?? 1);
       return Number.isFinite(mapDepth) ? Math.max(1, Math.floor(mapDepth)) : 1;
-    },
-    getMovementMode() {
-      return movementMode;
     },
     setFpsVisible(visible: boolean) {
       fpsStat.classList.toggle("hidden", !visible);
@@ -407,6 +529,10 @@ export function createUi(app: HTMLDivElement): Ui {
     onGraphicsSettingsChange(listener: (settings: GraphicsSettings) => void) {
       graphicsSettingsListeners.push(listener);
       listener({ ...graphicsSettings });
+    },
+    onCameraSettingsChange(listener: (settings: CameraSettings) => void) {
+      cameraSettingsListeners.push(listener);
+      listener({ ...cameraSettings });
     },
     updateHud(state: HudState) {
       const { resources, maxResources } = state;
@@ -481,4 +607,23 @@ function saveAudioSettings(settings: AudioSettings): void {
 function clamp01(value: number): number {
   if (!Number.isFinite(value)) return 0;
   return Math.max(0, Math.min(value, 1));
+}
+
+function cameraViewFromDataset(value: string | undefined): CameraViewMode | undefined {
+  return value === "depth" || value === "flat" ? value : undefined;
+}
+
+function renderScaleFromDataset(value: string | undefined): GraphicsSettings["renderScale"] | undefined {
+  const scale = Number(value);
+  return scale === 0.25 || scale === 0.5 || scale === 1 ? scale : undefined;
+}
+
+function pauseIconMarkup(icon: IconNode, className: string): string {
+  return createElement(icon, {
+    "aria-hidden": "true",
+    class: `pause-icon ${className}`,
+    height: 28,
+    width: 28,
+    "stroke-width": 2.25,
+  }).outerHTML;
 }

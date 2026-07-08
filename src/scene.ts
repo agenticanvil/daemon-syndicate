@@ -19,18 +19,21 @@ import { createRenderContext, type GraphicsSettings } from "./renderer";
 import { addGameplayLighting } from "./sceneLighting";
 import type { GltfAssetLibrary } from "./gltfAssetFactory";
 import type { ResourceKind } from "./resourceTypes";
+import type { CameraViewMode } from "./gameCamera";
 
-export type { GraphicsSettings };
+export type { CameraViewMode, GraphicsSettings };
 
 export type GameScene = {
   renderer: THREE.WebGLRenderer;
   scene: THREE.Scene;
-  camera: THREE.OrthographicCamera;
+  camera: THREE.Camera;
+  cameraView: CameraViewMode;
   floor: THREE.Mesh;
   player: THREE.Group;
   playerRig: PlayerRig;
   playerBody: THREE.Mesh<THREE.BufferGeometry, THREE.MeshStandardMaterial>;
   reticle: THREE.Mesh;
+  render: () => void;
   renderLevel: (level: LevelData, options?: RenderLevelOptions) => void;
   createEnemyAsset: (kind: EnemyKind) => EnemyAsset;
   createPickupAsset: (kind: ResourceKind) => PickupAsset;
@@ -38,7 +41,7 @@ export type GameScene = {
   createExitPortalAsset: () => PortalAsset;
   updateFog: (playerPosition: THREE.Vector3, dt: number, instant?: boolean) => void;
   updatePlayerLocalAmbient: (playerPosition: THREE.Vector3) => void;
-  updateGameplayLighting: (playerPosition: THREE.Vector3) => void;
+  updateGameplayLighting: (playerPosition: THREE.Vector3, camera: THREE.Camera) => void;
   isTileExplored: (position: THREE.Vector3) => boolean;
   materials: GameplayMaterials;
   resize: () => void;
@@ -48,6 +51,8 @@ export type GameScene = {
 export type RenderLevelOptions = {
   includeExitPortal?: boolean;
 };
+
+const DISPOSE_WITH_STATIC_OBJECT_KEY = "daemonSyndicateDisposeWithStaticObject";
 
 export async function createGameScene(app: HTMLDivElement, gltfAssets?: GltfAssetLibrary): Promise<GameScene> {
   const renderContext = createRenderContext(app);
@@ -116,6 +121,14 @@ export async function createGameScene(app: HTMLDivElement, gltfAssets?: GltfAsse
   };
   const createEnvironmentAsset = (kind: EnvironmentAssetKind): EnvironmentAsset => {
     const asset = assetFactory.createEnvironmentAsset(kind);
+    if (kind === "industrial-crate") {
+      applyObjectReadabilityLift(asset.root, {
+        color: 0x8fc7c6,
+        emissiveMix: 0.04,
+        intensity: 0.018,
+        baseColorLift: 0,
+      });
+    }
     playerLocalAmbient.applyToObject(asset.root);
     return asset;
   };
@@ -128,6 +141,7 @@ export async function createGameScene(app: HTMLDivElement, gltfAssets?: GltfAsse
   const renderLevel = (level: LevelData, options: RenderLevelOptions = {}): void => {
     const includeExitPortal = options.includeExitPortal ?? true;
     fogOfWar?.dispose();
+    disposeStaticObjectMaterials(staticVisibilityObjects);
     exploredTileKeys = new Set();
     staticVisibilityObjects = [];
     levelEdgeVisibility = renderLevelToRoot(levelRoot, level, materials.level);
@@ -173,12 +187,18 @@ export async function createGameScene(app: HTMLDivElement, gltfAssets?: GltfAsse
       return renderContext.renderer;
     },
     scene,
-    camera: renderContext.camera,
+    get camera() {
+      return renderContext.camera;
+    },
+    get cameraView() {
+      return renderContext.cameraView;
+    },
     floor,
     player,
     playerRig,
     playerBody,
     reticle,
+    render: () => renderContext.render(scene, renderContext.camera),
     renderLevel,
     createEnemyAsset,
     createPickupAsset,
@@ -192,4 +212,57 @@ export async function createGameScene(app: HTMLDivElement, gltfAssets?: GltfAsse
     resize: renderContext.resize,
     applyGraphicsSettings: renderContext.applyGraphicsSettings,
   };
+}
+
+type ReadabilityLiftOptions = {
+  color: THREE.ColorRepresentation;
+  emissiveMix: number;
+  intensity: number;
+  baseColorLift: number;
+};
+
+function applyObjectReadabilityLift(root: THREE.Object3D, options: ReadabilityLiftOptions): void {
+  const liftColor = new THREE.Color(options.color);
+  const liftedMaterials = new Map<THREE.Material, THREE.Material>();
+
+  root.traverse((object) => {
+    if (!(object instanceof THREE.Mesh)) return;
+    const materials = Array.isArray(object.material) ? object.material : [object.material];
+    const nextMaterials = materials.map((material) => {
+      const lifted = liftedMaterials.get(material) ?? liftMaterial(material, liftColor, options);
+      liftedMaterials.set(material, lifted);
+      return lifted;
+    });
+    object.material = Array.isArray(object.material) ? nextMaterials : nextMaterials[0];
+  });
+}
+
+function liftMaterial(
+  material: THREE.Material,
+  liftColor: THREE.Color,
+  options: ReadabilityLiftOptions,
+): THREE.Material {
+  const lifted = material.clone();
+  lifted.userData[DISPOSE_WITH_STATIC_OBJECT_KEY] = true;
+  if (lifted instanceof THREE.MeshStandardMaterial || lifted instanceof THREE.MeshPhysicalMaterial) {
+    lifted.color.lerp(new THREE.Color(0xffffff), options.baseColorLift);
+    lifted.emissive.lerp(liftColor, options.emissiveMix);
+    lifted.emissiveIntensity += options.intensity;
+    lifted.needsUpdate = true;
+  }
+  return lifted;
+}
+
+function disposeStaticObjectMaterials(objects: Array<{ root: THREE.Object3D }>): void {
+  const materials = new Set<THREE.Material>();
+  for (const object of objects) {
+    object.root.traverse((child) => {
+      if (!(child instanceof THREE.Mesh)) return;
+      const childMaterials = Array.isArray(child.material) ? child.material : [child.material];
+      for (const material of childMaterials) {
+        if (material.userData[DISPOSE_WITH_STATIC_OBJECT_KEY] === true) materials.add(material);
+      }
+    });
+  }
+  materials.forEach((material) => material.dispose());
 }

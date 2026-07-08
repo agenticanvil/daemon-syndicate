@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import "./devStyle.css";
 import { ENEMY_CONTENT, type EnemyKind } from "./enemyContent";
 import { PLAYER_SPEED, RETICLE_FLOOR_OFFSET, TILE_SIZE } from "./constants";
 import { ENVIRONMENT_ASSET_KINDS, type EnvironmentAssetKind } from "./assetFactory";
@@ -123,11 +124,7 @@ export async function startDevMap(app: HTMLDivElement): Promise<void> {
     const forward = (input.hasKey("KeyW") ? 1 : 0) - (input.hasKey("KeyS") ? 1 : 0);
     movement.copy(
       movementInputFor({
-        mode: "screen",
         camera: world.camera,
-        pointerWorld: input.pointerWorld,
-        playerPosition,
-        playerYaw,
         strafe,
         forward,
       }),
@@ -153,9 +150,9 @@ export async function startDevMap(app: HTMLDivElement): Promise<void> {
     for (const update of staticUpdates) update(dt);
     updateCamera(world, playerPosition);
     world.updatePlayerLocalAmbient(playerPosition);
-    world.updateGameplayLighting(playerPosition);
+    world.updateGameplayLighting(playerPosition, world.camera);
     updateLabels(labels, world.camera);
-    world.renderer.render(world.scene, world.camera);
+    world.render();
   };
 
   animate();

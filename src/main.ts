@@ -4,6 +4,7 @@ import { createPerfRecorder, type PerfRecorder } from "./perf";
 import { seededRandom } from "./rng";
 import { createGameScene, type GameScene, type GraphicsSettings } from "./scene";
 import { loadGltfAssetLibrary } from "./gltfAssetFactory";
+import { preloadGameplayEffectAssets } from "./gameView";
 import "./style.css";
 import { createUi } from "./ui";
 
@@ -29,36 +30,40 @@ if (!app) {
 void startApp(app, routePath);
 
 async function startApp(app: HTMLDivElement, routePath: string): Promise<void> {
-  if (routePath === "/dev/asset-editor") {
-    document.title = "Asset Editor | Daemon Syndicate";
-    if (import.meta.env.DEV) {
-      const { startAssetEditor } = await import("./assetEditor");
-      startAssetEditor(app);
-    } else {
-      app.innerHTML = "";
-    }
+  if (import.meta.env.DEV && routePath.startsWith("/dev/")) {
+    await startDevApp(app, routePath);
+    return;
+  }
+
+  await startGame(app);
+}
+
+async function startDevApp(app: HTMLDivElement, routePath: string): Promise<void> {
+  if (routePath === "/dev/asset-preview" || routePath === "/dev/asset-editor") {
+    document.title = "Asset Preview | Daemon Syndicate";
+    const { startAssetEditor } = await import("./assetEditor");
+    startAssetEditor(app);
     return;
   }
 
   if (routePath === "/dev/assets") {
     document.title = "Assets | Daemon Syndicate";
-    if (import.meta.env.DEV) {
-      const { startDevAssets } = await import("./devAssets");
-      await startDevAssets(app);
-    } else {
-      app.innerHTML = "";
-    }
+    const { startDevAssets } = await import("./devAssets");
+    await startDevAssets(app);
     return;
   }
 
   if (routePath === "/dev/map") {
     document.title = "Dev Map | Daemon Syndicate";
-    if (import.meta.env.DEV) {
-      const { startDevMap } = await import("./devMap");
-      await startDevMap(app);
-    } else {
-      app.innerHTML = "";
-    }
+    const { startDevMap } = await import("./devMap");
+    await startDevMap(app);
+    return;
+  }
+
+  if (routePath === "/dev/effects") {
+    document.title = "Effect Test | Daemon Syndicate";
+    const { startDevEffects } = await import("./devEffects");
+    await startDevEffects(app);
     return;
   }
 
@@ -116,9 +121,16 @@ async function startGame(app: HTMLDivElement): Promise<void> {
       ui.showLoading("Warming renderer and floor textures...");
       world = await withTimeout(createGameScene(app, gltfAssets), 20_000, "Timed out loading floor textures.");
       if (graphicsSettings) world.applyGraphicsSettings(graphicsSettings);
+      ui.showLoading("Preparing combat effect pools...");
+      const effectAssets = await withTimeout(
+        preloadGameplayEffectAssets(world.renderer, world.renderer.capabilities.getMaxAnisotropy()),
+        20_000,
+        "Timed out loading effect textures.",
+      );
 
       game = new Game(world, ui, perf, {
         audio,
+        effectAssets,
         rng: seed ? seededRandom(seed) : Math.random,
         seed: seed ?? undefined,
       });
