@@ -38,7 +38,7 @@ export const ENEMY_CONTENT = [
       spawnWeight: { base: 0.92, levelGrowth: -0.015, min: 0.74 },
       attacks: [{ kind: "melee", damage: 9, cooldown: 0.72, range: 0.42 }],
       dropTable: {
-        chance: 0.72,
+        chance: 0.36,
         entries: [
           { kind: "health", weight: 14, amount: 24 },
           { kind: "ammo", weight: 34, amount: 22 },
@@ -76,7 +76,7 @@ export const ENEMY_CONTENT = [
         },
       ],
       dropTable: {
-        chance: 0.74,
+        chance: 0.37,
         entries: [
           { kind: "health", weight: 10, amount: 22 },
           { kind: "ammo", weight: 38, amount: 24 },
@@ -93,18 +93,18 @@ export const ENEMY_CONTENT = [
     settings: {
       kind: "enemy",
       gameplay: {
-        unlockMapDepth: 3,
+        unlockMapDepth: 2,
         budgetCost: 2.4,
         attackDamageLevelGrowth: 4,
         xpReward: { base: 14, levelGrowth: 3 },
       },
       collision: { radius: 0.7, height: 1.1 },
       health: { base: 118, levelGrowth: 36 },
-      movement: { speed: 3.5, levelSpeedGrowth: 0.05, sound: "hunter-moving" },
-      spawnWeight: { base: 0.08, levelGrowth: 0.015, max: 0.26 },
+      movement: { speed: 5.45, levelSpeedGrowth: 0.025, sound: "hunter-moving" },
+      spawnWeight: { base: 0.16, levelGrowth: 0.02, max: 0.32 },
       attacks: [{ kind: "melee", damage: 9, cooldown: 0.72, range: 0.42 }],
       dropTable: {
-        chance: 0.72,
+        chance: 0.36,
         entries: [
           { kind: "health", weight: 14, amount: 24 },
           { kind: "ammo", weight: 34, amount: 22 },
@@ -132,7 +132,7 @@ export const ENEMY_CONTENT = [
       spawnWeight: { base: 0.045, levelGrowth: 0.012, max: 0.16 },
       attacks: [{ kind: "melee", damage: 18, cooldown: 1.16, range: 0.76 }],
       dropTable: {
-        chance: 0.82,
+        chance: 0.41,
         entries: [
           { kind: "health", weight: 18, amount: 34 },
           { kind: "ammo", weight: 30, amount: 26 },

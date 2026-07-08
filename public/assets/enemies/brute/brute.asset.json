@@ -50,7 +50,7 @@
     }
   ],
   "dropTable": {
-    "chance": 0.82,
+    "chance": 0.41,
     "entries": [
       {
         "kind": "health",

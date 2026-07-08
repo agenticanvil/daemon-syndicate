@@ -29,8 +29,8 @@ export const WEAPON_BALANCE = {
   },
   nova: {
     cooldown: NOVA_COOLDOWN,
-    energyCost: 35,
-    damage: 58,
+    energyCost: 75,
+    damage: 175,
     radius: 4.25,
     duration: 0.58,
     startScale: 0.28,
@@ -52,7 +52,7 @@ export const ENEMY_BALANCE = {
   pathRefreshInterval: 0.24,
   pathRefreshJitter: 0.08,
   waypointReachedDistance: 0.35,
-  maxLevelEnemyCount: 48,
+  maxLevelEnemyCount: 144,
 } as const;
 
 export const EFFECT_BALANCE = {

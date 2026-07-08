@@ -1,6 +1,7 @@
 import * as THREE from "three";
 import { describe, expect, it, vi } from "vitest";
 import { WEAPON_BALANCE } from "./balance";
+import { PLAYER_MAX } from "./constants";
 import type { GameEffect } from "./gameEffects";
 import { ABILITY_DEFINITIONS, type CombatContext } from "./weaponDefinitions";
 import type { PlayerResources } from "./resourceTypes";
@@ -8,7 +9,7 @@ import type { ProjectileDraft } from "./projectileTypes";
 import { createUpgradeRanks, derivePlayerStats } from "./upgrades";
 
 function combatContext(overrides: Partial<CombatContext> = {}): CombatContext {
-  const resources: PlayerResources = { health: 100, ammo: 80, energy: 100 };
+  const resources: PlayerResources = { ...PLAYER_MAX };
   const playerPosition = new THREE.Vector3(0, 0, 0);
   return {
     resources,
@@ -65,7 +66,7 @@ describe("ABILITY_DEFINITIONS", () => {
     expect(projectile?.position.z).toBeCloseTo(WEAPON_BALANCE.primary.muzzleSideOffset);
     expect(projectile?.velocity.length()).toBeCloseTo(WEAPON_BALANCE.primary.projectileSpeed);
     expect(projectile?.velocity.z).toBeLessThan(0);
-    expect(context.resources.ammo).toBe(80 - WEAPON_BALANCE.primary.ammoCost);
+    expect(context.resources.ammo).toBe(PLAYER_MAX.ammo - WEAPON_BALANCE.primary.ammoCost);
   });
 
   it("keeps close-range primary shots traveling toward the aim direction", () => {

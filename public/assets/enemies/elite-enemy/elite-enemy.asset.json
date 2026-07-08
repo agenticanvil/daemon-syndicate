@@ -19,7 +19,7 @@
     "radius": 0.7
   },
   "gameplay": {
-    "unlockMapDepth": 3,
+    "unlockMapDepth": 2,
     "budgetCost": 2.4,
     "attackDamageLevelGrowth": 4,
     "xpReward": {
@@ -32,14 +32,14 @@
     "levelGrowth": 36
   },
   "movement": {
-    "speed": 3.5,
-    "levelSpeedGrowth": 0.05,
+    "speed": 5.45,
+    "levelSpeedGrowth": 0.025,
     "sound": "hunter-moving"
   },
   "spawnWeight": {
-    "base": 0.08,
-    "levelGrowth": 0.015,
-    "max": 0.26
+    "base": 0.16,
+    "levelGrowth": 0.02,
+    "max": 0.32
   },
   "attacks": [
     {
@@ -50,7 +50,7 @@
     }
   ],
   "dropTable": {
-    "chance": 0.72,
+    "chance": 0.36,
     "entries": [
       {
         "kind": "health",

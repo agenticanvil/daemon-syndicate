@@ -27,6 +27,10 @@ const ENEMY_DIFFICULTY_TUNING = {
   damageMultiplier: 1.2,
 } as const;
 
+const ENCOUNTER_BUDGET_MULTIPLIER = 4.5;
+const FLOOR_ONE_ENEMY_COUNT_SCALE = 0.75;
+const ENEMY_COUNT_RAMP_PER_DEPTH = 0.06;
+
 export const ENEMY_DEFINITIONS: EnemyDefinition[] = ENEMY_CONTENT.map((content) =>
   createEnemyDefinition(content.kind, content.settings),
 );
@@ -58,7 +62,9 @@ export function enemyLevelForMapDepth(mapDepth: number, rng: Rng = Math.random):
 }
 
 export function encounterBudgetForMapDepth(mapDepth: number): number {
-  return Math.round((10 + mapDepth * 3) * 1.5);
+  const depth = Math.max(1, mapDepth);
+  const depthScale = FLOOR_ONE_ENEMY_COUNT_SCALE + Math.max(0, depth - 1) * ENEMY_COUNT_RAMP_PER_DEPTH;
+  return Math.round((10 + depth * 3) * ENCOUNTER_BUDGET_MULTIPLIER * depthScale);
 }
 
 function primaryEnemyAttack(settings: EnemyAssetSettings): EnemyAttackDefinition {

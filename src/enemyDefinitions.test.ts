@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { enemyContentFor } from "./enemyContent";
 import type { EnemyAssetSettings } from "./assetSettings";
+import { PLAYER_BALANCE } from "./balance";
 import {
   chooseEnemyDefinition,
   encounterBudgetForMapDepth,
@@ -80,16 +81,17 @@ describe("ENEMY_DEFINITIONS", () => {
     expect(elite.spawnWeight(3)).toBeCloseTo(
       Math.min(
         ELITE_ENEMY_SETTINGS.spawnWeight.max ?? Infinity,
-        ELITE_ENEMY_SETTINGS.spawnWeight.base + 1 * ELITE_ENEMY_SETTINGS.spawnWeight.levelGrowth,
+        ELITE_ENEMY_SETTINGS.spawnWeight.base + 2 * ELITE_ENEMY_SETTINGS.spawnWeight.levelGrowth,
       ),
     );
     expect(elite.speed(3)).toBeCloseTo(
       speed(ELITE_ENEMY_SETTINGS.movement.speed, ELITE_ENEMY_SETTINGS.movement.levelSpeedGrowth, 3),
     );
+    expect(elite.speed(1)).toBeGreaterThan(PLAYER_BALANCE.speed);
     expect(elite.attackDamage(3)).toBe(25);
     expect(elite.xpReward(3)).toBe(23);
     expect(elite.radius).toBe(ELITE_ENEMY_SETTINGS.collision.radius);
-    expect(elite.unlockMapDepth).toBe(3);
+    expect(elite.unlockMapDepth).toBe(2);
     expect(elite.budgetCost).toBe(2.4);
     expect(elite.attack).toBe(ELITE_ENEMY_SETTINGS.attacks[0]);
     expect(elite.dropTable).toBe(ELITE_ENEMY_SETTINGS.dropTable);
@@ -130,7 +132,7 @@ describe("ENEMY_DEFINITIONS", () => {
   it("selects enemies deterministically when an RNG is injected", () => {
     expect(chooseEnemyDefinition(1, () => 0).kind).toBe("leanHunter");
     expect(chooseEnemyDefinition(1, () => 0.999).kind).toBe("leanHunter");
-    expect(chooseEnemyDefinition(2, () => 0.999).kind).toBe("venomSpitter");
+    expect(chooseEnemyDefinition(2, () => 0.999).kind).toBe("elite");
     expect(chooseEnemyDefinition(3, () => 0.999).kind).toBe("elite");
     expect(chooseEnemyDefinition(5, () => 0.999).kind).toBe("brute");
     expect(chooseEnemyDefinition(3, () => 0.999, { maxBudgetCost: 1 }).kind).toBe("leanHunter");
@@ -145,7 +147,7 @@ describe("ENEMY_DEFINITIONS", () => {
   });
 
   it("scales encounter budget by map depth", () => {
-    expect(encounterBudgetForMapDepth(1)).toBe(20);
-    expect(encounterBudgetForMapDepth(5)).toBe(38);
+    expect(encounterBudgetForMapDepth(1)).toBe(44);
+    expect(encounterBudgetForMapDepth(5)).toBe(111);
   });
 });

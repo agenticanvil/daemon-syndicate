@@ -106,7 +106,7 @@ export function createUi(app: HTMLDivElement): Ui {
             <div class="meter"><i id="healthMeter"></i></div>
           </div>
           <div class="resource ammo">
-            <div class="resource-head"><span>Ammo</span><strong id="ammoValue">80</strong></div>
+            <div class="resource-head"><span>Ammo</span><strong id="ammoValue">200</strong></div>
             <div class="meter"><i id="ammoMeter"></i></div>
           </div>
           <div class="resource energy">
