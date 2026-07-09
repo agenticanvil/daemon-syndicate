@@ -22,12 +22,7 @@ export function addGameplayLighting(scene: THREE.Scene, playerLightAnchor: THREE
 
   const keyLight = new THREE.DirectionalLight(0xe6fffa, 1.55);
   keyLight.position.copy(KEY_LIGHT_OFFSET);
-  keyLight.castShadow = true;
-  keyLight.shadow.mapSize.set(2048, 2048);
-  keyLight.shadow.camera.left = -26;
-  keyLight.shadow.camera.right = 26;
-  keyLight.shadow.camera.top = 26;
-  keyLight.shadow.camera.bottom = -26;
+  keyLight.castShadow = false;
   scene.add(keyLight);
   scene.add(keyLight.target);
 
@@ -38,6 +33,12 @@ export function addGameplayLighting(scene: THREE.Scene, playerLightAnchor: THREE
   const armorFlashlight = new THREE.SpotLight(0xa8fff4, 48, 28, 0.62, 0.48, 1.7);
   armorFlashlight.position.set(0, 1.35, -0.28);
   armorFlashlight.target.position.set(0, 0.8, -14);
+  armorFlashlight.castShadow = true;
+  armorFlashlight.shadow.mapSize.set(1024, 1024);
+  armorFlashlight.shadow.camera.near = 0.5;
+  armorFlashlight.shadow.camera.far = 28;
+  armorFlashlight.shadow.bias = -0.0002;
+  armorFlashlight.shadow.normalBias = 0.03;
   playerLightAnchor.add(armorFlashlight);
   playerLightAnchor.add(armorFlashlight.target);
 

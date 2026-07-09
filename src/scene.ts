@@ -40,6 +40,7 @@ export type GameScene = {
   createEnvironmentAsset: (kind: EnvironmentAssetKind) => EnvironmentAsset;
   createExitPortalAsset: () => PortalAsset;
   updateFog: (playerPosition: THREE.Vector3, dt: number, instant?: boolean) => void;
+  updateWallOcclusion: (playerPosition: THREE.Vector3, camera: THREE.Camera, dt: number, instant?: boolean) => void;
   updatePlayerLocalAmbient: (playerPosition: THREE.Vector3) => void;
   updateGameplayLighting: (playerPosition: THREE.Vector3, camera: THREE.Camera) => void;
   isTileExplored: (position: THREE.Vector3) => boolean;
@@ -72,6 +73,8 @@ export async function createGameScene(app: HTMLDivElement, gltfAssets?: GltfAsse
   const playerLocalAmbient = createPlayerLocalAmbient();
   Object.values(materials.level.floors).forEach((material) => playerLocalAmbient.applyToMaterial(material));
   playerLocalAmbient.applyToMaterial(materials.level.edge);
+  playerLocalAmbient.applyToMaterial(materials.level.wall);
+  playerLocalAmbient.applyToMaterial(materials.level.wallUpper);
   playerLocalAmbient.applyToMaterial(materials.gameplay.enemy);
   playerLocalAmbient.applyToMaterial(materials.gameplay.gate);
 
@@ -205,6 +208,8 @@ export async function createGameScene(app: HTMLDivElement, gltfAssets?: GltfAsse
     createEnvironmentAsset,
     createExitPortalAsset,
     updateFog: (playerPosition, dt, instant = false) => fogOfWar?.update(playerPosition, dt, instant),
+    updateWallOcclusion: (playerPosition, camera, dt, instant = false) =>
+      levelEdgeVisibility?.updateWallOcclusion(playerPosition, camera, dt, instant),
     updatePlayerLocalAmbient: playerLocalAmbient.update,
     updateGameplayLighting: gameplayLighting.update,
     isTileExplored: (position) => exploredTileKeys.has(key(worldToTile(position))),

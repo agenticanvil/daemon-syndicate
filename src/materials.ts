@@ -36,11 +36,17 @@ export function createSceneMaterials(
   anisotropy: number,
   preloadedFloorTextures: PreloadedFloorTextures = {},
 ): SceneMaterials {
+  const floors = createFloorMaterials(loader, anisotropy, preloadedFloorTextures);
+  const wall = createWallMaterial(floors[DEFAULT_WALL_FLOOR_VARIANT]);
+  const wallUpper = wall.clone();
+  applyWallDither(wallUpper);
   return {
     level: {
-      floors: createFloorMaterials(loader, anisotropy, preloadedFloorTextures),
+      floors,
       floorDecal: createFloorDecalMaterial(loader, anisotropy),
       edge: new THREE.MeshStandardMaterial({ color: 0x111b1e, roughness: 0.86, metalness: 0.32 }),
+      wall,
+      wallUpper,
       void: new THREE.MeshBasicMaterial({ color: 0x010304 }),
       rim: new THREE.MeshBasicMaterial({ color: 0x2ddbd2, transparent: true, opacity: 0.36 }),
     },
@@ -64,6 +70,60 @@ export function createSceneMaterials(
       }),
     },
   };
+}
+
+const DEFAULT_WALL_FLOOR_VARIANT = FLOOR_VARIANTS[0].id;
+
+function createWallMaterial(floorMaterial: THREE.MeshStandardMaterial): THREE.MeshStandardMaterial {
+  return new THREE.MeshStandardMaterial({
+    map: floorMaterial.map,
+    color: 0x68797d,
+    roughness: 0.82,
+    metalness: 0.18,
+    emissive: 0x061819,
+    emissiveIntensity: 0.25,
+  });
+}
+
+function applyWallDither(material: THREE.MeshStandardMaterial): void {
+  const previousOnBeforeCompile = material.onBeforeCompile.bind(material);
+  material.onBeforeCompile = (shader, renderer) => {
+    previousOnBeforeCompile(shader, renderer);
+    shader.vertexShader = shader.vertexShader
+      .replace(
+        "#include <common>",
+        `#include <common>
+        attribute float wallFade;
+        varying float vWallFade;`,
+      )
+      .replace(
+        "#include <begin_vertex>",
+        `#include <begin_vertex>
+        vWallFade = wallFade;`,
+      );
+    shader.fragmentShader = shader.fragmentShader
+      .replace(
+        "#include <common>",
+        `#include <common>
+        varying float vWallFade;
+
+        float wallBayer2(vec2 pixel) {
+          pixel = mod(floor(pixel), 2.0);
+          return fract(pixel.x * 0.5 + pixel.y * pixel.y * 0.75);
+        }
+
+        float wallBayer4(vec2 pixel) {
+          return (wallBayer2(pixel * 0.5) + wallBayer2(pixel) * 4.0) / 5.0;
+        }`,
+      )
+      .replace(
+        "#include <clipping_planes_fragment>",
+        `#include <clipping_planes_fragment>
+        if (wallBayer4(gl_FragCoord.xy) > vWallFade) discard;`,
+      );
+  };
+  material.customProgramCacheKey = () => "daemon-wall-dither-v1";
+  material.needsUpdate = true;
 }
 
 function createPulseMaterial(

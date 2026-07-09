@@ -7,6 +7,8 @@ export type LevelRenderMaterials = {
   floors: Record<FloorVariantId, THREE.MeshStandardMaterial>;
   floorDecal: THREE.MeshBasicMaterial;
   edge: THREE.MeshStandardMaterial;
+  wall: THREE.MeshStandardMaterial;
+  wallUpper: THREE.MeshStandardMaterial;
   void: THREE.MeshBasicMaterial;
   rim: THREE.MeshBasicMaterial;
 };
@@ -24,6 +26,7 @@ type FogBatch = {
 
 export type LevelEdgeVisibility = {
   updateExploredTiles: (exploredKeys: ReadonlySet<string>) => void;
+  updateWallOcclusion: (playerPosition: THREE.Vector3, camera: THREE.Camera, dt: number, instant?: boolean) => void;
 };
 
 const LEVEL_RENDER_DISPOSABLES_KEY = "daemonSyndicateLevelRenderDisposables";
@@ -44,6 +47,31 @@ const FLOOR_TEXTURE_SPAN_TILES = 2;
 const FLOOR_DECAL_OFFSET = 0.026;
 const FLOOR_DECAL_MIN_COUNT = 3;
 const FLOOR_DECAL_TILES_PER_PLACEMENT = 5;
+const WALL_THICKNESS = 0.2;
+const WALL_PLINTH_HEIGHT = 0.64;
+const WALL_UPPER_HEIGHT = 1.82;
+const WALL_TOTAL_HEIGHT = WALL_PLINTH_HEIGHT + WALL_UPPER_HEIGHT;
+const WALL_OCCLUDING_OPACITY = 0.055;
+const WALL_FADE_SPEED = 9;
+const WALL_OCCLUSION_TARGET_HEIGHT = 0.9;
+
+type WallEdge = {
+  center: THREE.Vector3;
+  normal: THREE.Vector3;
+  tangent: THREE.Vector3;
+  halfLength: number;
+};
+
+type BoundaryEdge = {
+  ownerTile: TileCoord;
+  centerX: number;
+  centerZ: number;
+  dirX: number;
+  dirY: number;
+  horizontal: boolean;
+  startVertex: string;
+  endVertex: string;
+};
 
 type FloorDecalDefinition = {
   rect: AtlasRect;
@@ -110,55 +138,188 @@ export function renderLevel(root: THREE.Group, level: LevelData, materials: Leve
 
   const edgeGeometry = new THREE.BoxGeometry(TILE_SIZE, 0.8, 0.22);
   const rimGeometry = new THREE.BoxGeometry(TILE_SIZE, 0.04, 0.08);
+  const wallPlinthGeometry = new THREE.BoxGeometry(TILE_SIZE, WALL_PLINTH_HEIGHT, WALL_THICKNESS);
+  const wallUpperGeometry = new THREE.BoxGeometry(TILE_SIZE, WALL_UPPER_HEIGHT, WALL_THICKNESS);
   const edgeTransforms: THREE.Matrix4[] = [];
   const rimTransforms: THREE.Matrix4[] = [];
+  const wallPlinthTransforms: THREE.Matrix4[] = [];
+  const wallUpperTransforms: THREE.Matrix4[] = [];
+  const wallEdges: WallEdge[] = [];
   const edgeOwnerTiles: TileCoord[] = [];
+  const boundaryEdges = collectBoundaryEdges(level);
+  const vertexOrientations = collectVertexOrientations(boundaryEdges);
 
-  for (const tileKey of level.walkable) {
-    const tile = tileKey.split(",").map(Number);
-    const current = { x: tile[0], y: tile[1] };
-    for (const neighbor of neighbors(current)) {
-      if (level.walkable.has(key(neighbor))) continue;
-      const dirX = neighbor.x - current.x;
-      const dirY = neighbor.y - current.y;
-      const base = tileToWorld(current);
-      const edge = new THREE.Matrix4();
-      const rim = new THREE.Matrix4();
-      const horizontal = dirY !== 0;
-      const rotation = horizontal ? 0 : Math.PI / 2;
-      edge.makeRotationY(rotation);
-      rim.makeRotationY(rotation);
-      edge.setPosition(base.x + dirX * TILE_SIZE * 0.5, -0.36, base.z + dirY * TILE_SIZE * 0.5);
-      rim.setPosition(base.x + dirX * TILE_SIZE * 0.5, 0.06, base.z + dirY * TILE_SIZE * 0.5);
-      edgeTransforms.push(edge);
-      rimTransforms.push(rim);
-      edgeOwnerTiles.push(current);
-    }
+  for (const boundaryEdge of boundaryEdges) {
+    const edgeTransform = createBoundaryTransform(boundaryEdge, -0.36, 0.22, vertexOrientations);
+    const rimTransform = createBoundaryTransform(boundaryEdge, 0.06, 0.08, vertexOrientations);
+    const wallPlinthTransform = createBoundaryTransform(
+      boundaryEdge,
+      WALL_PLINTH_HEIGHT * 0.5,
+      WALL_THICKNESS,
+      vertexOrientations,
+    );
+    const wallUpperTransform = createBoundaryTransform(
+      boundaryEdge,
+      WALL_PLINTH_HEIGHT + WALL_UPPER_HEIGHT * 0.5,
+      WALL_THICKNESS,
+      vertexOrientations,
+    );
+    edgeTransforms.push(edgeTransform.matrix);
+    rimTransforms.push(rimTransform.matrix);
+    wallPlinthTransforms.push(wallPlinthTransform.matrix);
+    wallUpperTransforms.push(wallUpperTransform.matrix);
+    wallEdges.push({
+      center: wallUpperTransform.center,
+      normal: new THREE.Vector3(boundaryEdge.dirX, 0, boundaryEdge.dirY),
+      tangent: new THREE.Vector3(boundaryEdge.horizontal ? 1 : 0, 0, boundaryEdge.horizontal ? 0 : 1),
+      halfLength: wallUpperTransform.length * 0.5,
+    });
+    edgeOwnerTiles.push(boundaryEdge.ownerTile);
   }
 
   const edges = new THREE.InstancedMesh(edgeGeometry, materials.edge, edgeTransforms.length);
   const rims = new THREE.InstancedMesh(rimGeometry, materials.rim, rimTransforms.length);
+  const wallPlinths = new THREE.InstancedMesh(wallPlinthGeometry, materials.wall, wallPlinthTransforms.length);
+  const wallFadeValues = new Float32Array(wallUpperTransforms.length).fill(1);
+  const wallFade = new THREE.InstancedBufferAttribute(wallFadeValues, 1);
+  wallUpperGeometry.setAttribute("wallFade", wallFade);
+  const upperWalls = new THREE.InstancedMesh(wallUpperGeometry, materials.wallUpper, wallUpperTransforms.length);
   edges.frustumCulled = false;
   rims.frustumCulled = false;
-  root.add(edges, rims);
-  disposables.push(edges, rims);
+  wallPlinths.frustumCulled = false;
+  upperWalls.frustumCulled = false;
+  wallPlinths.castShadow = true;
+  wallPlinths.receiveShadow = true;
+  upperWalls.castShadow = true;
+  upperWalls.receiveShadow = true;
+  wallPlinths.name = "level-wall-plinths";
+  upperWalls.name = "level-wall-uppers";
+  root.add(edges, wallPlinths, upperWalls, rims);
+  disposables.push(edges, rims, wallPlinths, upperWalls);
 
   disposables.push(...addStartPad(root, level.start));
   root.userData[LEVEL_RENDER_DISPOSABLES_KEY] = disposables;
 
+  let currentExploredKeys: ReadonlySet<string> = new Set();
   const updateExploredTiles = (exploredKeys: ReadonlySet<string>): void => {
+    currentExploredKeys = exploredKeys;
     updateFogBatch(fogBatch, exploredKeys);
     edgeTransforms.forEach((edgeTransform, index) => {
       const visible = isConnectedExploredTile(edgeOwnerTiles[index], exploredKeys);
       edges.setMatrixAt(index, visible ? edgeTransform : HIDDEN_MATRIX);
       rims.setMatrixAt(index, visible ? rimTransforms[index] : HIDDEN_MATRIX);
+      wallPlinths.setMatrixAt(index, visible ? wallPlinthTransforms[index] : HIDDEN_MATRIX);
+      upperWalls.setMatrixAt(index, visible ? wallUpperTransforms[index] : HIDDEN_MATRIX);
     });
     edges.instanceMatrix.needsUpdate = true;
     rims.instanceMatrix.needsUpdate = true;
+    wallPlinths.instanceMatrix.needsUpdate = true;
+    upperWalls.instanceMatrix.needsUpdate = true;
+  };
+
+  const playerOcclusionTarget = new THREE.Vector3();
+  const cameraToPlayer = new THREE.Vector3();
+  const wallIntersection = new THREE.Vector3();
+  const wallOffset = new THREE.Vector3();
+  const updateWallOcclusion = (playerPosition: THREE.Vector3, camera: THREE.Camera, dt: number, instant = false): void => {
+    playerOcclusionTarget.copy(playerPosition).addScaledVector(THREE.Object3D.DEFAULT_UP, WALL_OCCLUSION_TARGET_HEIGHT);
+    cameraToPlayer.copy(playerOcclusionTarget).sub(camera.position);
+    if (cameraToPlayer.lengthSq() < 0.0001) return;
+
+    wallEdges.forEach((wallEdge, index) => {
+      if (!isConnectedExploredTile(edgeOwnerTiles[index], currentExploredKeys)) return;
+      const denominator = cameraToPlayer.dot(wallEdge.normal);
+      const intersectionAmount =
+        Math.abs(denominator) > 0.0001
+          ? wallOffset.copy(wallEdge.center).sub(camera.position).dot(wallEdge.normal) / denominator
+          : -1;
+      wallIntersection.copy(camera.position).addScaledVector(cameraToPlayer, intersectionAmount);
+      const intersectsWallLength =
+        Math.abs(wallOffset.copy(wallIntersection).sub(wallEdge.center).dot(wallEdge.tangent)) <= wallEdge.halfLength;
+      const intersectsUpperWallHeight =
+        wallIntersection.y >= WALL_PLINTH_HEIGHT && wallIntersection.y <= WALL_TOTAL_HEIGHT;
+      const occludesPlayer =
+        intersectionAmount > 0 &&
+        intersectionAmount < 1 &&
+        intersectsWallLength &&
+        intersectsUpperWallHeight;
+      const target = occludesPlayer ? WALL_OCCLUDING_OPACITY : 1;
+      const alpha = instant ? 1 : 1 - Math.exp(-WALL_FADE_SPEED * Math.max(dt, 0));
+      wallFadeValues[index] = THREE.MathUtils.lerp(wallFadeValues[index], target, alpha);
+      wallFade.setX(index, wallFadeValues[index]);
+    });
+    wallFade.needsUpdate = true;
   };
   updateExploredTiles(new Set());
 
-  return { updateExploredTiles };
+  return { updateExploredTiles, updateWallOcclusion };
+}
+
+function collectBoundaryEdges(level: LevelData): BoundaryEdge[] {
+  const boundaryEdges: BoundaryEdge[] = [];
+  for (const tileKey of level.walkable) {
+    const [x, y] = tileKey.split(",").map(Number);
+    const ownerTile = { x, y };
+    for (const neighbor of neighbors(ownerTile)) {
+      if (level.walkable.has(key(neighbor))) continue;
+      const dirX = neighbor.x - ownerTile.x;
+      const dirY = neighbor.y - ownerTile.y;
+      const horizontal = dirY !== 0;
+      const base = tileToWorld(ownerTile);
+      boundaryEdges.push({
+        ownerTile,
+        centerX: base.x + dirX * TILE_SIZE * 0.5,
+        centerZ: base.z + dirY * TILE_SIZE * 0.5,
+        dirX,
+        dirY,
+        horizontal,
+        startVertex: horizontal ? `${ownerTile.x},${ownerTile.y + Math.max(dirY, 0)}` : `${ownerTile.x + Math.max(dirX, 0)},${ownerTile.y}`,
+        endVertex: horizontal
+          ? `${ownerTile.x + 1},${ownerTile.y + Math.max(dirY, 0)}`
+          : `${ownerTile.x + Math.max(dirX, 0)},${ownerTile.y + 1}`,
+      });
+    }
+  }
+  return boundaryEdges;
+}
+
+function collectVertexOrientations(boundaryEdges: BoundaryEdge[]): Map<string, Set<"horizontal" | "vertical">> {
+  const orientations = new Map<string, Set<"horizontal" | "vertical">>();
+  for (const edge of boundaryEdges) {
+    const orientation = edge.horizontal ? "horizontal" : "vertical";
+    for (const vertex of [edge.startVertex, edge.endVertex]) {
+      const vertexOrientations = orientations.get(vertex) ?? new Set();
+      vertexOrientations.add(orientation);
+      orientations.set(vertex, vertexOrientations);
+    }
+  }
+  return orientations;
+}
+
+function createBoundaryTransform(
+  edge: BoundaryEdge,
+  height: number,
+  thickness: number,
+  vertexOrientations: ReadonlyMap<string, ReadonlySet<"horizontal" | "vertical">>,
+): { matrix: THREE.Matrix4; center: THREE.Vector3; length: number } {
+  const joinsPerpendicularAtStart = (vertexOrientations.get(edge.startVertex)?.size ?? 0) > 1;
+  const joinsPerpendicularAtEnd = (vertexOrientations.get(edge.endVertex)?.size ?? 0) > 1;
+  const joinAdjustment = edge.horizontal ? thickness * 0.5 : -thickness * 0.5;
+  const startAdjustment = joinsPerpendicularAtStart ? joinAdjustment : 0;
+  const endAdjustment = joinsPerpendicularAtEnd ? joinAdjustment : 0;
+  const length = TILE_SIZE + startAdjustment + endAdjustment;
+  const centerShift = (endAdjustment - startAdjustment) * 0.5;
+  const center = new THREE.Vector3(
+    edge.centerX + (edge.horizontal ? centerShift : 0),
+    height,
+    edge.centerZ + (edge.horizontal ? 0 : centerShift),
+  );
+  const matrix = new THREE.Matrix4().compose(
+    center,
+    new THREE.Quaternion().setFromAxisAngle(THREE.Object3D.DEFAULT_UP, edge.horizontal ? 0 : -Math.PI / 2),
+    new THREE.Vector3(length / TILE_SIZE, 1, 1),
+  );
+  return { matrix, center, length };
 }
 
 function createFloorGeometry(tiles: TileCoord[]): THREE.BufferGeometry {

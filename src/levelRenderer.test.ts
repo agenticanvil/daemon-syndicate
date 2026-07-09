@@ -2,7 +2,7 @@ import * as THREE from "three";
 import { describe, expect, it, vi } from "vitest";
 import { FLOOR_VARIANTS } from "./floorVariants";
 import { renderLevel, type LevelRenderMaterials } from "./levelRenderer";
-import type { LevelData } from "./level";
+import { tileToWorld, type LevelData } from "./level";
 
 describe("renderLevel", () => {
   it("disposes renderer-owned geometry and local materials before rerendering a level", () => {
@@ -25,6 +25,33 @@ describe("renderLevel", () => {
     for (const spy of materialDisposeSpies) expect(spy).toHaveBeenCalledOnce();
     expect(sharedMaterialDispose).not.toHaveBeenCalled();
   });
+
+  it("keeps plinths opaque and dithers only upper walls that block the player", () => {
+    const root = new THREE.Group();
+    const level = createTestLevel();
+    const visibility = renderLevel(root, level, createMaterials());
+    const playerPosition = tileToWorld(level.start);
+    const camera = new THREE.PerspectiveCamera();
+    camera.position.copy(playerPosition).add(new THREE.Vector3(0, 10, -8));
+
+    visibility.updateExploredTiles(level.walkable);
+    visibility.updateWallOcclusion(playerPosition, camera, 0, true);
+
+    const plinths = root.getObjectByName("level-wall-plinths");
+    const uppers = root.getObjectByName("level-wall-uppers") as THREE.InstancedMesh;
+    const wallFade = uppers.geometry.getAttribute("wallFade") as THREE.InstancedBufferAttribute;
+    const fadeValues = Array.from({ length: wallFade.count }, (_, index) => wallFade.getX(index));
+
+    expect(plinths).toBeInstanceOf(THREE.InstancedMesh);
+    expect(fadeValues.some((value) => value < 0.25)).toBe(true);
+    expect(fadeValues.some((value) => value === 1)).toBe(true);
+
+    camera.position.copy(playerPosition).add(new THREE.Vector3(8, 10, 8));
+    visibility.updateWallOcclusion(playerPosition, camera, 0, true);
+
+    const restoredFadeValues = Array.from({ length: wallFade.count }, (_, index) => wallFade.getX(index));
+    expect(restoredFadeValues.every((value) => value === 1)).toBe(true);
+  });
 });
 
 function createMaterials(): LevelRenderMaterials {
@@ -34,6 +61,8 @@ function createMaterials(): LevelRenderMaterials {
     ) as LevelRenderMaterials["floors"],
     floorDecal: new THREE.MeshBasicMaterial(),
     edge: new THREE.MeshStandardMaterial(),
+    wall: new THREE.MeshStandardMaterial(),
+    wallUpper: new THREE.MeshStandardMaterial(),
     void: new THREE.MeshBasicMaterial(),
     rim: new THREE.MeshBasicMaterial(),
   };

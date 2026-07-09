@@ -375,6 +375,7 @@ export class Game {
     }
     this.world.updatePlayerLocalAmbient(this.simulation.playerPosition);
     this.world.updateGameplayLighting(this.simulation.playerPosition, this.world.camera);
+    this.world.updateWallOcclusion(this.simulation.playerPosition, this.world.camera, dt);
     this.world.render();
   }
 
@@ -399,6 +400,7 @@ export class Game {
     }
     this.world.updatePlayerLocalAmbient(this.simulation.playerPosition);
     this.world.updateGameplayLighting(this.simulation.playerPosition, this.world.camera);
+    this.world.updateWallOcclusion(this.simulation.playerPosition, this.world.camera, dt);
     this.perf.span("three.render.cpu", () => this.world.render());
   }
 
