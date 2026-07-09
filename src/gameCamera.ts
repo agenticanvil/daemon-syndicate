@@ -4,16 +4,27 @@ import type { GameStepResult } from "./gameSimulation";
 import type { CameraSettings } from "./ui";
 
 export type CameraViewMode = "flat" | "depth";
+export type CameraAngles = {
+  pitchDegrees: number;
+  yawDegrees: number;
+};
 
 const CAMERA_DEPTH_YAW = Math.PI / 8;
+const CAMERA_DEPTH_HEIGHT = 26;
 const CAMERA_DEPTH_HORIZONTAL_DISTANCE = Math.hypot(12, 12);
+const CAMERA_DEPTH_DISTANCE = Math.hypot(CAMERA_DEPTH_HORIZONTAL_DISTANCE, CAMERA_DEPTH_HEIGHT);
+const CAMERA_DEPTH_PITCH = Math.atan2(CAMERA_DEPTH_HEIGHT, CAMERA_DEPTH_HORIZONTAL_DISTANCE);
+const CAMERA_MIN_PITCH = THREE.MathUtils.degToRad(42);
+const CAMERA_MAX_PITCH = THREE.MathUtils.degToRad(68);
+const CAMERA_PITCH_ADJUST_SPEED = THREE.MathUtils.degToRad(18);
+const CAMERA_YAW_ADJUST_SPEED = THREE.MathUtils.degToRad(24);
 
 export const DEFAULT_CAMERA_VIEW: CameraViewMode = "depth";
 export const CAMERA_VIEW_OFFSETS: Record<CameraViewMode, THREE.Vector3> = {
   flat: new THREE.Vector3(15, 16, 15),
   depth: new THREE.Vector3(
     Math.sin(CAMERA_DEPTH_YAW) * CAMERA_DEPTH_HORIZONTAL_DISTANCE,
-    26,
+    CAMERA_DEPTH_HEIGHT,
     Math.cos(CAMERA_DEPTH_YAW) * CAMERA_DEPTH_HORIZONTAL_DISTANCE,
   ),
 };
@@ -55,10 +66,13 @@ export class GameplayCameraController {
   private readonly cameraCursorLookOffset = new THREE.Vector3();
   private readonly cameraCursorLookOffsetTarget = new THREE.Vector3();
   private readonly cameraFinalLookAt = new THREE.Vector3();
+  private readonly depthCameraOffset = CAMERA_VIEW_OFFSETS.depth.clone();
 
   private shake = 0;
   private shakeTime = 0;
   private cursorLookRadius = CAMERA_CURSOR_LOOK_STILL_RADIUS;
+  private depthPitch = CAMERA_DEPTH_PITCH;
+  private depthYaw = CAMERA_DEPTH_YAW;
 
   constructor(
     private readonly getCamera: () => THREE.Camera,
@@ -68,6 +82,23 @@ export class GameplayCameraController {
 
   setSettings(settings: CameraSettings): void {
     this.settings = { ...settings };
+  }
+
+  adjustOrbit(pitchDirection: number, yawDirection: number, dt: number): void {
+    this.depthPitch = THREE.MathUtils.clamp(
+      this.depthPitch + pitchDirection * CAMERA_PITCH_ADJUST_SPEED * dt,
+      CAMERA_MIN_PITCH,
+      CAMERA_MAX_PITCH,
+    );
+    this.depthYaw = wrapRadians(this.depthYaw + yawDirection * CAMERA_YAW_ADJUST_SPEED * dt);
+    this.updateDepthCameraOffset();
+  }
+
+  cameraAngles(): CameraAngles {
+    return {
+      pitchDegrees: THREE.MathUtils.radToDeg(this.depthPitch),
+      yawDegrees: THREE.MathUtils.radToDeg(this.depthYaw),
+    };
   }
 
   reset(playerPosition: THREE.Vector3): void {
@@ -169,7 +200,16 @@ export class GameplayCameraController {
   }
 
   private cameraOffset(): THREE.Vector3 {
-    return CAMERA_VIEW_OFFSETS[this.getViewMode()];
+    return this.getViewMode() === "depth" ? this.depthCameraOffset : CAMERA_VIEW_OFFSETS.flat;
+  }
+
+  private updateDepthCameraOffset(): void {
+    const horizontalDistance = Math.cos(this.depthPitch) * CAMERA_DEPTH_DISTANCE;
+    this.depthCameraOffset.set(
+      Math.sin(this.depthYaw) * horizontalDistance,
+      Math.sin(this.depthPitch) * CAMERA_DEPTH_DISTANCE,
+      Math.cos(this.depthYaw) * horizontalDistance,
+    );
   }
 
   private updateCursorLookOffset(
@@ -210,6 +250,10 @@ export class GameplayCameraController {
 
 function smoothAlpha(smoothing: number, dt: number): number {
   return 1 - Math.exp(-smoothing * dt);
+}
+
+function wrapRadians(angle: number): number {
+  return THREE.MathUtils.euclideanModulo(angle + Math.PI, Math.PI * 2) - Math.PI;
 }
 
 function shakeNoise(time: number, seed: number): number {

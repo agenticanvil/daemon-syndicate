@@ -150,6 +150,25 @@ canvas {
   font-variant-numeric: tabular-nums;
 }
 
+.fps-stat {
+  cursor: copy;
+  pointer-events: auto;
+}
+
+.fps-stat small {
+  display: block;
+  margin-top: 3px;
+  color: #9dbabe;
+  font-size: 0.68rem;
+  font-variant-numeric: tabular-nums;
+  text-transform: uppercase;
+}
+
+.fps-stat small b {
+  color: #f4fbff;
+  font-weight: 700;
+}
+
 .ability-bar {
   position: absolute;
   right: 16px;

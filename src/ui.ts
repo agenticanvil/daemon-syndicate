@@ -53,6 +53,7 @@ export type Ui = {
   getStartMapDepth: () => number;
   setFpsVisible: (visible: boolean) => void;
   updateFps: (fps: number) => void;
+  updateCameraDebug: (angles: { pitchDegrees: number; yawDegrees: number }) => void;
   onAudioSettingsChange: (listener: (settings: AudioSettings) => void) => void;
   onGraphicsSettingsChange: (listener: (settings: GraphicsSettings) => void) => void;
   onCameraSettingsChange: (listener: (settings: CameraSettings) => void) => void;
@@ -121,7 +122,12 @@ export function createUi(app: HTMLDivElement): Ui {
           <div class="stat"><span>Depth</span><strong id="mapDepth">1</strong></div>
           <div class="stat"><span>Rank</span><strong id="playerLevel">1</strong></div>
           <div class="stat"><span>XP</span><strong id="playerXp">0/100</strong></div>
-          <div class="stat fps-stat hidden" id="fpsStat"><span>FPS</span><strong id="fpsValue">0</strong></div>
+          <div class="stat fps-stat hidden" id="fpsStat" title="Copy camera pitch and yaw">
+            <span>Debug</span>
+            <strong><b id="fpsValue">0</b> FPS</strong>
+            <small>Pitch <b id="cameraPitchValue">0.0</b></small>
+            <small>Yaw <b id="cameraYawValue">0.0</b></small>
+          </div>
         </div>
       </div>
       <div class="ability-bar">
@@ -286,6 +292,8 @@ export function createUi(app: HTMLDivElement): Ui {
   const playerXpEl = document.querySelector<HTMLElement>("#playerXp")!;
   const fpsStat = document.querySelector<HTMLElement>("#fpsStat")!;
   const fpsValue = document.querySelector<HTMLElement>("#fpsValue")!;
+  const cameraPitchValue = document.querySelector<HTMLElement>("#cameraPitchValue")!;
+  const cameraYawValue = document.querySelector<HTMLElement>("#cameraYawValue")!;
   const primaryAbility = document.querySelector<HTMLElement>("#primaryAbility")!;
   const novaAbility = document.querySelector<HTMLElement>("#novaAbility")!;
   const dashAbility = document.querySelector<HTMLElement>("#dashAbility")!;
@@ -312,6 +320,7 @@ export function createUi(app: HTMLDivElement): Ui {
   const graphicsSettingsListeners: Array<(settings: GraphicsSettings) => void> = [];
   const cameraSettingsListeners: Array<(settings: CameraSettings) => void> = [];
   const audioSettingsListeners: Array<(settings: AudioSettings) => void> = [];
+  let cameraDebugCopyValue = "pitch=0.0 yaw=0.0";
 
   cameraSmoothFollow.checked = cameraSettings.smoothFollow;
   cameraPointerLead.checked = cameraSettings.pointerLead;
@@ -440,6 +449,9 @@ export function createUi(app: HTMLDivElement): Ui {
     audioSettings = { ...audioSettings, muted: audioMuted.checked };
     emitAudioSettings();
   });
+  fpsStat.addEventListener("click", () => {
+    void navigator.clipboard?.writeText(cameraDebugCopyValue);
+  });
   masterVolume.addEventListener("input", () => {
     audioSettings = { ...audioSettings, masterVolume: clamp01(Number(masterVolume.value)) };
     updateAudioVolumeLabels();
@@ -533,6 +545,13 @@ export function createUi(app: HTMLDivElement): Ui {
     },
     updateFps(fps: number) {
       fpsValue.textContent = Math.round(fps).toString();
+    },
+    updateCameraDebug(angles: { pitchDegrees: number; yawDegrees: number }) {
+      const pitch = angles.pitchDegrees.toFixed(1);
+      const yaw = angles.yawDegrees.toFixed(1);
+      cameraPitchValue.textContent = `${pitch} deg`;
+      cameraYawValue.textContent = `${yaw} deg`;
+      cameraDebugCopyValue = `pitch=${pitch} yaw=${yaw}`;
     },
     onAudioSettingsChange(listener: (settings: AudioSettings) => void) {
       audioSettingsListeners.push(listener);

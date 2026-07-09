@@ -24,6 +24,9 @@ type GameOptions = {
   seed?: string;
 };
 
+const CAMERA_PITCH_KEY = "KeyI";
+const CAMERA_YAW_KEY = "KeyO";
+
 export type { DebugSpawnPosition };
 
 export class Game {
@@ -166,6 +169,9 @@ export class Game {
     }
 
     this.input.addKey(event.code);
+    if (event.code === CAMERA_PITCH_KEY || event.code === CAMERA_YAW_KEY) {
+      event.preventDefault();
+    }
     if (event.code === "ShiftLeft" || event.code === "ShiftRight") {
       event.preventDefault();
       if (this.canAct()) this.input.requestDash();
@@ -308,6 +314,18 @@ export class Game {
     const elapsedSeconds = first === undefined || last === undefined ? 0 : (last - first) / 1000;
     const fps = elapsedSeconds > 0 ? (this.fpsFrameTimes.length - 1) / elapsedSeconds : 0;
     this.ui.updateFps(fps);
+    this.ui.updateCameraDebug(this.camera.cameraAngles());
+  }
+
+  private updateCameraOrbitFromInput(dt: number): void {
+    const reverse = this.input.hasKey("ShiftLeft") || this.input.hasKey("ShiftRight");
+    const direction = reverse ? -1 : 1;
+    const pitch = this.input.hasKey(CAMERA_PITCH_KEY) ? direction : 0;
+    const yaw = this.input.hasKey(CAMERA_YAW_KEY) ? direction : 0;
+    if (pitch !== 0 || yaw !== 0) {
+      this.camera.adjustOrbit(pitch, yaw, dt);
+      this.ui.updateCameraDebug(this.camera.cameraAngles());
+    }
   }
 
   private perfFrameArgs(dt: number): Record<string, number | string | boolean> {
@@ -334,6 +352,7 @@ export class Game {
   }
 
   private runFrame(dt: number): void {
+    this.updateCameraOrbitFromInput(dt);
     const command = this.buildPlayerCommand();
     if (this.simulation.isStarted && !this.simulation.isGameOver && !this.simulation.isPaused) {
       const result = this.simulation.step(dt, command);
@@ -351,6 +370,7 @@ export class Game {
   }
 
   private runInstrumentedFrame(dt: number): void {
+    this.updateCameraOrbitFromInput(dt);
     const command = this.buildPlayerCommand();
     if (this.simulation.isStarted && !this.simulation.isGameOver && !this.simulation.isPaused) {
       const result = this.perf.span("simulation.step", () => this.simulation.step(dt, command));
