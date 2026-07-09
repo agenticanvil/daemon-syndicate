@@ -2,6 +2,7 @@ import * as THREE from "three";
 import type { GameAudio } from "./audio";
 import { TILE_SIZE } from "./constants";
 import { EntityViewSync } from "./entityViewSync";
+import { FixedStepClock } from "./fixedStepClock";
 import type { GameEffect } from "./gameEffects";
 import { GameAudioFeedback } from "./gameAudioFeedback";
 import { GameplayCameraController } from "./gameCamera";
@@ -33,6 +34,7 @@ export class Game {
   private readonly clock = new THREE.Clock();
   private readonly fpsFrameTimes: number[] = [];
   private readonly input = new InputState();
+  private readonly simulationClock = new FixedStepClock();
   private readonly view: GameplayView;
   private readonly simulation: GameSimulation;
   private readonly entityViews: EntityViewSync;
@@ -100,6 +102,7 @@ export class Game {
   }
 
   startNewRun(mapDepth = 1): void {
+    this.simulationClock.reset();
     this.simulation.startNewRun({ mapDepth });
     this.selectingUpgrade = false;
     this.resetViewForSimulation();
@@ -197,6 +200,7 @@ export class Game {
   private setPaused(paused: boolean): void {
     const changed = this.simulation.isPaused !== paused;
     this.simulation.setPaused(paused);
+    if (paused) this.simulationClock.reset();
     this.ui.setPaused(paused);
     if (changed) {
       this.audioFeedback.playPauseChanged(paused);
@@ -205,6 +209,7 @@ export class Game {
 
   private exitToMainMenu(): void {
     this.selectingUpgrade = false;
+    this.simulationClock.reset();
     this.simulation.exitToMainMenu();
     this.input.clear();
     this.resetViewForSimulation();
@@ -353,10 +358,14 @@ export class Game {
 
   private runFrame(dt: number): void {
     this.updateCameraOrbitFromInput(dt);
-    const command = this.buildPlayerCommand();
     if (this.simulation.isStarted && !this.simulation.isGameOver && !this.simulation.isPaused) {
-      const result = this.simulation.step(dt, command);
-      this.applySimulationResult(result, dt);
+      this.simulationClock.advance(dt, (fixedDt) => {
+        if (!this.canAct()) return;
+        const result = this.simulation.step(fixedDt, this.buildPlayerCommand());
+        this.applySimulationResult(result, fixedDt);
+      });
+    } else {
+      this.simulationClock.reset();
     }
 
     if (!this.simulation.isStarted || this.simulation.isGameOver || this.simulation.isPaused) {
@@ -371,10 +380,16 @@ export class Game {
 
   private runInstrumentedFrame(dt: number): void {
     this.updateCameraOrbitFromInput(dt);
-    const command = this.buildPlayerCommand();
     if (this.simulation.isStarted && !this.simulation.isGameOver && !this.simulation.isPaused) {
-      const result = this.perf.span("simulation.step", () => this.simulation.step(dt, command));
-      this.applySimulationResult(result, dt);
+      this.simulationClock.advance(dt, (fixedDt) => {
+        if (!this.canAct()) return;
+        const result = this.perf.span("simulation.step", () =>
+          this.simulation.step(fixedDt, this.buildPlayerCommand()),
+        );
+        this.applySimulationResult(result, fixedDt);
+      });
+    } else {
+      this.simulationClock.reset();
     }
 
     if (!this.simulation.isStarted || this.simulation.isGameOver || this.simulation.isPaused) {
@@ -422,7 +437,7 @@ export class Game {
     const now = performance.now();
     this.sampleFps(now);
     this.updateFpsHud(now);
-    const dt = Math.min(this.clock.getDelta(), 0.033);
+    const dt = this.clock.getDelta();
 
     if (this.perf.enabled) {
       this.perf.frame(this.perfFrameArgs(dt), () => this.runInstrumentedFrame(dt));

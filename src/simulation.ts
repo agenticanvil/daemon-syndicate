@@ -1,6 +1,7 @@
 import { BasicPlayerAi } from "./aiController";
 import { WEAPON_BALANCE } from "./balance";
 import type { EnemyKind } from "./enemyDefinitions";
+import { SIMULATION_STEP_SECONDS } from "./fixedStepClock";
 import { GameSimulation, type GameSimulationSnapshot } from "./gameSimulation";
 import { seededRandom } from "./rng";
 import type { ResourceKind } from "./resourceTypes";
@@ -60,11 +61,10 @@ export type SimulationBatchSummary = {
 };
 
 const DEFAULT_SECONDS = 120;
-const DEFAULT_DT = 1 / 60;
 
 export function runHeadlessSimulation(options: SimulationRunOptions): SimulationRunResult {
   const seconds = options.seconds ?? DEFAULT_SECONDS;
-  const fixedDt = options.fixedDt ?? DEFAULT_DT;
+  const fixedDt = options.fixedDt ?? SIMULATION_STEP_SECONDS;
   const frames = Math.floor(seconds / fixedDt);
   const controller = options.controller ?? new BasicPlayerAi();
   const simulation = new GameSimulation({

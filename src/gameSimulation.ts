@@ -19,6 +19,7 @@ import { availableUpgradeOptions, derivePlayerStats, type PlayerDerivedStats, ty
 type GameSimulationOptions = {
   rng?: Rng;
   seed?: string;
+  createLevel?: (mapDepth: number, rng: Rng) => LevelData;
 };
 
 type StartRunOptions = {
@@ -90,11 +91,13 @@ export class GameSimulation {
   private currentLevel: LevelData;
   private readonly rng: Rng;
   private readonly seed?: string;
+  private readonly createLevel: (mapDepth: number, rng: Rng) => LevelData;
 
   constructor(options: GameSimulationOptions = {}) {
     this.rng = options.rng ?? Math.random;
     this.seed = options.seed;
-    this.currentLevel = generateLevel(this.mapDepth, this.rng);
+    this.createLevel = options.createLevel ?? generateLevel;
+    this.currentLevel = this.createLevel(this.mapDepth, this.rng);
     this.player = new PlayerSystem(() => this.currentLevel, () => this.derivedStats());
     this.pickups = new PickupSystem(
       this.events,
@@ -237,27 +240,32 @@ export class GameSimulation {
 
     if (this.started && !this.gameOver && !this.paused) {
       this.currentEffects = result.effects;
-      this.combat.updateTimers(dt);
-      this.player.updateTimers(dt);
-      this.player.regenerate(dt);
-      this.player.applyMovement(command, dt);
-      result.mapDepthChanged = this.checkGateTransition();
-      this.player.updateAim(command.aimWorld);
-      if (command.firePrimary) {
-        result.primaryFired = this.combat.firePrimary(command.aimWorld);
+      try {
+        this.combat.updateTimers(dt);
+        this.player.updateTimers(dt);
+        this.player.regenerate(dt);
+        this.player.applyMovement(command, dt);
+        result.mapDepthChanged = this.checkGateTransition();
+        if (!result.mapDepthChanged) {
+          this.player.updateAim(command.aimWorld);
+          if (command.firePrimary) {
+            result.primaryFired = this.combat.firePrimary(command.aimWorld);
+          }
+          if (command.fireNova) {
+            result.novaFired = this.combat.fireNova();
+          }
+          if (command.dash) {
+            result.dashUsed = this.player.tryDash(command);
+          }
+          result.projectileImpacts += this.combat.updateProjectiles(dt);
+          this.enemies.update(dt);
+          this.processEvents(result);
+          this.pickups.update(dt);
+          this.processEvents(result);
+        }
+      } finally {
+        this.currentEffects = undefined;
       }
-      if (command.fireNova) {
-        result.novaFired = this.combat.fireNova();
-      }
-      if (command.dash) {
-        result.dashUsed = this.player.tryDash(command);
-      }
-      result.projectileImpacts += this.combat.updateProjectiles(dt);
-      this.enemies.update(dt);
-      this.processEvents(result);
-      this.pickups.update(dt);
-      this.processEvents(result);
-      this.currentEffects = undefined;
     }
 
     result.gameOver = this.gameOver;
@@ -314,6 +322,10 @@ export class GameSimulation {
     }
   }
 
+  grantXp(amount: number): number {
+    return this.progression.grantXp(amount);
+  }
+
   spendUpgrade(id: UpgradeId): boolean {
     const previous = this.derivedStats();
     const spent = this.progression.spendUpgrade(id);
@@ -360,7 +372,7 @@ export class GameSimulation {
         this.kills += 1;
         result.kills += 1;
         result.killedEnemies.push({ kind: event.kind, enemyLevel: event.enemyLevel, xpReward: event.xpReward });
-        this.progression.grantXp(event.xpReward);
+        this.grantXp(event.xpReward);
         this.maybeRefundAmmo();
         this.pickups.maybeDropPickup(event.position, event.dropTable);
         break;
@@ -389,11 +401,11 @@ export class GameSimulation {
   private reset(options: StartRunOptions = {}): void {
     this.clearEntities();
     this.mapDepth = sanitizeStartMapDepth(options.mapDepth);
-    this.currentLevel = generateLevel(this.mapDepth, this.rng);
-    this.player.reset(tileToWorld(this.currentLevel.start), this.currentCollisionLayer());
+    this.currentLevel = this.createLevel(this.mapDepth, this.rng);
     this.kills = 0;
     this.progression.reset();
     this.refreshDerivedStats();
+    this.player.reset(tileToWorld(this.currentLevel.start), this.currentCollisionLayer());
     this.enemies.spawnLevelEnemies();
     this.combat.resetTimers();
     this.gameOver = false;
@@ -404,7 +416,7 @@ export class GameSimulation {
   private loadNextLevel(): void {
     this.clearEntities();
     this.mapDepth += 1;
-    this.currentLevel = generateLevel(this.mapDepth, this.rng);
+    this.currentLevel = this.createLevel(this.mapDepth, this.rng);
     this.player.moveTo(tileToWorld(this.currentLevel.start), this.currentCollisionLayer());
     this.enemies.spawnLevelEnemies();
     this.combat.prepareNextLevel();

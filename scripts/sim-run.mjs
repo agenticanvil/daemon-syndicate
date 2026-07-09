@@ -12,7 +12,8 @@ const args = new Map(
 const runs = Number(args.get("runs") || process.env.SIM_RUNS || 50);
 const seconds = Number(args.get("seconds") || process.env.SIM_SECONDS || 120);
 const seedPrefix = args.get("seed-prefix") || process.env.SIM_SEED_PREFIX || "sim";
-const fixedDt = Number(args.get("dt") || process.env.SIM_DT || 1 / 60);
+const fixedDtOption = args.get("dt") || process.env.SIM_DT;
+const fixedDt = fixedDtOption === undefined ? undefined : Number(fixedDtOption);
 const outDir = resolve("tmp/sim");
 const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
 const summaryPath = resolve(outDir, `summary-${timestamp}.json`);
@@ -28,7 +29,7 @@ const server = await createServer({
 try {
   const { runHeadlessBatch } = await server.ssrLoadModule("/src/simulation.ts");
   const startedAt = performance.now();
-  const summary = runHeadlessBatch({ runs, seconds, seedPrefix, fixedDt });
+  const summary = runHeadlessBatch({ runs, seconds, seedPrefix, ...(fixedDt === undefined ? {} : { fixedDt }) });
   const elapsedMs = Math.round(performance.now() - startedAt);
   const report = {
     generatedAt: new Date().toISOString(),
