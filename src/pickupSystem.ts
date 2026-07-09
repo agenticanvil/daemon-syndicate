@@ -13,6 +13,12 @@ const PICKUP_SETTINGS = {
   energy: { collision: { radius: 0.62 } },
 } as const satisfies Record<ResourceKind, { collision: { radius: number } }>;
 
+const PICKUP_AMOUNT_MULTIPLIER = {
+  health: 1,
+  ammo: 2,
+  energy: 1,
+} as const satisfies Record<ResourceKind, number>;
+
 export type PickupSystemSnapshot = Array<{
   id: number;
   position: VectorSnapshot;
@@ -52,7 +58,7 @@ export class PickupSystem {
         position: position.clone(),
         kind,
         collisionLayer: this.getCollisionLayer(),
-        amount,
+        amount: amount * PICKUP_AMOUNT_MULTIPLIER[kind],
         radius: settings.collision.radius,
       },
     );
