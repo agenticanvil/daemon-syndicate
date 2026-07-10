@@ -45,6 +45,8 @@ export type EnemySystemSnapshot = Array<{
   pathRefreshTimer?: number;
   movementJukeTimer?: number;
   movementJukeSign?: number;
+  stuckTimer?: number;
+  steeringRecoveryTimer?: number;
 }>;
 
 export type EnemyProjectileSystemSnapshot = Array<{
@@ -198,6 +200,8 @@ export class EnemySystem {
       pathRefreshTimer: enemy.pathRefreshTimer,
       movementJukeTimer: enemy.movementJukeTimer,
       movementJukeSign: enemy.movementJukeSign,
+      stuckTimer: enemy.stuckTimer,
+      steeringRecoveryTimer: enemy.steeringRecoveryTimer,
     }));
   }
 

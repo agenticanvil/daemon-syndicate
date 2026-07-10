@@ -1,7 +1,8 @@
 import * as THREE from "three";
 import { describe, expect, it } from "vitest";
+import { TILE_SIZE } from "./constants";
 import { key, tileToWorld, type LevelData, type TileCoord } from "./level";
-import { movementInputFor, moveOnWalkableLevel } from "./movement";
+import { canMoveDirectlyOnWalkableLevel, movementInputFor, moveOnWalkableLevel } from "./movement";
 
 function levelWithWalkable(tiles: TileCoord[]): LevelData {
   return {
@@ -85,5 +86,31 @@ describe("moveOnWalkableLevel", () => {
     expect(moved).toBe(false);
     expect(position.x).toBeCloseTo(original.x);
     expect(position.z).toBeCloseTo(original.z);
+  });
+
+  it("keeps a circular body at least its radius away from a wall", () => {
+    const level = levelWithWalkable([{ x: 2, y: 2 }]);
+    const position = tileToWorld({ x: 2, y: 2 });
+    const startX = position.x;
+    const radius = 0.55;
+
+    for (let step = 0; step < 20; step += 1) {
+      moveOnWalkableLevel(level, position, new THREE.Vector3(1, 0, 0), 0.1, radius);
+    }
+
+    const maximumOffset = TILE_SIZE * 0.5 - radius;
+    expect(position.x - startX).toBeGreaterThan(maximumOffset - 0.1);
+    expect(position.x - startX).toBeLessThanOrEqual(maximumOffset + 0.0001);
+  });
+
+  it("keeps a circular body clear of non-walkable inside corners", () => {
+    const level = levelWithWalkable([
+      { x: 2, y: 2 },
+      { x: 3, y: 2 },
+      { x: 2, y: 3 },
+    ]);
+    const position = tileToWorld({ x: 2, y: 2 });
+
+    expect(canMoveDirectlyOnWalkableLevel(level, position, new THREE.Vector3(1, 0, 1), 0.9, 0.55)).toBe(false);
   });
 });

@@ -52,6 +52,8 @@ export const ENEMY_BALANCE = {
   pathRefreshInterval: 0.24,
   pathRefreshJitter: 0.08,
   waypointReachedDistance: 0.35,
+  stuckRecoveryDelay: 0.4,
+  stuckRecoveryDuration: 0.55,
   maxLevelEnemyCount: 144,
 } as const;
 

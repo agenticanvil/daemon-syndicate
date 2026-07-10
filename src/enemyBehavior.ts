@@ -19,6 +19,8 @@ const MELEE_STEER_NEIGHBOR_OFFSET = new THREE.Vector3();
 const MELEE_STEER_RESULT = new THREE.Vector3();
 const WINDUP_DIRECTION = new THREE.Vector3();
 const FACING_AIM_DIRECTION = new THREE.Vector3();
+const MOVEMENT_START = new THREE.Vector3();
+const MOVEMENT_DELTA = new THREE.Vector3();
 const MELEE_SEPARATION_RADIUS = 2.15;
 const MELEE_SEPARATION_WEIGHT = 0.9;
 const MELEE_DODGE_WEIGHT = 0.38;
@@ -73,6 +75,8 @@ export function updateEnemyBehavior(context: EnemyBehaviorContext): EnemyBehavio
   let moved = false;
   let movementDirection = pursuitDirection;
 
+  enemy.steeringRecoveryTimer = Math.max((enemy.steeringRecoveryTimer ?? 0) - dt, 0);
+
   updateEnemyAttackWindup(enemy, dt, playerPosition, context.fireEnemyProjectile);
 
   if (isRanged) {
@@ -93,11 +97,24 @@ export function updateEnemyBehavior(context: EnemyBehaviorContext): EnemyBehavio
     });
   }
 
-  if (!isRanged && playerDistance > PLAYER_BALANCE.radius + enemy.radius + ENEMY_BALANCE.stopProximity) {
+  if (
+    enemy.steeringRecoveryTimer > 0 ||
+    !canMoveDirectlyOnWalkableLevel(level, enemy.position, movementDirection, enemy.speed * dt, enemy.radius)
+  ) {
+    movementDirection = pursuitDirection;
+  }
+
+  MOVEMENT_START.copy(enemy.position);
+  const shouldMove =
+    movementDirection.lengthSq() > MOVEMENT_EPSILON &&
+    (isRanged || playerDistance > PLAYER_BALANCE.radius + enemy.radius + ENEMY_BALANCE.stopProximity);
+  if (!isRanged && shouldMove) {
     moved = moveEnemy(level, enemy, movementDirection, enemy.speed * dt);
-  } else if (isRanged && movementDirection.lengthSq() > MOVEMENT_EPSILON) {
+  } else if (isRanged && shouldMove) {
     moved = moveEnemy(level, enemy, movementDirection, enemy.speed * dt);
   }
+
+  updateStuckRecovery(enemy, pursuitDirection, MOVEMENT_START, dt, shouldMove);
 
   updateEnemyFacing(enemy, playerPosition, movementDirection, hasLineOfSight, isRanged, context.hasAnimatedRig, dt);
 
@@ -162,8 +179,8 @@ function getEnemyPursuitDirection(context: {
 
   if (
     playerDistance <= ENEMY_BALANCE.directApproachRadius &&
-    hasClearWorldPath(level, enemy.position, playerPosition) &&
-    canMoveDirectlyOnWalkableLevel(level, enemy.position, direct, moveDistance)
+    hasClearWorldPath(level, enemy.position, playerPosition, enemy.radius) &&
+    canMoveDirectlyOnWalkableLevel(level, enemy.position, direct, moveDistance, enemy.radius)
   ) {
     enemy.path = undefined;
     enemy.pathTarget = undefined;
@@ -173,7 +190,7 @@ function getEnemyPursuitDirection(context: {
   const playerKey = key(worldToTile(playerPosition));
   enemy.pathRefreshTimer = (enemy.pathRefreshTimer ?? 0) - dt;
   if (!enemy.path || enemy.pathTarget !== playerKey || enemy.pathRefreshTimer <= 0) {
-    enemy.path = findWorldPath(level, enemy.position, playerPosition);
+    enemy.path = findWorldPath(level, enemy.position, playerPosition, enemy.radius);
     enemy.pathTarget = playerKey;
     enemy.pathRefreshTimer = ENEMY_BALANCE.pathRefreshInterval + rng() * ENEMY_BALANCE.pathRefreshJitter;
   }
@@ -306,7 +323,36 @@ function updateEnemyFacing(
 }
 
 function moveEnemy(level: LevelData, enemy: Enemy, direction: THREE.Vector3, distance: number): boolean {
-  return moveOnWalkableLevel(level, enemy.position, direction, distance);
+  return moveOnWalkableLevel(level, enemy.position, direction, distance, enemy.radius);
+}
+
+function updateStuckRecovery(
+  enemy: Enemy,
+  pursuitDirection: THREE.Vector3,
+  movementStart: THREE.Vector3,
+  dt: number,
+  attemptedMovement: boolean,
+): void {
+  if (!attemptedMovement || pursuitDirection.lengthSq() <= MOVEMENT_EPSILON) {
+    enemy.stuckTimer = 0;
+    return;
+  }
+
+  const forwardProgress = MOVEMENT_DELTA.copy(enemy.position).sub(movementStart).dot(pursuitDirection);
+  if (forwardProgress > enemy.speed * dt * 0.1) {
+    enemy.stuckTimer = 0;
+    return;
+  }
+
+  enemy.stuckTimer = (enemy.stuckTimer ?? 0) + dt;
+  if (enemy.stuckTimer < ENEMY_BALANCE.stuckRecoveryDelay) return;
+
+  enemy.path = undefined;
+  enemy.pathTarget = undefined;
+  enemy.pathRefreshTimer = 0;
+  enemy.movementJukeTimer = 0;
+  enemy.steeringRecoveryTimer = ENEMY_BALANCE.stuckRecoveryDuration;
+  enemy.stuckTimer = 0;
 }
 
 export function canFireEnemyProjectile(direction: THREE.Vector3): boolean {

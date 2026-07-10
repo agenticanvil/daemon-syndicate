@@ -1,6 +1,7 @@
+import * as THREE from "three";
 import { describe, expect, it } from "vitest";
-import { findPath, hasClearTileLine } from "./pathfinding";
-import { key, type LevelData, type TileCoord } from "./level";
+import { findPath, findWorldPath, hasClearTileLine, hasClearWorldPath } from "./pathfinding";
+import { key, tileToWorld, type LevelData, type TileCoord } from "./level";
 
 function levelWithWalkable(tiles: TileCoord[]): LevelData {
   return {
@@ -80,5 +81,44 @@ describe("findPath", () => {
     const level = levelWithWalkable([{ x: 2, y: 2 }]);
 
     expect(findPath(level, { x: 2, y: 2 }, { x: 2, y: 2 })).toEqual([]);
+  });
+
+  it("rejects routes through corridors narrower than the collision diameter", () => {
+    const level = levelWithWalkable([
+      { x: 1, y: 2 },
+      { x: 2, y: 2 },
+      { x: 3, y: 2 },
+    ]);
+
+    expect(findPath(level, { x: 1, y: 2 }, { x: 3, y: 2 }, 1.21)).toBeUndefined();
+  });
+
+  it("uses collision radius when checking a direct world-space route", () => {
+    const level = levelWithWalkable([
+      { x: 1, y: 2 },
+      { x: 2, y: 2 },
+      { x: 3, y: 2 },
+    ]);
+    const from = tileToWorld({ x: 1, y: 2 }).add(new THREE.Vector3(0, 0, 0.6));
+    const target = tileToWorld({ x: 3, y: 2 }).add(new THREE.Vector3(0, 0, 0.6));
+
+    expect(hasClearWorldPath(level, from, target)).toBe(true);
+    expect(hasClearWorldPath(level, from, target, 0.7)).toBe(false);
+  });
+
+  it("recenters an off-center body before a first waypoint that clips an inside corner", () => {
+    const level = levelWithWalkable([
+      { x: 2, y: 2 },
+      { x: 2, y: 3 },
+      { x: 3, y: 2 },
+      { x: 4, y: 2 },
+    ]);
+    const from = tileToWorld({ x: 2, y: 2 }).add(new THREE.Vector3(0, 0, 1));
+
+    expect(findWorldPath(level, from, tileToWorld({ x: 4, y: 2 }), 0.92)).toEqual([
+      "2,2",
+      "3,2",
+      "4,2",
+    ]);
   });
 });

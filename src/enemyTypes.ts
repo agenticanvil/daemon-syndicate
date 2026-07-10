@@ -29,6 +29,8 @@ export type Enemy = {
   pathRefreshTimer?: number;
   movementJukeTimer?: number;
   movementJukeSign?: number;
+  stuckTimer?: number;
+  steeringRecoveryTimer?: number;
   animation: EnemyAnimation;
 };
 

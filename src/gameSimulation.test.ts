@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import { describe, expect, it } from "vitest";
+import { PLAYER_RADIUS, TILE_SIZE } from "./constants";
 import { GameSimulation } from "./gameSimulation";
 import { key, tileToWorld, type LevelData } from "./level";
 import { idlePlayerCommand } from "./playerCommand";
@@ -29,7 +30,7 @@ describe("GameSimulation", () => {
     simulation.startNewRun();
     const resourcesBefore = { ...simulation.snapshot().player.resources };
 
-    const result = simulation.step(0.1, {
+    const result = simulation.step(0.08, {
       movement: new THREE.Vector3(1, 0, 0),
       aimWorld: tileToWorld({ x: 4, y: 3 }),
       firePrimary: true,
@@ -85,6 +86,25 @@ describe("GameSimulation", () => {
 
     expect(resumedResult.primaryFired).toBe(true);
     expect(simulation.snapshot().player.resources.ammo).toBe(beforePause.player.resources.ammo - 1);
+  });
+
+  it("keeps the player collision radius clear of corridor walls", () => {
+    const simulation = new GameSimulation({
+      rng: () => 0,
+      createLevel: corridorTestLevel,
+    });
+    simulation.startNewRun();
+    const start = simulation.playerPosition.clone();
+
+    for (let step = 0; step < 20; step += 1) {
+      simulation.step(0.01, {
+        ...idlePlayerCommand(simulation.playerPosition),
+        movement: new THREE.Vector3(0, 0, 1),
+      });
+    }
+
+    expect(simulation.playerPosition.z - start.z).toBeGreaterThan(0.4);
+    expect(simulation.playerPosition.z - start.z).toBeLessThanOrEqual(TILE_SIZE * 0.5 - PLAYER_RADIUS + 0.0001);
   });
 
   it("stops stepping after game over and restores a clean run on restart", () => {
@@ -229,5 +249,21 @@ function transitionTestLevel(mapDepth: number): LevelData {
     blocked: new Set(),
     environmentalObjects: [],
     spawnPoints: [enemySpawn],
+  };
+}
+
+function corridorTestLevel(mapDepth: number): LevelData {
+  const tiles = Array.from({ length: 5 }, (_, index) => ({ x: 20 + index, y: 22 }));
+  return {
+    mapDepth,
+    width: 45,
+    height: 45,
+    exitDirection: "east",
+    start: tiles[2],
+    end: tiles[4],
+    walkable: new Set(tiles.map(key)),
+    blocked: new Set(),
+    environmentalObjects: [],
+    spawnPoints: [],
   };
 }

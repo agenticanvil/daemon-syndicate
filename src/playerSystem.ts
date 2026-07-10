@@ -117,7 +117,13 @@ export class PlayerSystem {
 
     if (this.moving) {
       input.normalize();
-      moveOnWalkableLevel(this.getLevel(), this.position, input, this.getStats().movementSpeed * dt);
+      moveOnWalkableLevel(
+        this.getLevel(),
+        this.position,
+        input,
+        this.getStats().movementSpeed * dt,
+        this.collisionBody.radius,
+      );
     }
   }
 
@@ -177,7 +183,13 @@ export class PlayerSystem {
     this.resources.energy -= stats.dashEnergyCost;
     this.dashTimer = stats.dashCooldown;
     this.setStatus("invulnerable", Math.max(0.18, stats.dashCooldown * 0.18));
-    return moveOnWalkableLevel(this.getLevel(), this.position, direction, stats.dashDistance);
+    return moveOnWalkableLevel(
+      this.getLevel(),
+      this.position,
+      direction,
+      stats.dashDistance,
+      this.collisionBody.radius,
+    );
   }
 
   grantResource(kind: ResourceKind, amount: number): void {

@@ -1,12 +1,13 @@
 import * as THREE from "three";
 import { fromKey, isTileWalkable, key, neighbors, tileToWorld, worldToTile, type LevelData, type TileCoord } from "./level";
+import { hasClearMovementSegment, isWalkableWithRadius } from "./movement";
 
-export function findPath(level: LevelData, start: TileCoord, target: TileCoord): string[] | undefined {
+export function findPath(level: LevelData, start: TileCoord, target: TileCoord, radius = 0): string[] | undefined {
   const startKey = key(start);
   const targetKey = key(target);
 
   if (startKey === targetKey) return [];
-  if (!isTileWalkable(level, start) || !isTileWalkable(level, target)) return undefined;
+  if (!isTileClear(level, start, radius) || !isTileClear(level, target, radius)) return undefined;
 
   const queue: string[] = [startKey];
   const cameFrom = new Map<string, string | undefined>([[startKey, undefined]]);
@@ -17,7 +18,7 @@ export function findPath(level: LevelData, start: TileCoord, target: TileCoord):
 
     for (const neighbor of neighbors(fromKey(currentKey))) {
       const neighborKey = key(neighbor);
-      if (!isTileWalkable(level, neighbor) || cameFrom.has(neighborKey)) continue;
+      if (!isTileClear(level, neighbor, radius) || cameFrom.has(neighborKey)) continue;
       cameFrom.set(neighborKey, currentKey);
       queue.push(neighborKey);
     }
@@ -35,12 +36,28 @@ export function findPath(level: LevelData, start: TileCoord, target: TileCoord):
   return path;
 }
 
-export function findWorldPath(level: LevelData, from: THREE.Vector3, target: THREE.Vector3): string[] | undefined {
-  return findPath(level, worldToTile(from), worldToTile(target));
+export function findWorldPath(
+  level: LevelData,
+  from: THREE.Vector3,
+  target: THREE.Vector3,
+  radius = 0,
+): string[] | undefined {
+  const start = worldToTile(from);
+  const path = findPath(level, start, worldToTile(target), radius);
+  if (!path || path.length === 0 || radius <= 0) return path;
+
+  const firstWaypoint = tileToWorld(fromKey(path[0]));
+  if (hasClearMovementSegment(level, from, firstWaypoint, radius)) return path;
+
+  const startKey = key(start);
+  const startCenter = tileToWorld(start);
+  return hasClearMovementSegment(level, from, startCenter, radius) ? [startKey, ...path] : undefined;
 }
 
-export function hasClearWorldPath(level: LevelData, from: THREE.Vector3, target: THREE.Vector3): boolean {
-  return hasClearTileLine(level, worldToTile(from), worldToTile(target));
+export function hasClearWorldPath(level: LevelData, from: THREE.Vector3, target: THREE.Vector3, radius = 0): boolean {
+  return radius <= 0
+    ? hasClearTileLine(level, worldToTile(from), worldToTile(target))
+    : hasClearMovementSegment(level, from, target, radius);
 }
 
 export function hasClearTileLine(level: LevelData, start: TileCoord, target: TileCoord): boolean {
@@ -77,4 +94,8 @@ export function pathDirection(
   }
 
   return undefined;
+}
+
+function isTileClear(level: LevelData, tile: TileCoord, radius: number): boolean {
+  return isTileWalkable(level, tile) && (radius <= 0 || isWalkableWithRadius(level, tileToWorld(tile), radius));
 }
