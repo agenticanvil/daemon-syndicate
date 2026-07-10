@@ -44,7 +44,7 @@ export class EntityViewSync {
       const view =
         this.enemyViews.get(enemy.id) ?? this.addEnemyView(enemy);
       view.updateRig?.(enemy.animation, dt);
-      view.sync(enemy.position, enemy.facingYaw);
+      view.sync(enemy.position, enemy.facingYaw, dt);
     }
 
     disposeMissingViews(this.enemyViews, liveIds);

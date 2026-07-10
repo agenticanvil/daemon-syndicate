@@ -12,7 +12,7 @@ import type { PlayerRenderState } from "./playerSystem";
 
 export type EnemyViewHandle = {
   updateRig?: (animation: EnemyAnimation, dt: number) => void;
-  sync: (position: THREE.Vector3, facingYaw: number) => void;
+  sync: (position: THREE.Vector3, facingYaw: number, dt: number) => void;
   flashHit: () => void;
   dispose: () => void;
 };
@@ -97,6 +97,7 @@ export type GameplayEffectAssets = {
 };
 
 const PROJECTILE_FORWARD = new THREE.Vector3(0, 1, 0);
+const ENEMY_MAX_TURN_SPEED = Math.PI * 10;
 const PROJECTILE_GEOMETRY = new THREE.CylinderGeometry(
   0.045,
   0.014,
@@ -678,9 +679,13 @@ export function createThreeGameplayView(world: GameScene, effectAssets?: Gamepla
             applyEnemyFlash(flashMaterials, flashLife / ENEMY_FLASH_DURATION);
           }
         },
-        sync: (nextPosition, nextFacingYaw) => {
+        sync: (nextPosition, nextFacingYaw, dt) => {
           rig.root.position.set(nextPosition.x, 0, nextPosition.z);
-          rig.root.rotation.y = nextFacingYaw;
+          rig.root.rotation.y = moveAngleTowards(
+            rig.root.rotation.y,
+            nextFacingYaw,
+            ENEMY_MAX_TURN_SPEED * dt,
+          );
         },
         flashHit: () => {
           flashLife = ENEMY_FLASH_DURATION;
@@ -1057,6 +1062,11 @@ export function createThreeGameplayView(world: GameScene, effectAssets?: Gamepla
       };
     },
   };
+}
+
+export function moveAngleTowards(current: number, target: number, maxDelta: number): number {
+  const delta = THREE.MathUtils.euclideanModulo(target - current + Math.PI, Math.PI * 2) - Math.PI;
+  return current + THREE.MathUtils.clamp(delta, -maxDelta, maxDelta);
 }
 
 function vectorSnapshot(vector: THREE.Vector3): VectorSnapshot {
