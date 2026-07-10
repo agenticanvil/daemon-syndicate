@@ -54,7 +54,7 @@ export async function startDevEffects(app: HTMLDivElement): Promise<void> {
   world.player.position.copy(playerPosition);
   updateCamera(world, playerPosition);
   world.updatePlayerLocalAmbient(playerPosition);
-  world.updateGameplayLighting(playerPosition, 0);
+  world.updateGameplayLighting(playerPosition, world.camera, 0);
   world.updateWallOcclusion(playerPosition, world.camera, 0, true);
   await view.warmUp();
   hud.innerHTML = renderHud();
@@ -148,7 +148,7 @@ export async function startDevEffects(app: HTMLDivElement): Promise<void> {
     view.updateEffects(dt);
     updateCamera(world, playerPosition);
     world.updatePlayerLocalAmbient(playerPosition);
-    world.updateGameplayLighting(playerPosition, dt);
+    world.updateGameplayLighting(playerPosition, world.camera, dt);
     world.updateWallOcclusion(playerPosition, world.camera, dt);
     world.render();
   };

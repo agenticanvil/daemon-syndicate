@@ -12,6 +12,7 @@ import {
 } from "./level";
 
 const CORRIDOR_LIGHT_COUNT = 3;
+const CORRIDOR_LIGHT_SLOT_COUNT = CORRIDOR_LIGHT_COUNT + 1;
 const CORRIDOR_LIGHT_INTENSITY = 48;
 const CORRIDOR_LIGHT_ACTIVATION_SECONDS = 0.2;
 const CORRIDOR_LIGHT_ACTIVATION_RADIUS = TILE_SIZE * 7.5;
@@ -19,9 +20,18 @@ const CORRIDOR_LIGHT_SENSOR_INSET = 0.3;
 const LINE_OF_SIGHT_SAMPLE_DISTANCE = TILE_SIZE * 0.2;
 const CORRIDOR_LIGHT_HEIGHT = 1.72;
 const CORRIDOR_LIGHT_REASSIGN_DISTANCE = 0.75;
+const CORRIDOR_FLICKER_MIN_DELAY = 2.5;
+const CORRIDOR_FLICKER_DELAY_RANGE = 5.5;
+const CORRIDOR_FLICKER_DURATION = 0.16;
 const FIXTURE_MIN_SPACING_TILES = 5;
 const FIXTURE_MAX_COUNT = 32;
 const FIXTURE_COLORS = [0x9ddbd6, 0xc8d6c6, 0xe0b875] as const;
+const OVERHEAD_POOL_CAMERA_OFFSET = 3.2;
+const OVERHEAD_POOL_LEFT_OFFSET = -0.45;
+const OVERHEAD_POOL_HEIGHT = 5.4;
+const OVERHEAD_POOL_TO_CAMERA = new THREE.Vector3();
+const OVERHEAD_POOL_LEFT = new THREE.Vector3();
+const OVERHEAD_POOL_TARGET = new THREE.Vector3();
 const FIXTURE_HOUSING_OFF_COLOR = new THREE.Color(0x111817);
 const FIXTURE_PANEL_OFF_COLOR = new THREE.Color(0x030605);
 const FIXTURE_ON_COLOR_SCRATCH = new THREE.Color();
@@ -40,12 +50,17 @@ type CorridorFixture = {
   rotationY: number;
   inward: THREE.Vector3;
   brightness: number;
+  flicker: number;
+  flickerDelay: number;
+  flickerTime: number;
+  flickerSeed: number;
   active: boolean;
   visual?: FixtureVisualBinding;
 };
 
 type CorridorLightSlot = {
   light: THREE.SpotLight;
+  brightness: number;
   fixture?: CorridorFixture;
 };
 
@@ -59,7 +74,7 @@ type WallFixtureCandidate = {
 
 export type GameplayLighting = {
   setLevel: (level: LevelData) => void;
-  update: (playerPosition: THREE.Vector3, dt: number) => void;
+  update: (playerPosition: THREE.Vector3, camera: THREE.Camera, dt: number) => void;
 };
 
 export function addGameplayLighting(scene: THREE.Scene, playerLightAnchor: THREE.Group): GameplayLighting {
@@ -70,12 +85,17 @@ export function addGameplayLighting(scene: THREE.Scene, playerLightAnchor: THREE
   alertLight.position.set(-9, 5, -9);
   scene.add(alertLight);
 
+  const overheadPoolLight = new THREE.SpotLight(0x82aaa7, 27, 18, 1.1, 0.9, 1.4);
+  overheadPoolLight.name = "player-environment-light";
+  overheadPoolLight.castShadow = false;
+  scene.add(overheadPoolLight, overheadPoolLight.target);
+
   const fixtureRoot = new THREE.Group();
   fixtureRoot.name = "corridor-light-fixtures";
   scene.add(fixtureRoot);
 
-  const corridorLightSlots = Array.from({ length: CORRIDOR_LIGHT_COUNT }, (_, index): CorridorLightSlot => {
-    const light = new THREE.SpotLight(FIXTURE_COLORS[index], 0, 16, 1.15, 0.82, 1.55);
+  const corridorLightSlots = Array.from({ length: CORRIDOR_LIGHT_SLOT_COUNT }, (_, index): CorridorLightSlot => {
+    const light = new THREE.SpotLight(FIXTURE_COLORS[index % FIXTURE_COLORS.length], 0, 16, 1.15, 0.82, 1.55);
     light.castShadow = false;
     light.shadow.mapSize.set(512, 512);
     light.shadow.camera.near = 0.1;
@@ -84,7 +104,7 @@ export function addGameplayLighting(scene: THREE.Scene, playerLightAnchor: THREE
     light.shadow.normalBias = 0.012;
     light.target.position.y = 0.15;
     scene.add(light, light.target);
-    return { light };
+    return { light, brightness: 0 };
   });
 
   const armorFlashlight = new THREE.SpotLight(0xa8fff4, 72, 38, 0.74, 0.62, 1.45);
@@ -100,6 +120,7 @@ export function addGameplayLighting(scene: THREE.Scene, playerLightAnchor: THREE
   playerLightAnchor.add(armorFlashlight.target);
 
   let fixtures: CorridorFixture[] = [];
+  let activeFixtureQueue: CorridorFixture[] = [];
   let currentLevel: LevelData | undefined;
   const lastAssignmentPosition = new THREE.Vector3(Number.POSITIVE_INFINITY, 0, 0);
 
@@ -108,22 +129,48 @@ export function addGameplayLighting(scene: THREE.Scene, playerLightAnchor: THREE
       currentLevel = level;
       disposeFixtureVisuals(fixtureRoot);
       fixtures = createCorridorFixtures(level);
+      activeFixtureQueue = [];
       addFixtureVisuals(fixtureRoot, fixtures);
       lastAssignmentPosition.set(Number.POSITIVE_INFINITY, 0, 0);
       corridorLightSlots.forEach((slot) => {
         slot.fixture = undefined;
+        slot.brightness = 0;
         slot.light.intensity = 0;
         slot.light.castShadow = false;
       });
     },
-    update: (playerPosition, dt) => {
+    update: (playerPosition, camera, dt) => {
+      updateOverheadPoolLight(overheadPoolLight, playerPosition, camera);
       if (playerPosition.distanceToSquared(lastAssignmentPosition) >= CORRIDOR_LIGHT_REASSIGN_DISTANCE ** 2) {
         lastAssignmentPosition.copy(playerPosition);
-        if (currentLevel) assignNearestFixtures(corridorLightSlots, fixtures, playerPosition, currentLevel);
+        if (currentLevel) {
+          updateActiveFixtureQueue(activeFixtureQueue, fixtures, playerPosition, currentLevel);
+          syncFixtureLightSlots(corridorLightSlots, activeFixtureQueue, playerPosition);
+        }
       }
       updateFixtureActivation(corridorLightSlots, fixtures, dt);
+      syncFixtureLightSlots(corridorLightSlots, activeFixtureQueue, playerPosition);
     },
   };
+}
+
+function updateOverheadPoolLight(light: THREE.SpotLight, playerPosition: THREE.Vector3, camera: THREE.Camera): void {
+  camera.updateMatrixWorld();
+  OVERHEAD_POOL_TARGET.copy(playerPosition).setY(playerPosition.y + 0.12);
+  OVERHEAD_POOL_TO_CAMERA.copy(camera.position).sub(OVERHEAD_POOL_TARGET).setY(0);
+  if (OVERHEAD_POOL_TO_CAMERA.lengthSq() < 0.0001) OVERHEAD_POOL_TO_CAMERA.set(1, 0, 1);
+  OVERHEAD_POOL_TO_CAMERA.normalize();
+
+  OVERHEAD_POOL_LEFT.setFromMatrixColumn(camera.matrixWorld, 0).multiplyScalar(-1).setY(0);
+  if (OVERHEAD_POOL_LEFT.lengthSq() < 0.0001) OVERHEAD_POOL_LEFT.set(-1, 0, 0);
+  OVERHEAD_POOL_LEFT.normalize();
+
+  light.target.position.copy(OVERHEAD_POOL_TARGET);
+  light.position
+    .copy(OVERHEAD_POOL_TARGET)
+    .addScaledVector(OVERHEAD_POOL_TO_CAMERA, OVERHEAD_POOL_CAMERA_OFFSET)
+    .addScaledVector(OVERHEAD_POOL_LEFT, OVERHEAD_POOL_LEFT_OFFSET);
+  light.position.y = playerPosition.y + OVERHEAD_POOL_HEIGHT;
 }
 
 export function createCorridorFixtures(level: LevelData): CorridorFixture[] {
@@ -151,6 +198,10 @@ export function createCorridorFixtures(level: LevelData): CorridorFixture[] {
       rotationY: candidate.rotationY,
       inward: candidate.inward,
       brightness: 0,
+      flicker: 1,
+      flickerDelay: CORRIDOR_FLICKER_MIN_DELAY + (candidate.hash / 0xffffffff) * CORRIDOR_FLICKER_DELAY_RANGE,
+      flickerTime: 0,
+      flickerSeed: candidate.hash,
       active: false,
     };
   });
@@ -216,13 +267,13 @@ function disposeFixtureVisuals(root: THREE.Group): void {
   root.clear();
 }
 
-function assignNearestFixtures(
-  slots: CorridorLightSlot[],
+function updateActiveFixtureQueue(
+  activeQueue: CorridorFixture[],
   fixtures: CorridorFixture[],
   playerPosition: THREE.Vector3,
   level: LevelData,
 ): void {
-  const nearest = fixtures
+  const visible = fixtures
     .map((fixture) => ({ fixture, distance: fixture.position.distanceToSquared(playerPosition) }))
     .filter(({ distance }) => distance <= CORRIDOR_LIGHT_ACTIVATION_RADIUS ** 2)
     .filter(({ fixture }) => {
@@ -230,29 +281,47 @@ function assignNearestFixtures(
       return hasLevelLineOfSight(level, sensorPosition, playerPosition);
     })
     .sort((a, b) => a.distance - b.distance)
-    .slice(0, slots.length)
     .map(({ fixture }) => fixture);
-  const nearestSet = new Set(nearest);
-  fixtures.forEach((fixture) => {
-    fixture.active = nearestSet.has(fixture);
+  const newVisible = visible.filter((fixture) => !activeQueue.includes(fixture));
+  const additions = activeQueue.length < CORRIDOR_LIGHT_COUNT
+    ? newVisible.slice(0, CORRIDOR_LIGHT_COUNT - activeQueue.length)
+    : newVisible.slice(0, 1);
+  additions.forEach((fixture) => {
+    activeQueue.push(fixture);
+    if (activeQueue.length > CORRIDOR_LIGHT_COUNT) activeQueue.shift();
   });
+  const activeSet = new Set(activeQueue);
+  fixtures.forEach((fixture) => (fixture.active = activeSet.has(fixture)));
+}
 
-  const unassigned = nearest.filter((fixture) => !slots.some((slot) => slot.fixture === fixture));
+function syncFixtureLightSlots(
+  slots: CorridorLightSlot[],
+  activeQueue: CorridorFixture[],
+  playerPosition: THREE.Vector3,
+): void {
   slots.forEach((slot) => {
-    if (slot.fixture && !nearestSet.has(slot.fixture)) slot.fixture = undefined;
+    if (slot.fixture && !slot.fixture.active && slot.fixture.brightness === 0 && slot.brightness === 0) {
+      slot.fixture = undefined;
+    }
   });
-
-  slots.forEach((slot) => {
-    const fixture = slot.fixture ?? unassigned.shift();
+  activeQueue.forEach((fixture) => {
+    if (slots.some((slot) => slot.fixture === fixture)) return;
+    const slot = slots.find((candidate) => !candidate.fixture);
+    if (!slot) return;
     slot.fixture = fixture;
-    if (!fixture) return;
+    slot.brightness = 0;
     const { light } = slot;
     light.position.copy(fixture.position).addScaledVector(fixture.inward, 0.18);
     light.target.position.copy(fixture.position).addScaledVector(fixture.inward, TILE_SIZE * 2.2);
     light.target.position.y = 0.18;
     light.color.copy(fixture.color);
   });
-  const closestFixture = nearest[0];
+  const closestFixture = activeQueue.reduce<CorridorFixture | undefined>((closest, fixture) => {
+    if (!closest) return fixture;
+    return fixture.position.distanceToSquared(playerPosition) < closest.position.distanceToSquared(playerPosition)
+      ? fixture
+      : closest;
+  }, undefined);
   slots.forEach((slot) => {
     slot.light.castShadow = closestFixture !== undefined && slot.fixture === closestFixture;
   });
@@ -262,26 +331,51 @@ function updateFixtureActivation(slots: CorridorLightSlot[], fixtures: CorridorF
   const brightnessStep = Math.max(dt, 0) / CORRIDOR_LIGHT_ACTIVATION_SECONDS;
   fixtures.forEach((fixture) => {
     const previousBrightness = fixture.brightness;
+    const previousFlicker = fixture.flicker;
     fixture.brightness = moveTowards(fixture.brightness, fixture.active ? 1 : 0, brightnessStep);
-    if (fixture.brightness !== previousBrightness) updateFixtureVisual(fixture);
+    updateFixtureFlicker(fixture, dt);
+    if (fixture.brightness !== previousBrightness || fixture.flicker !== previousFlicker) updateFixtureVisual(fixture);
   });
   slots.forEach((slot) => {
-    slot.light.intensity = CORRIDOR_LIGHT_INTENSITY * (slot.fixture?.brightness ?? 0);
+    const targetBrightness = slot.fixture?.brightness ?? 0;
+    slot.brightness = moveTowards(slot.brightness, targetBrightness, brightnessStep);
+    slot.light.intensity = CORRIDOR_LIGHT_INTENSITY * slot.brightness * (slot.fixture?.flicker ?? 1);
   });
+}
+
+function updateFixtureFlicker(fixture: CorridorFixture, dt: number): void {
+  if (!fixture.active || fixture.brightness < 1) {
+    fixture.flicker = 1;
+    return;
+  }
+  if (fixture.flickerTime > 0) {
+    fixture.flickerTime = Math.max(0, fixture.flickerTime - Math.max(dt, 0));
+    const pulse = fixture.flickerTime / CORRIDOR_FLICKER_DURATION;
+    fixture.flicker = 0.58 + Math.abs(Math.sin(pulse * Math.PI * 3)) * 0.42;
+    if (fixture.flickerTime === 0) fixture.flicker = 1;
+    return;
+  }
+  fixture.flickerDelay -= Math.max(dt, 0);
+  if (fixture.flickerDelay > 0) return;
+  fixture.flickerTime = CORRIDOR_FLICKER_DURATION;
+  fixture.flickerSeed = (Math.imul(fixture.flickerSeed, 1664525) + 1013904223) >>> 0;
+  fixture.flickerDelay =
+    CORRIDOR_FLICKER_MIN_DELAY + (fixture.flickerSeed / 0xffffffff) * CORRIDOR_FLICKER_DELAY_RANGE;
 }
 
 function updateFixtureVisual(fixture: CorridorFixture): void {
   const visual = fixture.visual;
   if (!visual) return;
+  const visibleBrightness = fixture.brightness * fixture.flicker;
   const housingOnColor = FIXTURE_ON_COLOR_SCRATCH.copy(fixture.color).multiplyScalar(0.42);
   visual.housing.setColorAt(
     visual.index,
-    FIXTURE_RESULT_COLOR_SCRATCH.copy(FIXTURE_HOUSING_OFF_COLOR).lerp(housingOnColor, fixture.brightness),
+    FIXTURE_RESULT_COLOR_SCRATCH.copy(FIXTURE_HOUSING_OFF_COLOR).lerp(housingOnColor, visibleBrightness),
   );
   const panelOnColor = FIXTURE_ON_COLOR_SCRATCH.copy(fixture.color).multiplyScalar(1.65);
   visual.panel.setColorAt(
     visual.index,
-    FIXTURE_RESULT_COLOR_SCRATCH.copy(FIXTURE_PANEL_OFF_COLOR).lerp(panelOnColor, fixture.brightness),
+    FIXTURE_RESULT_COLOR_SCRATCH.copy(FIXTURE_PANEL_OFF_COLOR).lerp(panelOnColor, visibleBrightness),
   );
   if (visual.housing.instanceColor) visual.housing.instanceColor.needsUpdate = true;
   if (visual.panel.instanceColor) visual.panel.instanceColor.needsUpdate = true;

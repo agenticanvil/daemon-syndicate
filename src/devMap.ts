@@ -149,7 +149,7 @@ export async function startDevMap(app: HTMLDivElement): Promise<void> {
     for (const update of staticUpdates) update(dt);
     updateCamera(world, playerPosition);
     world.updatePlayerLocalAmbient(playerPosition);
-    world.updateGameplayLighting(playerPosition, dt);
+    world.updateGameplayLighting(playerPosition, world.camera, dt);
     world.updateWallOcclusion(playerPosition, world.camera, dt);
     updateLabels(labels, world.camera);
     world.render();

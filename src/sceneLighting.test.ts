@@ -29,12 +29,12 @@ describe("addGameplayLighting", () => {
     lighting.setLevel(level);
     const panelRoot = scene.getObjectByName("corridor-light-panels");
     expect(collectInstanceColors(panelRoot).size).toBe(1);
-    lighting.update(new THREE.Vector3(), 0.1);
+    lighting.update(new THREE.Vector3(), new THREE.PerspectiveCamera(), 0.1);
 
     const corridorLights = scene.children.filter(
-      (child): child is THREE.SpotLight => child instanceof THREE.SpotLight,
+      (child): child is THREE.SpotLight => child instanceof THREE.SpotLight && child.name !== "player-environment-light",
     );
-    expect(corridorLights).toHaveLength(3);
+    expect(corridorLights).toHaveLength(4);
     expect(corridorLights.filter((light) => light.castShadow)).toHaveLength(1);
     expect(corridorLights.find((light) => light.castShadow)?.shadow.mapSize.toArray()).toEqual([512, 512]);
     expect(corridorLights.every((light) => light.angle > 1 && light.distance >= 16)).toBe(true);
@@ -44,13 +44,13 @@ describe("addGameplayLighting", () => {
     expect(activeLights.every((light) => light.intensity === 24)).toBe(true);
     expect(collectInstanceColors(panelRoot).size).toBeGreaterThan(1);
 
-    lighting.update(new THREE.Vector3(), 0.1);
+    lighting.update(new THREE.Vector3(), new THREE.PerspectiveCamera(), 0.1);
     expect(activeLights.every((light) => light.intensity === 48)).toBe(true);
 
-    lighting.update(new THREE.Vector3(10_000, 0, 10_000), 0.2);
-    expect(corridorLights.every((light) => light.intensity === 0)).toBe(true);
-    expect(corridorLights.every((light) => light.castShadow === false)).toBe(true);
-    expect(collectInstanceColors(panelRoot).size).toBe(1);
+    lighting.update(new THREE.Vector3(10_000, 0, 10_000), new THREE.PerspectiveCamera(), 0.1);
+    expect(corridorLights.filter((light) => light.intensity > 0)).toHaveLength(activeLights.length);
+    lighting.update(new THREE.Vector3(10_000, 0, 10_000), new THREE.PerspectiveCamera(), 0.1);
+    expect(corridorLights.filter((light) => light.intensity > 0)).toHaveLength(activeLights.length);
   });
 
   it("requires an unobstructed run of floor tiles for sensor line of sight", () => {

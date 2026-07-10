@@ -39,7 +39,7 @@ export type GameScene = {
   createExitPortalAsset: () => PortalAsset;
   updateWallOcclusion: (playerPosition: THREE.Vector3, camera: THREE.Camera, dt: number, instant?: boolean) => void;
   updatePlayerLocalAmbient: (playerPosition: THREE.Vector3) => void;
-  updateGameplayLighting: (playerPosition: THREE.Vector3, dt: number) => void;
+  updateGameplayLighting: (playerPosition: THREE.Vector3, camera: THREE.Camera, dt: number) => void;
   materials: GameplayMaterials;
   resize: () => void;
   applyGraphicsSettings: (settings: GraphicsSettings) => void;
