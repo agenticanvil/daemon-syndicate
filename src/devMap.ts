@@ -7,7 +7,7 @@ import { DEFAULT_FLOOR_VARIANT_ID } from "./floorVariants";
 import { CAMERA_VIEW_OFFSETS } from "./gameCamera";
 import { loadGltfAssetLibrary } from "./gltfAssetFactory";
 import { InputState } from "./inputState";
-import { fromKey, key, tileToWorld, type LevelData, type TileCoord } from "./level";
+import { key, tileToWorld, type LevelData, type TileCoord } from "./level";
 import { movementInputFor } from "./movement";
 import type { ResourceKind } from "./resourceTypes";
 import { createGameScene, type GameScene } from "./scene";
@@ -78,7 +78,6 @@ export async function startDevMap(app: HTMLDivElement): Promise<void> {
 
   document.title = "Dev Map | Daemon Syndicate";
   world.renderLevel(level, { includeExitPortal: false });
-  revealEntireLevel(world, level);
   world.player.position.copy(playerPosition);
   world.reticle.position.copy(playerPosition).add(new THREE.Vector3(0, RETICLE_FLOOR_OFFSET, -TILE_SIZE));
 
@@ -281,12 +280,6 @@ function createDevMapLevel(layout: DevMapLayout): LevelData {
     environmentalObjects: [],
     spawnPoints: [],
   };
-}
-
-function revealEntireLevel(world: GameScene, level: LevelData): void {
-  for (const tileKey of level.walkable) {
-    world.updateFog(tileToWorld(fromKey(tileKey)), 0, true);
-  }
 }
 
 function addSectionFrames(world: GameScene, sections: DevMapSectionLayout[]): void {

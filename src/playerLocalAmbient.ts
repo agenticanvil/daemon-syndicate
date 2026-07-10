@@ -7,22 +7,25 @@ type Shader = Parameters<THREE.Material["onBeforeCompile"]>[0];
 
 export type PlayerLocalAmbient = {
   update: (playerPosition: THREE.Vector3) => void;
-  applyToMaterial: (material: THREE.MeshStandardMaterial) => void;
-  applyToObject: (object: THREE.Object3D) => void;
+  applyToMaterial: (material: THREE.MeshStandardMaterial, strength?: number) => void;
+  applyToObject: (object: THREE.Object3D, strength?: number) => void;
 };
 
 export function createPlayerLocalAmbient(): PlayerLocalAmbient {
-  const uniforms = {
+  const sharedUniforms = {
     uPlayerAmbientPosition: { value: new THREE.Vector3() },
     uPlayerAmbientColor: { value: new THREE.Color(0xbffcff) },
     uPlayerAmbientBrightRadius: { value: TILE_SIZE * 3 },
     uPlayerAmbientFalloffRadius: { value: TILE_SIZE * 5.5 },
-    uPlayerAmbientStrength: { value: 0.54 },
   };
 
-  const applyToMaterial = (material: THREE.MeshStandardMaterial): void => {
+  const applyToMaterial = (material: THREE.MeshStandardMaterial, strength = 0.54): void => {
     if (material.userData[PATCH_KEY]) return;
     material.userData[PATCH_KEY] = true;
+    const uniforms = {
+      ...sharedUniforms,
+      uPlayerAmbientStrength: { value: strength },
+    };
 
     const previousOnBeforeCompile = material.onBeforeCompile.bind(material);
     const previousCacheKey = material.customProgramCacheKey.bind(material);
@@ -37,15 +40,15 @@ export function createPlayerLocalAmbient(): PlayerLocalAmbient {
 
   return {
     update: (playerPosition) => {
-      uniforms.uPlayerAmbientPosition.value.copy(playerPosition);
+      sharedUniforms.uPlayerAmbientPosition.value.copy(playerPosition);
     },
     applyToMaterial,
-    applyToObject: (object) => {
+    applyToObject: (object, strength = 0.54) => {
       object.traverse((child) => {
         if (!(child instanceof THREE.Mesh)) return;
         const materials = Array.isArray(child.material) ? child.material : [child.material];
         materials.forEach((material) => {
-          if (material instanceof THREE.MeshStandardMaterial) applyToMaterial(material);
+          if (material instanceof THREE.MeshStandardMaterial) applyToMaterial(material, strength);
         });
       });
     },

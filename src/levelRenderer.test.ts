@@ -32,9 +32,8 @@ describe("renderLevel", () => {
     const visibility = renderLevel(root, level, createMaterials());
     const playerPosition = tileToWorld(level.start);
     const camera = new THREE.PerspectiveCamera();
-    camera.position.copy(playerPosition).add(new THREE.Vector3(0, 10, -8));
+    camera.position.copy(playerPosition).add(new THREE.Vector3(0, 10, 8));
 
-    visibility.updateExploredTiles(level.walkable);
     visibility.updateWallOcclusion(playerPosition, camera, 0, true);
 
     const plinths = root.getObjectByName("level-wall-plinths");
@@ -46,7 +45,7 @@ describe("renderLevel", () => {
     expect(fadeValues.some((value) => value < 0.25)).toBe(true);
     expect(fadeValues.some((value) => value === 1)).toBe(true);
 
-    camera.position.copy(playerPosition).add(new THREE.Vector3(8, 10, 8));
+    camera.position.copy(playerPosition).add(new THREE.Vector3(0, 10, 0));
     visibility.updateWallOcclusion(playerPosition, camera, 0, true);
 
     const restoredFadeValues = Array.from({ length: wallFade.count }, (_, index) => wallFade.getX(index));

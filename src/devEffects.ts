@@ -8,7 +8,7 @@ import { createThreeGameplayView, preloadGameplayEffectAssets } from "./gameView
 import { CAMERA_VIEW_OFFSETS } from "./gameCamera";
 import { loadGltfAssetLibrary } from "./gltfAssetFactory";
 import { InputState } from "./inputState";
-import { fromKey, key, tileToWorld, type LevelData, type TileCoord } from "./level";
+import { key, tileToWorld, type LevelData, type TileCoord } from "./level";
 import { movementInputFor } from "./movement";
 import { createGameScene, type GameScene } from "./scene";
 
@@ -51,7 +51,6 @@ export async function startDevEffects(app: HTMLDivElement): Promise<void> {
 
   document.title = "Effect Test | Daemon Syndicate";
   view.renderLevel(level, { includeExitPortal: false });
-  revealEntireLevel(world, level);
   world.player.position.copy(playerPosition);
   world.reticle.position.copy(playerPosition).add(new THREE.Vector3(0, RETICLE_FLOOR_OFFSET, -TILE_SIZE));
   hud.innerHTML = renderHud();
@@ -195,12 +194,6 @@ function isEffectTestVoid(tile: TileCoord): boolean {
   if (tile.x >= 30 && tile.x <= 37 && tile.y >= 25 && tile.y <= 31) return true;
   if (tile.x >= 16 && tile.x <= 24 && tile.y >= 30 && tile.y - tile.x >= 11) return true;
   return false;
-}
-
-function revealEntireLevel(world: GameScene, level: LevelData): void {
-  for (const tileKey of level.walkable) {
-    world.updateFog(tileToWorld(fromKey(tileKey)), 0, true);
-  }
 }
 
 function createTestCorpse(

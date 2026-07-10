@@ -13,36 +13,12 @@ export type LevelRenderMaterials = {
   rim: THREE.MeshBasicMaterial;
 };
 
-type FogBatch = {
-  mesh: THREE.InstancedMesh;
-  curtainMesh: THREE.InstancedMesh;
-  ownerKeys: string[];
-  ownerTiles: TileCoord[];
-  transforms: THREE.Matrix4[];
-  curtainTransforms: THREE.Matrix4[];
-  walkableKeys: ReadonlySet<string>;
-  edgeFadeFlags: THREE.InstancedBufferAttribute;
-};
-
 export type LevelEdgeVisibility = {
-  updateExploredTiles: (exploredKeys: ReadonlySet<string>) => void;
   updateWallOcclusion: (playerPosition: THREE.Vector3, camera: THREE.Camera, dt: number, instant?: boolean) => void;
 };
 
 const LEVEL_RENDER_DISPOSABLES_KEY = "daemonSyndicateLevelRenderDisposables";
 const LEVEL_RENDER_OWNED_MATERIAL_KEY = "daemonSyndicateLevelRendererOwnedMaterial";
-const HIDDEN_MATRIX = new THREE.Matrix4().makeScale(0, 0, 0);
-const FOG_FADE_WIDTH = 0.15;
-const FOG_EDGE_STRIDE = 4;
-const FOG_TOP_HEIGHT = 0.035;
-const FOG_CURTAIN_TOP = 0.085;
-const FOG_CURTAIN_HEIGHT = 0.5;
-const FOG_EDGE_DIRECTIONS: TileCoord[] = [
-  { x: 1, y: 0 },
-  { x: -1, y: 0 },
-  { x: 0, y: 1 },
-  { x: 0, y: -1 },
-];
 const FLOOR_TEXTURE_SPAN_TILES = 2;
 const FLOOR_DECAL_OFFSET = 0.026;
 const FLOOR_DECAL_MIN_COUNT = 3;
@@ -132,10 +108,6 @@ export function renderLevel(root: THREE.Group, level: LevelData, materials: Leve
     disposables.push(floorDecals);
   }
 
-  const fogBatch = createFogBatch([...level.walkable], level.walkable);
-  root.add(fogBatch.curtainMesh, fogBatch.mesh);
-  disposables.push(fogBatch.curtainMesh, fogBatch.mesh);
-
   const edgeGeometry = new THREE.BoxGeometry(TILE_SIZE, 0.8, 0.22);
   const rimGeometry = new THREE.BoxGeometry(TILE_SIZE, 0.04, 0.08);
   const wallPlinthGeometry = new THREE.BoxGeometry(TILE_SIZE, WALL_PLINTH_HEIGHT, WALL_THICKNESS);
@@ -145,7 +117,6 @@ export function renderLevel(root: THREE.Group, level: LevelData, materials: Leve
   const wallPlinthTransforms: THREE.Matrix4[] = [];
   const wallUpperTransforms: THREE.Matrix4[] = [];
   const wallEdges: WallEdge[] = [];
-  const edgeOwnerTiles: TileCoord[] = [];
   const boundaryEdges = collectBoundaryEdges(level);
   const vertexOrientations = collectVertexOrientations(boundaryEdges);
 
@@ -174,7 +145,6 @@ export function renderLevel(root: THREE.Group, level: LevelData, materials: Leve
       tangent: new THREE.Vector3(boundaryEdge.horizontal ? 1 : 0, 0, boundaryEdge.horizontal ? 0 : 1),
       halfLength: wallUpperTransform.length * 0.5,
     });
-    edgeOwnerTiles.push(boundaryEdge.ownerTile);
   }
 
   const edges = new THREE.InstancedMesh(edgeGeometry, materials.edge, edgeTransforms.length);
@@ -184,6 +154,12 @@ export function renderLevel(root: THREE.Group, level: LevelData, materials: Leve
   const wallFade = new THREE.InstancedBufferAttribute(wallFadeValues, 1);
   wallUpperGeometry.setAttribute("wallFade", wallFade);
   const upperWalls = new THREE.InstancedMesh(wallUpperGeometry, materials.wallUpper, wallUpperTransforms.length);
+  edgeTransforms.forEach((transform, index) => {
+    edges.setMatrixAt(index, transform);
+    rims.setMatrixAt(index, rimTransforms[index]);
+    wallPlinths.setMatrixAt(index, wallPlinthTransforms[index]);
+    upperWalls.setMatrixAt(index, wallUpperTransforms[index]);
+  });
   edges.frustumCulled = false;
   rims.frustumCulled = false;
   wallPlinths.frustumCulled = false;
@@ -200,23 +176,6 @@ export function renderLevel(root: THREE.Group, level: LevelData, materials: Leve
   disposables.push(...addStartPad(root, level.start));
   root.userData[LEVEL_RENDER_DISPOSABLES_KEY] = disposables;
 
-  let currentExploredKeys: ReadonlySet<string> = new Set();
-  const updateExploredTiles = (exploredKeys: ReadonlySet<string>): void => {
-    currentExploredKeys = exploredKeys;
-    updateFogBatch(fogBatch, exploredKeys);
-    edgeTransforms.forEach((edgeTransform, index) => {
-      const visible = isConnectedExploredTile(edgeOwnerTiles[index], exploredKeys);
-      edges.setMatrixAt(index, visible ? edgeTransform : HIDDEN_MATRIX);
-      rims.setMatrixAt(index, visible ? rimTransforms[index] : HIDDEN_MATRIX);
-      wallPlinths.setMatrixAt(index, visible ? wallPlinthTransforms[index] : HIDDEN_MATRIX);
-      upperWalls.setMatrixAt(index, visible ? wallUpperTransforms[index] : HIDDEN_MATRIX);
-    });
-    edges.instanceMatrix.needsUpdate = true;
-    rims.instanceMatrix.needsUpdate = true;
-    wallPlinths.instanceMatrix.needsUpdate = true;
-    upperWalls.instanceMatrix.needsUpdate = true;
-  };
-
   const playerOcclusionTarget = new THREE.Vector3();
   const cameraToPlayer = new THREE.Vector3();
   const wallIntersection = new THREE.Vector3();
@@ -227,7 +186,6 @@ export function renderLevel(root: THREE.Group, level: LevelData, materials: Leve
     if (cameraToPlayer.lengthSq() < 0.0001) return;
 
     wallEdges.forEach((wallEdge, index) => {
-      if (!isConnectedExploredTile(edgeOwnerTiles[index], currentExploredKeys)) return;
       const denominator = cameraToPlayer.dot(wallEdge.normal);
       const intersectionAmount =
         Math.abs(denominator) > 0.0001
@@ -250,9 +208,7 @@ export function renderLevel(root: THREE.Group, level: LevelData, materials: Leve
     });
     wallFade.needsUpdate = true;
   };
-  updateExploredTiles(new Set());
-
-  return { updateExploredTiles, updateWallOcclusion };
+  return { updateWallOcclusion };
 }
 
 function collectBoundaryEdges(level: LevelData): BoundaryEdge[] {
@@ -477,168 +433,6 @@ function floorHash(tile: TileCoord, salt: number): number {
   let hash = Math.imul(tile.x + 0x9e3779b9 + salt, 0x85ebca6b) ^ Math.imul(tile.y + 0xc2b2ae35 + salt, 0x27d4eb2f);
   hash ^= hash >>> 16;
   return hash >>> 0;
-}
-
-function createFogBatch(ownerKeys: string[], walkableKeys: ReadonlySet<string>): FogBatch {
-  const fogGeometry = new THREE.PlaneGeometry(TILE_SIZE, TILE_SIZE);
-  const edgeFadeFlags = new THREE.InstancedBufferAttribute(new Float32Array(ownerKeys.length * FOG_EDGE_STRIDE), 4);
-  fogGeometry.setAttribute("fogEdgeFade", edgeFadeFlags);
-
-  const fogMaterial = new THREE.ShaderMaterial({
-    uniforms: {
-      uFadeWidth: { value: FOG_FADE_WIDTH },
-    },
-    vertexShader: `
-      attribute vec4 fogEdgeFade;
-
-      varying vec2 vUv;
-      varying vec4 vFogEdgeFade;
-
-      void main() {
-        vUv = uv;
-        vFogEdgeFade = fogEdgeFade;
-
-        vec4 mvPosition = modelViewMatrix * instanceMatrix * vec4(position, 1.0);
-        gl_Position = projectionMatrix * mvPosition;
-      }
-    `,
-    fragmentShader: `
-      uniform float uFadeWidth;
-
-      varying vec2 vUv;
-      varying vec4 vFogEdgeFade;
-
-      void main() {
-        float alpha = 1.0;
-        if (vFogEdgeFade.x > 0.5) alpha *= smoothstep(0.0, uFadeWidth, 1.0 - vUv.x);
-        if (vFogEdgeFade.y > 0.5) alpha *= smoothstep(0.0, uFadeWidth, vUv.x);
-        if (vFogEdgeFade.z > 0.5) alpha *= smoothstep(0.0, uFadeWidth, vUv.y);
-        if (vFogEdgeFade.w > 0.5) alpha *= smoothstep(0.0, uFadeWidth, 1.0 - vUv.y);
-
-        gl_FragColor = vec4(0.0, 0.0, 0.0, alpha);
-      }
-    `,
-    transparent: true,
-    depthWrite: false,
-    side: THREE.DoubleSide,
-    toneMapped: false,
-  });
-  markOwnedMaterial(fogMaterial);
-
-  const mesh = new THREE.InstancedMesh(fogGeometry, fogMaterial, ownerKeys.length);
-  mesh.frustumCulled = false;
-  mesh.renderOrder = 2;
-
-  const curtainGeometry = new THREE.PlaneGeometry(TILE_SIZE, FOG_CURTAIN_HEIGHT);
-  const curtainMaterial = new THREE.MeshBasicMaterial({ color: 0x000000, side: THREE.DoubleSide });
-  markOwnedMaterial(curtainMaterial);
-  const curtainMesh = new THREE.InstancedMesh(curtainGeometry, curtainMaterial, ownerKeys.length * FOG_EDGE_STRIDE);
-  curtainMesh.frustumCulled = false;
-  curtainMesh.renderOrder = 1;
-
-  const ownerTiles = ownerKeys.map((tileKey) => {
-    const [x, y] = tileKey.split(",").map(Number);
-    return { x, y };
-  });
-  const transforms = ownerTiles.map((tile) => {
-    const position = tileToWorld(tile);
-    const matrix = new THREE.Matrix4();
-    matrix.makeRotationX(-Math.PI / 2);
-    matrix.setPosition(position.x, FOG_TOP_HEIGHT, position.z);
-    return matrix;
-  });
-  const curtainTransforms = ownerTiles.flatMap((tile) => createFogCurtainTransforms(tile));
-
-  updateFogBatch({ mesh, curtainMesh, ownerKeys, ownerTiles, transforms, curtainTransforms, walkableKeys, edgeFadeFlags }, new Set());
-  return { mesh, curtainMesh, ownerKeys, ownerTiles, transforms, curtainTransforms, walkableKeys, edgeFadeFlags };
-}
-
-function updateFogBatch(fogBatch: FogBatch, exploredKeys: ReadonlySet<string>): void {
-  fogBatch.transforms.forEach((transform, index) => {
-    const ownerKey = fogBatch.ownerKeys[index];
-    if (exploredKeys.has(ownerKey)) {
-      fogBatch.mesh.setMatrixAt(index, HIDDEN_MATRIX);
-      setFogEdgeFadeFlags(fogBatch.edgeFadeFlags, index, [0, 0, 0, 0]);
-      setFogCurtains(fogBatch, index, [false, false, false, false]);
-      return;
-    }
-
-    const edgeFadeFlags = fogEdgeFadeFlags(fogBatch.ownerTiles[index], exploredKeys);
-    fogBatch.mesh.setMatrixAt(index, transform);
-    setFogEdgeFadeFlags(fogBatch.edgeFadeFlags, index, edgeFadeFlags);
-    setFogCurtains(fogBatch, index, fogCurtainFlags(fogBatch.ownerTiles[index], edgeFadeFlags, fogBatch.walkableKeys, exploredKeys));
-  });
-
-  fogBatch.mesh.instanceMatrix.needsUpdate = true;
-  fogBatch.curtainMesh.instanceMatrix.needsUpdate = true;
-  fogBatch.edgeFadeFlags.needsUpdate = true;
-}
-
-function createFogCurtainTransforms(tile: TileCoord): THREE.Matrix4[] {
-  const position = tileToWorld(tile);
-  const halfTile = TILE_SIZE * 0.5;
-  const centerY = FOG_CURTAIN_TOP - FOG_CURTAIN_HEIGHT * 0.5;
-  return [
-    fogCurtainTransform(position.x + halfTile, centerY, position.z, Math.PI / 2),
-    fogCurtainTransform(position.x - halfTile, centerY, position.z, Math.PI / 2),
-    fogCurtainTransform(position.x, centerY, position.z + halfTile, 0),
-    fogCurtainTransform(position.x, centerY, position.z - halfTile, 0),
-  ];
-}
-
-function fogCurtainTransform(x: number, y: number, z: number, rotationY: number): THREE.Matrix4 {
-  const matrix = new THREE.Matrix4();
-  matrix.makeRotationY(rotationY);
-  matrix.setPosition(x, y, z);
-  return matrix;
-}
-
-function setFogCurtains(fogBatch: FogBatch, tileIndex: number, visibleFlags: [boolean, boolean, boolean, boolean]): void {
-  for (let side = 0; side < FOG_EDGE_STRIDE; side += 1) {
-    const curtainIndex = tileIndex * FOG_EDGE_STRIDE + side;
-    fogBatch.curtainMesh.setMatrixAt(
-      curtainIndex,
-      visibleFlags[side] ? fogBatch.curtainTransforms[curtainIndex] : HIDDEN_MATRIX,
-    );
-  }
-}
-
-function fogCurtainFlags(
-  tile: TileCoord,
-  edgeFadeFlags: [number, number, number, number],
-  walkableKeys: ReadonlySet<string>,
-  exploredKeys: ReadonlySet<string>,
-): [boolean, boolean, boolean, boolean] {
-  return FOG_EDGE_DIRECTIONS.map((direction, side) => {
-    if (edgeFadeFlags[side] > 0) return false;
-    const neighborKey = key({ x: tile.x + direction.x, y: tile.y + direction.y });
-    return !walkableKeys.has(neighborKey) || exploredKeys.has(neighborKey);
-  }) as [boolean, boolean, boolean, boolean];
-}
-
-function setFogEdgeFadeFlags(
-  attribute: THREE.InstancedBufferAttribute,
-  index: number,
-  flags: [number, number, number, number],
-): void {
-  attribute.setXYZW(index, flags[0], flags[1], flags[2], flags[3]);
-}
-
-function fogEdgeFadeFlags(tile: TileCoord, exploredKeys: ReadonlySet<string>): [number, number, number, number] {
-  return [
-    isConnectedExploredTile({ x: tile.x + 1, y: tile.y }, exploredKeys) ? 1 : 0,
-    isConnectedExploredTile({ x: tile.x - 1, y: tile.y }, exploredKeys) ? 1 : 0,
-    isConnectedExploredTile({ x: tile.x, y: tile.y + 1 }, exploredKeys) ? 1 : 0,
-    isConnectedExploredTile({ x: tile.x, y: tile.y - 1 }, exploredKeys) ? 1 : 0,
-  ];
-}
-
-function isConnectedExploredTile(tile: TileCoord, exploredKeys: ReadonlySet<string>): boolean {
-  return exploredKeys.has(key(tile)) && hasExploredNeighbor(tile, exploredKeys);
-}
-
-function hasExploredNeighbor(tile: TileCoord, exploredKeys: ReadonlySet<string>): boolean {
-  return neighbors(tile).some((neighbor) => exploredKeys.has(key(neighbor)));
 }
 
 function addStartPad(root: THREE.Group, tile: TileCoord): THREE.Object3D[] {

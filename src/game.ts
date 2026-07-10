@@ -288,7 +288,6 @@ export class Game {
     this.view.clearEffects();
     this.view.renderLevel(this.simulation.level);
     this.view.resetReticle(this.simulation.playerPosition.clone().add(new THREE.Vector3(0, 0, -TILE_SIZE)));
-    this.view.updateFog(this.simulation.playerPosition, 0, true);
     this.camera.reset(this.simulation.playerPosition);
     this.camera.update(0, this.simulation.playerPosition, this.input.pointerWorld, true);
     this.syncView(0, true);
@@ -296,7 +295,6 @@ export class Game {
 
   private syncView(dt: number, instantPlayer = false): void {
     this.view.syncPlayer(this.simulation.playerRenderState(), dt, instantPlayer);
-    this.view.updateFog(this.simulation.playerPosition, dt);
     this.entityViews.sync(this.simulation.entityState(), dt);
     this.view.updateEffects(dt);
   }

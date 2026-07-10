@@ -10,8 +10,7 @@ import {
   type PortalAsset,
 } from "./assetFactory";
 import type { EnemyKind } from "./enemyDefinitions";
-import { exitGateToWorld, key, tileToWorld, worldToTile, type ExitDirection, type LevelData, type TileCoord } from "./level";
-import { FogOfWar } from "./fogOfWar";
+import { exitGateToWorld, tileToWorld, type ExitDirection, type LevelData } from "./level";
 import { renderLevel as renderLevelToRoot, type LevelEdgeVisibility } from "./levelRenderer";
 import { createSceneMaterials, preloadSceneTextures, type GameplayMaterials } from "./materials";
 import { createPlayerLocalAmbient } from "./playerLocalAmbient";
@@ -39,11 +38,9 @@ export type GameScene = {
   createPickupAsset: (kind: ResourceKind) => PickupAsset;
   createEnvironmentAsset: (kind: EnvironmentAssetKind) => EnvironmentAsset;
   createExitPortalAsset: () => PortalAsset;
-  updateFog: (playerPosition: THREE.Vector3, dt: number, instant?: boolean) => void;
   updateWallOcclusion: (playerPosition: THREE.Vector3, camera: THREE.Camera, dt: number, instant?: boolean) => void;
   updatePlayerLocalAmbient: (playerPosition: THREE.Vector3) => void;
   updateGameplayLighting: (playerPosition: THREE.Vector3, camera: THREE.Camera) => void;
-  isTileExplored: (position: THREE.Vector3) => boolean;
   materials: GameplayMaterials;
   resize: () => void;
   applyGraphicsSettings: (settings: GraphicsSettings) => void;
@@ -71,10 +68,10 @@ export async function createGameScene(app: HTMLDivElement, gltfAssets?: GltfAsse
   const preloadedFloorTextures = await preloadSceneTextures(loader, anisotropy);
   const materials = createSceneMaterials(loader, anisotropy, preloadedFloorTextures);
   const playerLocalAmbient = createPlayerLocalAmbient();
-  Object.values(materials.level.floors).forEach((material) => playerLocalAmbient.applyToMaterial(material));
-  playerLocalAmbient.applyToMaterial(materials.level.edge);
-  playerLocalAmbient.applyToMaterial(materials.level.wall);
-  playerLocalAmbient.applyToMaterial(materials.level.wallUpper);
+  Object.values(materials.level.floors).forEach((material) => playerLocalAmbient.applyToMaterial(material, 0.38));
+  playerLocalAmbient.applyToMaterial(materials.level.edge, 0.46);
+  playerLocalAmbient.applyToMaterial(materials.level.wall, 0.68);
+  playerLocalAmbient.applyToMaterial(materials.level.wallUpper, 0.68);
   playerLocalAmbient.applyToMaterial(materials.gameplay.enemy);
   playerLocalAmbient.applyToMaterial(materials.gameplay.gate);
 
@@ -88,6 +85,12 @@ export async function createGameScene(app: HTMLDivElement, gltfAssets?: GltfAsse
   const playerRig = assetFactory.createPlayerRig();
   const player = playerRig.root;
   const playerBody = playerRig.body;
+  applyObjectReadabilityLift(player, {
+    color: 0xbffcff,
+    emissiveMix: 0.008,
+    intensity: 0.004,
+    baseColorLift: 0,
+  });
   scene.add(player);
 
   const reticle = new THREE.Mesh(
@@ -101,16 +104,8 @@ export async function createGameScene(app: HTMLDivElement, gltfAssets?: GltfAsse
 
   const gameplayLighting = addGameplayLighting(scene, player);
 
-  let fogOfWar: FogOfWar | undefined;
   let levelEdgeVisibility: LevelEdgeVisibility | undefined;
-  let exploredTileKeys = new Set<string>();
-  let staticVisibilityObjects: Array<{ root: THREE.Object3D; tile: TileCoord }> = [];
-
-  const updateStaticObjectVisibility = (): void => {
-    for (const object of staticVisibilityObjects) {
-      object.root.visible = exploredTileKeys.has(key(object.tile));
-    }
-  };
+  let staticObjects: Array<{ root: THREE.Object3D }> = [];
 
   const createEnemyAsset = (kind: EnemyKind): EnemyAsset => {
     const asset = assetFactory.createEnemyAsset(kind);
@@ -143,18 +138,18 @@ export async function createGameScene(app: HTMLDivElement, gltfAssets?: GltfAsse
 
   const renderLevel = (level: LevelData, options: RenderLevelOptions = {}): void => {
     const includeExitPortal = options.includeExitPortal ?? true;
-    fogOfWar?.dispose();
-    disposeStaticObjectMaterials(staticVisibilityObjects);
-    exploredTileKeys = new Set();
-    staticVisibilityObjects = [];
+    disposeStaticObjectMaterials(staticObjects);
+    staticObjects = [];
     levelEdgeVisibility = renderLevelToRoot(levelRoot, level, materials.level);
     if (includeExitPortal) {
       const exitPortal = createExitPortalAsset();
       const exitPosition = exitGateToWorld(level.end, level.exitDirection);
       exitPortal.root.position.set(exitPosition.x, 0, exitPosition.z);
       exitPortal.root.rotation.y = exitGateRotation(level.exitDirection);
+      const portalLight = createExitPortalLight(level.exitDirection);
+      exitPortal.root.add(portalLight);
       levelRoot.add(exitPortal.root);
-      staticVisibilityObjects.push({ root: exitPortal.root, tile: level.end });
+      staticObjects.push({ root: exitPortal.root });
     }
     for (const object of level.environmentalObjects) {
       const asset = createEnvironmentAsset(object.kind);
@@ -163,13 +158,8 @@ export async function createGameScene(app: HTMLDivElement, gltfAssets?: GltfAsse
       asset.root.position.z = position.z;
       asset.root.rotation.y = object.rotation;
       levelRoot.add(asset.root);
-      staticVisibilityObjects.push({ root: asset.root, tile: object.tile });
+      staticObjects.push({ root: asset.root });
     }
-    fogOfWar = new FogOfWar(level, (exploredKeys) => {
-      exploredTileKeys = new Set(exploredKeys);
-      levelEdgeVisibility?.updateExploredTiles(exploredKeys);
-      updateStaticObjectVisibility();
-    });
   };
 
   const exitGateRotation = (direction: ExitDirection): number => {
@@ -183,6 +173,33 @@ export async function createGameScene(app: HTMLDivElement, gltfAssets?: GltfAsse
       case "north":
         return 0;
     }
+  };
+
+  const createExitPortalLight = (direction: ExitDirection): THREE.PointLight => {
+    const light = new THREE.PointLight(0x52fff0, 24, 9, 1.7);
+    light.castShadow = false;
+    light.position.copy(exitPortalLightOffset(direction));
+    light.position.y = 1.35;
+    return light;
+  };
+
+  const exitPortalLightOffset = (direction: ExitDirection): THREE.Vector3 => {
+    const inwardWorldDirection = new THREE.Vector3();
+    switch (direction) {
+      case "east":
+        inwardWorldDirection.set(-1, 0, 0);
+        break;
+      case "south":
+        inwardWorldDirection.set(0, 0, -1);
+        break;
+      case "west":
+        inwardWorldDirection.set(1, 0, 0);
+        break;
+      case "north":
+        inwardWorldDirection.set(0, 0, 1);
+        break;
+    }
+    return inwardWorldDirection.applyAxisAngle(new THREE.Vector3(0, 1, 0), -exitGateRotation(direction)).multiplyScalar(0.9);
   };
 
   return {
@@ -207,12 +224,10 @@ export async function createGameScene(app: HTMLDivElement, gltfAssets?: GltfAsse
     createPickupAsset,
     createEnvironmentAsset,
     createExitPortalAsset,
-    updateFog: (playerPosition, dt, instant = false) => fogOfWar?.update(playerPosition, dt, instant),
     updateWallOcclusion: (playerPosition, camera, dt, instant = false) =>
       levelEdgeVisibility?.updateWallOcclusion(playerPosition, camera, dt, instant),
     updatePlayerLocalAmbient: playerLocalAmbient.update,
     updateGameplayLighting: gameplayLighting.update,
-    isTileExplored: (position) => exploredTileKeys.has(key(worldToTile(position))),
     materials: materials.gameplay,
     resize: renderContext.resize,
     applyGraphicsSettings: renderContext.applyGraphicsSettings,

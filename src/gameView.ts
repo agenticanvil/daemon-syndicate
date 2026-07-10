@@ -75,7 +75,6 @@ export type GameplayView = {
   syncPlayer: (state: PlayerRenderState, dt: number, instant?: boolean) => void;
   triggerPlayerFire: () => void;
   renderLevel: (level: LevelData, options?: RenderLevelOptions) => void;
-  updateFog: (playerPosition: THREE.Vector3, dt: number, instant?: boolean) => void;
   resetReticle: (position: THREE.Vector3) => void;
   createEnemyView: (id: number, kind: EnemyKind, position: THREE.Vector3, facingYaw: number) => EnemyViewHandle;
   createProjectileView: (position: THREE.Vector3, velocity: THREE.Vector3) => ProjectileViewHandle;
@@ -659,7 +658,6 @@ export function createThreeGameplayView(world: GameScene, effectAssets?: Gamepla
       updateDeathDecalWalkableMask(level);
       world.renderLevel(level, options);
     },
-    updateFog: world.updateFog,
     resetReticle(position) {
       world.reticle.position.copy(position);
       world.reticle.position.y = RETICLE_FLOOR_OFFSET;
@@ -670,7 +668,7 @@ export function createThreeGameplayView(world: GameScene, effectAssets?: Gamepla
       let flashLife = 0;
       rig.root.position.set(position.x, 0, position.z);
       rig.root.rotation.y = facingYaw;
-      rig.root.visible = world.isTileExplored(position);
+      rig.root.visible = true;
       world.scene.add(rig.root);
       const handle: EnemyViewHandle = {
         updateRig: (animation, dt) => {
@@ -683,7 +681,6 @@ export function createThreeGameplayView(world: GameScene, effectAssets?: Gamepla
         sync: (nextPosition, nextFacingYaw) => {
           rig.root.position.set(nextPosition.x, 0, nextPosition.z);
           rig.root.rotation.y = nextFacingYaw;
-          rig.root.visible = world.isTileExplored(nextPosition);
         },
         flashHit: () => {
           flashLife = ENEMY_FLASH_DURATION;
@@ -706,12 +703,11 @@ export function createThreeGameplayView(world: GameScene, effectAssets?: Gamepla
       const mesh = projectileMeshPool.pop() ?? new THREE.Mesh(PROJECTILE_GEOMETRY, world.materials.projectile);
       mesh.position.copy(position);
       mesh.quaternion.setFromUnitVectors(PROJECTILE_FORWARD, projectileDirection.copy(velocity).normalize());
-      mesh.visible = world.isTileExplored(position);
+      mesh.visible = true;
       world.scene.add(mesh);
       return {
         sync: (nextPosition) => {
           mesh.position.copy(nextPosition);
-          mesh.visible = world.isTileExplored(nextPosition);
         },
         dispose: () => {
           world.scene.remove(mesh);
@@ -724,12 +720,11 @@ export function createThreeGameplayView(world: GameScene, effectAssets?: Gamepla
         enemyProjectileMeshPool.pop() ?? new THREE.Mesh(PROJECTILE_GEOMETRY, enemyProjectileMaterial);
       mesh.position.copy(position);
       mesh.quaternion.setFromUnitVectors(PROJECTILE_FORWARD, projectileDirection.copy(velocity).normalize());
-      mesh.visible = world.isTileExplored(position);
+      mesh.visible = true;
       world.scene.add(mesh);
       return {
         sync: (nextPosition) => {
           mesh.position.copy(nextPosition);
-          mesh.visible = world.isTileExplored(nextPosition);
         },
         dispose: () => {
           world.scene.remove(mesh);
@@ -742,7 +737,7 @@ export function createThreeGameplayView(world: GameScene, effectAssets?: Gamepla
       mesh.position.copy(position);
       mesh.position.y = 0.45;
       mesh.rotation.set(0, 0, 0);
-      mesh.visible = world.isTileExplored(position);
+      mesh.visible = true;
       world.scene.add(mesh);
       return {
         sync: (nextPosition, dt) => {
@@ -750,7 +745,6 @@ export function createThreeGameplayView(world: GameScene, effectAssets?: Gamepla
           mesh.position.y =
             0.45 + Math.sin(elapsed * EFFECT_BALANCE.pickupBobSpeed * 1000 + mesh.id) * EFFECT_BALANCE.pickupBobHeight;
           mesh.rotation.y += dt * EFFECT_BALANCE.pickupSpinSpeed;
-          mesh.visible = world.isTileExplored(nextPosition);
         },
         dispose: () => {
           world.scene.remove(mesh);

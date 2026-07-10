@@ -77,7 +77,7 @@ const DEFAULT_WALL_FLOOR_VARIANT = FLOOR_VARIANTS[0].id;
 function createWallMaterial(floorMaterial: THREE.MeshStandardMaterial): THREE.MeshStandardMaterial {
   return new THREE.MeshStandardMaterial({
     map: floorMaterial.map,
-    color: 0x68797d,
+    color: 0x7c8d90,
     roughness: 0.82,
     metalness: 0.18,
     emissive: 0x061819,
