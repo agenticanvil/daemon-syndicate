@@ -144,7 +144,7 @@ export async function startDevEffects(app: HTMLDivElement): Promise<void> {
     view.updateEffects(dt);
     updateCamera(world, playerPosition);
     world.updatePlayerLocalAmbient(playerPosition);
-    world.updateGameplayLighting(playerPosition, world.camera);
+    world.updateGameplayLighting(playerPosition, dt);
     world.updateWallOcclusion(playerPosition, world.camera, dt);
     world.render();
   };

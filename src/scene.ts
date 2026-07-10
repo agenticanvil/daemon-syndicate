@@ -40,7 +40,7 @@ export type GameScene = {
   createExitPortalAsset: () => PortalAsset;
   updateWallOcclusion: (playerPosition: THREE.Vector3, camera: THREE.Camera, dt: number, instant?: boolean) => void;
   updatePlayerLocalAmbient: (playerPosition: THREE.Vector3) => void;
-  updateGameplayLighting: (playerPosition: THREE.Vector3, camera: THREE.Camera) => void;
+  updateGameplayLighting: (playerPosition: THREE.Vector3, dt: number) => void;
   materials: GameplayMaterials;
   resize: () => void;
   applyGraphicsSettings: (settings: GraphicsSettings) => void;
@@ -141,6 +141,7 @@ export async function createGameScene(app: HTMLDivElement, gltfAssets?: GltfAsse
     disposeStaticObjectMaterials(staticObjects);
     staticObjects = [];
     levelEdgeVisibility = renderLevelToRoot(levelRoot, level, materials.level);
+    gameplayLighting.setLevel(level);
     if (includeExitPortal) {
       const exitPortal = createExitPortalAsset();
       const exitPosition = exitGateToWorld(level.end, level.exitDirection);

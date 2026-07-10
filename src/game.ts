@@ -382,7 +382,7 @@ export class Game {
       this.camera.update(dt, this.simulation.playerPosition, this.input.pointerWorld);
     }
     this.world.updatePlayerLocalAmbient(this.simulation.playerPosition);
-    this.world.updateGameplayLighting(this.simulation.playerPosition, this.world.camera);
+    this.world.updateGameplayLighting(this.simulation.playerPosition, dt);
     this.world.updateWallOcclusion(this.simulation.playerPosition, this.world.camera, dt);
     this.world.render();
   }
@@ -407,7 +407,7 @@ export class Game {
       this.perf.span("camera", () => this.camera.update(dt, this.simulation.playerPosition, this.input.pointerWorld));
     }
     this.world.updatePlayerLocalAmbient(this.simulation.playerPosition);
-    this.world.updateGameplayLighting(this.simulation.playerPosition, this.world.camera);
+    this.world.updateGameplayLighting(this.simulation.playerPosition, dt);
     this.world.updateWallOcclusion(this.simulation.playerPosition, this.world.camera, dt);
     this.perf.span("three.render.cpu", () => this.world.render());
   }
