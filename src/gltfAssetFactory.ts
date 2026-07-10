@@ -334,6 +334,8 @@ export function attachWeaponToSocket({
 }
 
 function removePreviousWeaponAttachments(playerSocket: THREE.Object3D, nextWeapon: THREE.Object3D): void {
+  // Copy the collection because remove() mutates playerSocket.children during iteration.
+  // oxlint-disable-next-line unicorn/no-useless-spread
   for (const child of [...playerSocket.children]) {
     if (child !== nextWeapon && child.userData[WEAPON_ATTACHMENT_KEY]) playerSocket.remove(child);
   }
