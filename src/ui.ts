@@ -57,6 +57,7 @@ export type Ui = {
   showMainMenu: () => void;
   hideOverlay: () => void;
   setHudVisible: (visible: boolean) => void;
+  setMinimapVisible: (visible: boolean) => void;
   setPaused: (paused: boolean) => void;
   getStartMapDepth: () => number;
   setFpsVisible: (visible: boolean) => void;
@@ -253,6 +254,7 @@ export function createUi(app: HTMLDivElement): Ui {
             <div><dt>Aim</dt><dd>Mouse cursor</dd></div>
             <div><dt>Kinetic bolt</dt><dd>Left click, costs ammo</dd></div>
             <div><dt>Plasma nova</dt><dd>Right click or Space, costs energy</dd></div>
+            <div><dt>Minimap</dt><dd>M to show or hide</dd></div>
             <div><dt>Gate</dt><dd>Reach the glowing exit to generate the next depth</dd></div>
             <div><dt>Pause</dt><dd>Escape</dd></div>
           </dl>
@@ -543,6 +545,9 @@ export function createUi(app: HTMLDivElement): Ui {
     },
     setHudVisible(visible: boolean) {
       hud.classList.toggle("hidden", !visible);
+    },
+    setMinimapVisible(visible: boolean) {
+      minimap.closest(".minimap-card")?.classList.toggle("hidden", !visible);
     },
     setPaused(paused: boolean) {
       if (paused) showPauseView("main");

@@ -45,6 +45,7 @@ export class Game {
   private readonly eventDisposers: Array<() => void> = [];
 
   private fpsVisible = false;
+  private minimapVisible = true;
   private nextFpsHudUpdateAt = 0;
   private selectingUpgrade = false;
   private animationFrameId: number | undefined;
@@ -158,6 +159,15 @@ export class Game {
         this.fpsVisible = !this.fpsVisible;
         this.ui.setFpsVisible(this.fpsVisible);
         this.updateFpsHud(performance.now(), true);
+      }
+      return;
+    }
+
+    if (event.code === "KeyM") {
+      event.preventDefault();
+      if (!event.repeat) {
+        this.minimapVisible = !this.minimapVisible;
+        this.ui.setMinimapVisible(this.minimapVisible);
       }
       return;
     }
