@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { enemyContentFor } from "./enemyContent";
 import type { EnemyAssetSettings } from "./assetSettings";
-import { PLAYER_BALANCE } from "./balance";
 import {
   chooseEnemyDefinition,
   encounterBudgetForMapDepth,
@@ -87,7 +86,7 @@ describe("ENEMY_DEFINITIONS", () => {
     expect(elite.speed(3)).toBeCloseTo(
       speed(ELITE_ENEMY_SETTINGS.movement.speed, ELITE_ENEMY_SETTINGS.movement.levelSpeedGrowth, 3),
     );
-    expect(elite.speed(1)).toBeGreaterThan(PLAYER_BALANCE.speed);
+    expect(elite.speed(1)).toBeGreaterThan(leanHunter.speed(1));
     expect(elite.attackDamage(3)).toBe(25);
     expect(elite.xpReward(3)).toBe(23);
     expect(elite.radius).toBe(ELITE_ENEMY_SETTINGS.collision.radius);
@@ -147,7 +146,7 @@ describe("ENEMY_DEFINITIONS", () => {
   });
 
   it("scales encounter budget by map depth", () => {
-    expect(encounterBudgetForMapDepth(1)).toBe(44);
-    expect(encounterBudgetForMapDepth(5)).toBe(111);
+    expect(encounterBudgetForMapDepth(1)).toBe(29);
+    expect(encounterBudgetForMapDepth(5)).toBe(83);
   });
 });

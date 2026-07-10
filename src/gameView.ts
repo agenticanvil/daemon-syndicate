@@ -97,7 +97,7 @@ export type GameplayEffectAssets = {
 };
 
 const PROJECTILE_FORWARD = new THREE.Vector3(0, 1, 0);
-const ENEMY_MAX_TURN_SPEED = Math.PI * 10;
+const ENEMY_MAX_TURN_SPEED = Math.PI * 5;
 const PROJECTILE_GEOMETRY = new THREE.CylinderGeometry(
   0.045,
   0.014,

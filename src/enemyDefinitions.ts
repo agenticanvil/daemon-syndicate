@@ -28,7 +28,7 @@ const ENEMY_DIFFICULTY_TUNING = {
 } as const;
 
 const ENCOUNTER_BUDGET_MULTIPLIER = 4.5;
-const FLOOR_ONE_ENEMY_COUNT_SCALE = 0.75;
+const FLOOR_ONE_ENEMY_COUNT_SCALE = 0.5;
 const ENEMY_COUNT_RAMP_PER_DEPTH = 0.06;
 
 export const ENEMY_DEFINITIONS: EnemyDefinition[] = ENEMY_CONTENT.map((content) =>

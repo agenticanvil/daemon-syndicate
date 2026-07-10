@@ -32,8 +32,8 @@
     "levelGrowth": 36
   },
   "movement": {
-    "speed": 5.45,
-    "levelSpeedGrowth": 0.025,
+    "speed": 4.0875,
+    "levelSpeedGrowth": 0.01875,
     "sound": "hunter-moving"
   },
   "spawnWeight": {
