@@ -52,6 +52,15 @@ describe("renderLevel", () => {
     const restoredFadeValues = Array.from({ length: wallFade.count }, (_, index) => wallFade.getX(index));
     expect(restoredFadeValues.every((value) => value === 1)).toBe(true);
   });
+
+  it("leaves a two-tile opening for the exit portal", () => {
+    const root = new THREE.Group();
+
+    renderLevel(root, createTestLevel(), createMaterials());
+
+    const plinths = root.getObjectByName("level-wall-plinths") as THREE.InstancedMesh;
+    expect(plinths.count).toBe(6);
+  });
 });
 
 function createMaterials(): LevelRenderMaterials {
@@ -69,14 +78,14 @@ function createMaterials(): LevelRenderMaterials {
 }
 
 function createTestLevel(): LevelData {
-  const walkable = new Set(["0,0", "1,0", "0,1", "1,1"]);
+  const walkable = new Set(["20,20", "21,20", "20,21", "21,21"]);
   return {
     mapDepth: 1,
     width: 2,
     height: 2,
     exitDirection: "north",
-    start: { x: 0, y: 0 },
-    end: { x: 1, y: 1 },
+    start: { x: 20, y: 21 },
+    end: { x: 20, y: 20 },
     walkable,
     floorVariants: new Map([...walkable].map((tileKey) => [tileKey, FLOOR_VARIANTS[0].id])),
     blocked: new Set(),

@@ -1,7 +1,7 @@
 import * as THREE from "three";
 import { LEVEL_HEIGHT, LEVEL_WIDTH, TILE_SIZE } from "./constants";
 import { DEFAULT_FLOOR_VARIANT_ID, FLOOR_VARIANTS, type FloorVariantId } from "./floorVariants";
-import { key, neighbors, tileToWorld, type LevelData, type TileCoord } from "./level";
+import { exitGateTiles, key, neighbors, tileToWorld, type ExitDirection, type LevelData, type TileCoord } from "./level";
 
 export type LevelRenderMaterials = {
   floors: Record<FloorVariantId, THREE.MeshStandardMaterial>;
@@ -257,6 +257,8 @@ export function renderLevel(root: THREE.Group, level: LevelData, materials: Leve
 
 function collectBoundaryEdges(level: LevelData): BoundaryEdge[] {
   const boundaryEdges: BoundaryEdge[] = [];
+  const exitTileKeys = new Set(exitGateTiles(level.end, level.exitDirection).map(key));
+  const exitDirection = directionVector(level.exitDirection);
   for (const tileKey of level.walkable) {
     const [x, y] = tileKey.split(",").map(Number);
     const ownerTile = { x, y };
@@ -264,6 +266,7 @@ function collectBoundaryEdges(level: LevelData): BoundaryEdge[] {
       if (level.walkable.has(key(neighbor))) continue;
       const dirX = neighbor.x - ownerTile.x;
       const dirY = neighbor.y - ownerTile.y;
+      if (exitTileKeys.has(tileKey) && dirX === exitDirection.x && dirY === exitDirection.y) continue;
       const horizontal = dirY !== 0;
       const base = tileToWorld(ownerTile);
       boundaryEdges.push({
@@ -281,6 +284,19 @@ function collectBoundaryEdges(level: LevelData): BoundaryEdge[] {
     }
   }
   return boundaryEdges;
+}
+
+function directionVector(direction: ExitDirection): TileCoord {
+  switch (direction) {
+    case "north":
+      return { x: 0, y: -1 };
+    case "east":
+      return { x: 1, y: 0 };
+    case "south":
+      return { x: 0, y: 1 };
+    case "west":
+      return { x: -1, y: 0 };
+  }
 }
 
 function collectVertexOrientations(boundaryEdges: BoundaryEdge[]): Map<string, Set<"horizontal" | "vertical">> {

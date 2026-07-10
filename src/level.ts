@@ -119,7 +119,8 @@ export function tileToWorld(tile: TileCoord): THREE.Vector3 {
 }
 
 export function exitGateToWorld(tile: TileCoord, direction: ExitDirection): THREE.Vector3 {
-  const position = tileToWorld(tile);
+  const [first, second] = exitGateTiles(tile, direction);
+  const position = tileToWorld(first).add(tileToWorld(second)).multiplyScalar(0.5);
   switch (direction) {
     case "east":
       position.x += TILE_SIZE * 0.5;
@@ -135,6 +136,11 @@ export function exitGateToWorld(tile: TileCoord, direction: ExitDirection): THRE
       break;
   }
   return position;
+}
+
+export function exitGateTiles(tile: TileCoord, direction: ExitDirection): [TileCoord, TileCoord] {
+  const tangent = direction === "north" || direction === "south" ? { x: 1, y: 0 } : { x: 0, y: 1 };
+  return [tile, { x: tile.x + tangent.x, y: tile.y + tangent.y }];
 }
 
 export function worldToTile(position: THREE.Vector3): TileCoord {

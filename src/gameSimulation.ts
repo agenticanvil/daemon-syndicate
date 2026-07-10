@@ -1,6 +1,7 @@
 import * as THREE from "three";
-import { distance2D, type CollisionLayer } from "./collision";
+import type { CollisionLayer } from "./collision";
 import { CombatSystem, type CombatSystemSnapshot } from "./combatSystem";
+import { TILE_SIZE } from "./constants";
 import { EnemySystem, type EnemyProjectileSystemSnapshot, type EnemySystemSnapshot } from "./enemySystem";
 import type { EnemyKind } from "./enemyDefinitions";
 import type { EntityViewState } from "./entityState";
@@ -338,7 +339,7 @@ export class GameSimulation {
 
   private checkGateTransition(): boolean {
     const end = exitGateToWorld(this.currentLevel.end, this.currentLevel.exitDirection);
-    if (distance2D(this.player.position, end) < 1.15) {
+    if (isInsideExitPortal(this.player.position, end, this.currentLevel.exitDirection)) {
       this.loadNextLevel();
       return true;
     }
@@ -447,6 +448,14 @@ export class GameSimulation {
       this.player.grantResource("ammo", 1);
     }
   }
+}
+
+function isInsideExitPortal(position: THREE.Vector3, portalCenter: THREE.Vector3, direction: ExitDirection): boolean {
+  const deltaX = Math.abs(position.x - portalCenter.x);
+  const deltaZ = Math.abs(position.z - portalCenter.z);
+  const normalDistance = direction === "east" || direction === "west" ? deltaX : deltaZ;
+  const tangentDistance = direction === "east" || direction === "west" ? deltaZ : deltaX;
+  return normalDistance < 1.15 && tangentDistance < TILE_SIZE;
 }
 
 function sanitizeStartMapDepth(mapDepth: number | undefined): number {

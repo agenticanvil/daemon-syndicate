@@ -6,7 +6,7 @@
   "kind": "environment",
   "model": {
     "file": "exit-portal.glb",
-    "scale": 1,
+    "scale": 1.005655,
     "rotationY": 0,
     "floorOffset": 0
   },

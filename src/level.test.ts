@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { FLOOR_VARIANTS } from "./floorVariants";
-import { fromKey, generateLevel, key, neighbors, type LevelData, type TileCoord } from "./level";
+import { exitGateTiles, fromKey, generateLevel, key, neighbors, type LevelData, type TileCoord } from "./level";
 import { seededRandom } from "./rng";
 
 describe("generateLevel", () => {
@@ -47,6 +47,13 @@ describe("generateLevel", () => {
 
     expect(starts.size).toBeGreaterThanOrEqual(3);
     expect(exitDirections).toEqual(new Set(["north", "east", "south", "west"]));
+  });
+
+  it("keeps both portal-width exit tiles walkable", () => {
+    for (let index = 0; index < 24; index += 1) {
+      const level = generateLevel(3, seededRandom(`portal-exit-seed-${index}`));
+      expect(exitGateTiles(level.end, level.exitDirection).every((tile) => level.walkable.has(key(tile)))).toBe(true);
+    }
   });
 
   it("places a small set of non-blocking environmental objects", () => {
