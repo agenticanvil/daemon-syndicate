@@ -142,6 +142,22 @@ describe("GameSimulation", () => {
     expect(restarted.pickups).toEqual([]);
   });
 
+  it("can disable player damage for dev traversal", () => {
+    const simulation = createLifecycleSimulation();
+    simulation.startNewRun();
+    simulation.setDebugInvulnerable(true);
+    simulation.spawnEnemy("leanHunter", simulation.playerPosition.clone());
+
+    for (let step = 0; step < 20; step += 1) {
+      simulation.step(1);
+    }
+
+    const snapshot = simulation.snapshot();
+    expect(snapshot.gameOver).toBe(false);
+    expect(snapshot.player.resources.health).toBe(snapshot.player.maxResources.health);
+    expect(snapshot.player.debugInvulnerable).toBe(true);
+  });
+
   it("clears active entities on main-menu exit and ignores commands until redeployment", () => {
     const simulation = createLifecycleSimulation();
     simulation.startNewRun();

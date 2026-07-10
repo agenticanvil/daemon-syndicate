@@ -497,6 +497,23 @@ canvas {
   box-shadow: 0 0 18px rgba(32, 246, 232, 0.2);
 }
 
+.dev-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #d5e8ea;
+  font-size: 0.76rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.dev-toggle input {
+  width: 16px;
+  height: 16px;
+  accent-color: #8ef5ec;
+}
+
 .start {
   width: min(760px, 100%);
   margin-right: auto;

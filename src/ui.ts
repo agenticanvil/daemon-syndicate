@@ -66,6 +66,7 @@ export type Ui = {
   onAudioSettingsChange: (listener: (settings: AudioSettings) => void) => void;
   onGraphicsSettingsChange: (listener: (settings: GraphicsSettings) => void) => void;
   onCameraSettingsChange: (listener: (settings: CameraSettings) => void) => void;
+  onDebugInvulnerabilityChange: (listener: (enabled: boolean) => void) => void;
   updateHud: (state: HudState) => void;
   showUpgradeSelection: (state: { points: number; options: UpgradeOption[] }, onSelect: (id: UpgradeId) => void) => void;
   hideUpgradeSelection: () => void;
@@ -85,6 +86,10 @@ export function createUi(app: HTMLDivElement): Ui {
           <select id="startMapDepth">
             ${startDepthOptions}
           </select>
+        </label>
+        <label class="dev-toggle">
+          <input id="debugInvulnerable" type="checkbox" />
+          <span>Invulnerable</span>
         </label>
         <a class="dev-menu-link" href="/dev/assets">Assets</a>
         <a class="dev-menu-link" href="/dev/effects">Effects</a>
@@ -287,6 +292,9 @@ export function createUi(app: HTMLDivElement): Ui {
   const deployStatus = document.querySelector<HTMLParagraphElement>("#deployStatus")!;
   const deployRetry = document.querySelector<HTMLButtonElement>("#deployRetry")!;
   const startMapDepth = import.meta.env.DEV ? document.querySelector<HTMLSelectElement>("#startMapDepth") : null;
+  const debugInvulnerable = import.meta.env.DEV
+    ? document.querySelector<HTMLInputElement>("#debugInvulnerable")
+    : null;
   const resumeButton = document.querySelector<HTMLButtonElement>("#resume")!;
   const settingsButton = document.querySelector<HTMLButtonElement>("#settingsButton")!;
   const helpButton = document.querySelector<HTMLButtonElement>("#helpButton")!;
@@ -334,6 +342,7 @@ export function createUi(app: HTMLDivElement): Ui {
   const graphicsSettingsListeners: Array<(settings: GraphicsSettings) => void> = [];
   const cameraSettingsListeners: Array<(settings: CameraSettings) => void> = [];
   const audioSettingsListeners: Array<(settings: AudioSettings) => void> = [];
+  const debugInvulnerabilityListeners: Array<(enabled: boolean) => void> = [];
   let cameraDebugCopyValue = "pitch=0.0 yaw=0.0";
 
   cameraSmoothFollow.checked = cameraSettings.smoothFollow;
@@ -341,6 +350,9 @@ export function createUi(app: HTMLDivElement): Ui {
   cameraAimFraming.checked = cameraSettings.aimFraming;
   cameraVelocityLead.checked = cameraSettings.velocityLead;
   cameraShake.checked = cameraSettings.shake;
+  if (debugInvulnerable) {
+    debugInvulnerable.checked = new URLSearchParams(window.location.search).get("invulnerable") === "1";
+  }
   audioMuted.checked = audioSettings.muted;
   masterVolume.value = audioSettings.masterVolume.toString();
   sfxVolume.value = audioSettings.sfxVolume.toString();
@@ -476,6 +488,11 @@ export function createUi(app: HTMLDivElement): Ui {
     updateAudioVolumeLabels();
     emitAudioSettings();
   });
+  debugInvulnerable?.addEventListener("change", () => {
+    for (const listener of debugInvulnerabilityListeners) {
+      listener(debugInvulnerable.checked);
+    }
+  });
 
   return {
     startButton,
@@ -581,6 +598,10 @@ export function createUi(app: HTMLDivElement): Ui {
     onCameraSettingsChange(listener: (settings: CameraSettings) => void) {
       cameraSettingsListeners.push(listener);
       listener({ ...cameraSettings });
+    },
+    onDebugInvulnerabilityChange(listener: (enabled: boolean) => void) {
+      debugInvulnerabilityListeners.push(listener);
+      listener(debugInvulnerable?.checked ?? false);
     },
     updateHud(state: HudState) {
       const { resources, maxResources } = state;

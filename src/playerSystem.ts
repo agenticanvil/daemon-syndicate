@@ -36,6 +36,7 @@ export type PlayerSystemSnapshot = {
   moving: boolean;
   dashTimer: number;
   emergencyShieldReady: boolean;
+  debugInvulnerable: boolean;
 };
 
 export class PlayerSystem {
@@ -51,6 +52,7 @@ export class PlayerSystem {
   private moving = false;
   private dashTimer = 0;
   private emergencyShieldReady = true;
+  private debugInvulnerable = false;
   private readonly renderStateValue: PlayerRenderState = {
     position: this.position,
     rotationY: 0,
@@ -77,6 +79,14 @@ export class PlayerSystem {
 
   get currentDashTimer(): number {
     return this.dashTimer;
+  }
+
+  get canTakeDamage(): boolean {
+    return !this.debugInvulnerable && !this.hasStatus("invulnerable");
+  }
+
+  setDebugInvulnerable(enabled: boolean): void {
+    this.debugInvulnerable = enabled;
   }
 
   reset(position: THREE.Vector3, collisionLayer: CollisionLayer): void {
@@ -144,7 +154,7 @@ export class PlayerSystem {
   }
 
   takeDamage(amount: number): PlayerDamageResult {
-    if (amount <= 0 || this.hasStatus("invulnerable")) {
+    if (amount <= 0 || !this.canTakeDamage) {
       return { applied: false, gameOver: false };
     }
 
@@ -222,6 +232,7 @@ export class PlayerSystem {
       moving: this.moving,
       dashTimer: this.dashTimer,
       emergencyShieldReady: this.emergencyShieldReady,
+      debugInvulnerable: this.debugInvulnerable,
     };
   }
 

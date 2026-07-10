@@ -66,6 +66,9 @@ export class Game {
     this.ui.onCameraSettingsChange((settings) => {
       this.camera.setSettings(settings);
     });
+    this.ui.onDebugInvulnerabilityChange((enabled) => {
+      this.simulation.setDebugInvulnerable(enabled);
+    });
     this.resetViewForSimulation();
   }
 

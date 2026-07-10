@@ -123,7 +123,7 @@ export class GameSimulation {
       () => this.player.position,
       () => this.currentLevel,
       () => this.currentCollisionLayer(),
-      () => !this.player.hasStatus("invulnerable"),
+      () => this.player.canTakeDamage,
       this.rng,
     );
     this.combat = new CombatSystem(
@@ -237,6 +237,10 @@ export class GameSimulation {
 
   setPaused(paused: boolean): void {
     this.paused = paused;
+  }
+
+  setDebugInvulnerable(enabled: boolean): void {
+    this.player.setDebugInvulnerable(enabled);
   }
 
   startNewRun(options: StartRunOptions = {}): void {
