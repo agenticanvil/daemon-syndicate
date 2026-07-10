@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { LEVEL_HEIGHT, LEVEL_WIDTH, RETICLE_FLOOR_OFFSET, TILE_SIZE } from "./constants";
+import { LEVEL_HEIGHT, LEVEL_WIDTH, TILE_SIZE } from "./constants";
 import {
   createAssetFactory,
   type EnemyAsset,
@@ -31,7 +31,6 @@ export type GameScene = {
   player: THREE.Group;
   playerRig: PlayerRig;
   playerBody: THREE.Mesh<THREE.BufferGeometry, THREE.MeshStandardMaterial>;
-  reticle: THREE.Mesh;
   render: () => void;
   renderLevel: (level: LevelData, options?: RenderLevelOptions) => void;
   createEnemyAsset: (kind: EnemyKind) => EnemyAsset;
@@ -92,15 +91,6 @@ export async function createGameScene(app: HTMLDivElement, gltfAssets?: GltfAsse
     baseColorLift: 0,
   });
   scene.add(player);
-
-  const reticle = new THREE.Mesh(
-    new THREE.RingGeometry(0.45, 0.52, 36),
-    new THREE.MeshBasicMaterial({ color: 0x91fff0, transparent: true, opacity: 0.55, depthWrite: false }),
-  );
-  reticle.rotation.x = -Math.PI / 2;
-  reticle.position.y = RETICLE_FLOOR_OFFSET;
-  reticle.renderOrder = 5;
-  scene.add(reticle);
 
   const gameplayLighting = addGameplayLighting(scene, player);
 
@@ -218,7 +208,6 @@ export async function createGameScene(app: HTMLDivElement, gltfAssets?: GltfAsse
     player,
     playerRig,
     playerBody,
-    reticle,
     render: () => renderContext.render(scene, renderContext.camera),
     renderLevel,
     createEnemyAsset,

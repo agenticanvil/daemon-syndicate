@@ -1,7 +1,7 @@
 import * as THREE from "three";
 import "./devStyle.css";
 import { ENEMY_CONTENT, type EnemyKind } from "./enemyContent";
-import { PLAYER_SPEED, RETICLE_FLOOR_OFFSET, TILE_SIZE } from "./constants";
+import { PLAYER_SPEED } from "./constants";
 import { ENVIRONMENT_ASSET_KINDS, type EnvironmentAssetKind } from "./assetFactory";
 import { DEFAULT_FLOOR_VARIANT_ID } from "./floorVariants";
 import { CAMERA_VIEW_OFFSETS } from "./gameCamera";
@@ -79,7 +79,6 @@ export async function startDevMap(app: HTMLDivElement): Promise<void> {
   document.title = "Dev Map | Daemon Syndicate";
   world.renderLevel(level, { includeExitPortal: false });
   world.player.position.copy(playerPosition);
-  world.reticle.position.copy(playerPosition).add(new THREE.Vector3(0, RETICLE_FLOOR_OFFSET, -TILE_SIZE));
 
   addSectionFrames(world, layout.sections);
   labels.push(...createSectionLabels(app, layout.sections));
@@ -96,7 +95,7 @@ export async function startDevMap(app: HTMLDivElement): Promise<void> {
   hud.innerHTML = renderHud(layout);
 
   const updatePointerWorld = (event: PointerEvent): void => {
-    input.updatePointerFromEvent(event, world.camera, world.floor, world.reticle);
+    input.updatePointerFromEvent(event, world.camera, world.floor);
   };
   const handleKeyDown = (event: KeyboardEvent): void => {
     input.addKey(event.code);
@@ -138,7 +137,7 @@ export async function startDevMap(app: HTMLDivElement): Promise<void> {
       playerPosition.z = THREE.MathUtils.clamp(playerPosition.z, minWorld.z, maxWorld.z);
     }
 
-    input.updatePointerWorldFromCamera(world.camera, world.floor, world.reticle);
+    input.updatePointerWorldFromCamera(world.camera, world.floor);
     const aim = input.pointerWorld.clone().sub(playerPosition).setY(0);
     if (aim.lengthSq() > 0.01) {
       playerYaw = Math.atan2(aim.x, aim.z) + PLAYER_MODEL_FORWARD_OFFSET;

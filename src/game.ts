@@ -1,6 +1,5 @@
 import * as THREE from "three";
 import type { GameAudio } from "./audio";
-import { TILE_SIZE } from "./constants";
 import { EntityViewSync } from "./entityViewSync";
 import { FixedStepClock } from "./fixedStepClock";
 import type { GameEffect } from "./gameEffects";
@@ -143,11 +142,11 @@ export class Game {
   }
 
   private readonly updatePointerWorld = (event: PointerEvent): void => {
-    this.input.updatePointerFromEvent(event, this.world.camera, this.world.floor, this.world.reticle);
+    this.input.updatePointerFromEvent(event, this.world.camera, this.world.floor);
   };
 
   private updatePointerWorldFromCamera(): void {
-    this.input.updatePointerWorldFromCamera(this.world.camera, this.world.floor, this.world.reticle);
+    this.input.updatePointerWorldFromCamera(this.world.camera, this.world.floor);
   }
 
   private addWindowListener<K extends keyof WindowEventMap>(
@@ -312,7 +311,6 @@ export class Game {
     this.entityViews.clear();
     this.view.clearEffects();
     this.view.renderLevel(this.simulation.level);
-    this.view.resetReticle(this.simulation.playerPosition.clone().add(new THREE.Vector3(0, 0, -TILE_SIZE)));
     this.camera.reset(this.simulation.playerPosition);
     this.camera.update(0, this.simulation.playerPosition, this.input.pointerWorld, true);
     this.syncView(0, true);

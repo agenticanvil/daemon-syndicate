@@ -1,5 +1,4 @@
 import * as THREE from "three";
-import { RETICLE_FLOOR_OFFSET } from "./constants";
 
 export class InputState {
   readonly pointerWorld = new THREE.Vector3(0, 0, -1);
@@ -61,19 +60,14 @@ export class InputState {
     return requested;
   }
 
-  updatePointerFromEvent(
-    event: PointerEvent,
-    camera: THREE.Camera,
-    floor: THREE.Object3D,
-    reticle: THREE.Object3D,
-  ): void {
+  updatePointerFromEvent(event: PointerEvent, camera: THREE.Camera, floor: THREE.Object3D): void {
     this.hasPointerPosition = true;
     this.pointer.x = (event.clientX / window.innerWidth) * 2 - 1;
     this.pointer.y = -(event.clientY / window.innerHeight) * 2 + 1;
-    this.updatePointerWorldFromCamera(camera, floor, reticle);
+    this.updatePointerWorldFromCamera(camera, floor);
   }
 
-  updatePointerWorldFromCamera(camera: THREE.Camera, floor: THREE.Object3D, reticle: THREE.Object3D): void {
+  updatePointerWorldFromCamera(camera: THREE.Camera, floor: THREE.Object3D): void {
     if (!this.hasPointerPosition) return;
 
     this.raycaster.setFromCamera(this.pointer, camera);
@@ -81,8 +75,6 @@ export class InputState {
     if (hit) {
       this.pointerWorld.copy(hit.point);
       this.pointerWorld.y = 0;
-      reticle.position.copy(this.pointerWorld);
-      reticle.position.y = RETICLE_FLOOR_OFFSET;
     }
   }
 

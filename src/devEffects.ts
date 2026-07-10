@@ -1,7 +1,7 @@
 import * as THREE from "three";
 import "./devStyle.css";
 import { ENEMY_BALANCE } from "./balance";
-import { PLAYER_SPEED, RETICLE_FLOOR_OFFSET, TILE_SIZE } from "./constants";
+import { PLAYER_SPEED } from "./constants";
 import { disposeObject3D } from "./entityLifecycle";
 import { DEFAULT_FLOOR_VARIANT_ID } from "./floorVariants";
 import { createThreeGameplayView, preloadGameplayEffectAssets } from "./gameView";
@@ -52,7 +52,6 @@ export async function startDevEffects(app: HTMLDivElement): Promise<void> {
   document.title = "Effect Test | Daemon Syndicate";
   view.renderLevel(level, { includeExitPortal: false });
   world.player.position.copy(playerPosition);
-  world.reticle.position.copy(playerPosition).add(new THREE.Vector3(0, RETICLE_FLOOR_OFFSET, -TILE_SIZE));
   updateCamera(world, playerPosition);
   world.updatePlayerLocalAmbient(playerPosition);
   world.updateGameplayLighting(playerPosition, 0);
@@ -61,7 +60,7 @@ export async function startDevEffects(app: HTMLDivElement): Promise<void> {
   hud.innerHTML = renderHud();
 
   const updatePointerWorld = (event: PointerEvent): void => {
-    input.updatePointerFromEvent(event, world.camera, world.floor, world.reticle);
+    input.updatePointerFromEvent(event, world.camera, world.floor);
   };
   const placeEffect = (): void => {
     view.spawnEnemyDeath(input.pointerWorld.clone());
@@ -136,7 +135,7 @@ export async function startDevEffects(app: HTMLDivElement): Promise<void> {
       playerPosition.z = THREE.MathUtils.clamp(playerPosition.z, minWorld.z, maxWorld.z);
     }
 
-    input.updatePointerWorldFromCamera(world.camera, world.floor, world.reticle);
+    input.updatePointerWorldFromCamera(world.camera, world.floor);
     const aim = input.pointerWorld.clone().sub(playerPosition).setY(0);
     if (aim.lengthSq() > 0.01) {
       playerYaw = Math.atan2(aim.x, aim.z) + PLAYER_MODEL_FORWARD_OFFSET;

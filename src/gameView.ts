@@ -1,6 +1,6 @@
 import * as THREE from "three";
 import { EFFECT_BALANCE, WEAPON_BALANCE } from "./balance";
-import { LEVEL_HEIGHT, LEVEL_WIDTH, RETICLE_FLOOR_OFFSET, TILE_SIZE } from "./constants";
+import { LEVEL_HEIGHT, LEVEL_WIDTH, TILE_SIZE } from "./constants";
 import { disposeObject3D } from "./entityLifecycle";
 import type { EnemyKind } from "./enemyDefinitions";
 import type { LevelData } from "./level";
@@ -76,7 +76,6 @@ export type GameplayView = {
   syncPlayer: (state: PlayerRenderState, dt: number, instant?: boolean) => void;
   triggerPlayerFire: () => void;
   renderLevel: (level: LevelData, options?: RenderLevelOptions) => void;
-  resetReticle: (position: THREE.Vector3) => void;
   createEnemyView: (id: number, kind: EnemyKind, position: THREE.Vector3, facingYaw: number) => EnemyViewHandle;
   createProjectileView: (position: THREE.Vector3, velocity: THREE.Vector3) => ProjectileViewHandle;
   createEnemyProjectileView: (position: THREE.Vector3, velocity: THREE.Vector3) => ProjectileViewHandle;
@@ -770,10 +769,6 @@ export function createThreeGameplayView(world: GameScene, effectAssets?: Gamepla
     renderLevel(level, options) {
       updateDeathDecalWalkableMask(level);
       world.renderLevel(level, options);
-    },
-    resetReticle(position) {
-      world.reticle.position.copy(position);
-      world.reticle.position.y = RETICLE_FLOOR_OFFSET;
     },
     createEnemyView(id, kind, position, facingYaw) {
       const rig = world.createEnemyAsset(kind);
