@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { key, type LevelData } from "./level";
-import { minimapWallEdges, revealMinimapTiles } from "./minimap";
+import { minimapWallEdges, minimapWallMasks, MINIMAP_WALL_NORTH, revealMinimapTiles } from "./minimap";
 
 describe("revealMinimapTiles", () => {
   it("reveals nearby walkable tiles without exposing distant or void tiles", () => {
@@ -31,6 +31,14 @@ describe("revealMinimapTiles", () => {
 
     expect(minimapWallEdges(level, { x: 4, y: 4 })).toContain("north");
     expect(minimapWallEdges(level, { x: 5, y: 4 })).not.toContain("north");
+  });
+
+  it("caches wall edges in a tile-indexed bit mask", () => {
+    const level = testLevel();
+    const masks = minimapWallMasks(level);
+
+    expect(masks[4 * level.width + 4] & MINIMAP_WALL_NORTH).toBe(MINIMAP_WALL_NORTH);
+    expect(minimapWallMasks(level)).toBe(masks);
   });
 
   it("leaves the two-tile exit gap open", () => {

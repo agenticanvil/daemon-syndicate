@@ -1,6 +1,10 @@
 import { exitGateTiles, key, type ExitDirection, type LevelData, type TileCoord } from "./level";
 
 export const MINIMAP_VIEW_TILES = 61;
+export const MINIMAP_WALL_NORTH = 1;
+export const MINIMAP_WALL_EAST = 2;
+export const MINIMAP_WALL_SOUTH = 4;
+export const MINIMAP_WALL_WEST = 8;
 const MINIMAP_REVEAL_RADIUS = 7;
 
 const WALL_DIRECTIONS: Array<{ edge: ExitDirection; dx: number; dy: number }> = [
@@ -10,6 +14,7 @@ const WALL_DIRECTIONS: Array<{ edge: ExitDirection; dx: number; dy: number }> = 
   { edge: "west", dx: -1, dy: 0 },
 ];
 const WALL_EDGE_CACHE = new WeakMap<LevelData, ReadonlyMap<string, ExitDirection[]>>();
+const WALL_MASK_CACHE = new WeakMap<LevelData, Uint8Array>();
 
 export function revealMinimapTiles(
   level: LevelData,
@@ -42,6 +47,30 @@ export function minimapWallEdges(level: LevelData, tile: TileCoord): ExitDirecti
     WALL_EDGE_CACHE.set(level, wallsByTile);
   }
   return wallsByTile.get(key(tile)) ?? [];
+}
+
+export function minimapWallMasks(level: LevelData): Uint8Array {
+  let masks = WALL_MASK_CACHE.get(level);
+  if (masks) return masks;
+
+  masks = new Uint8Array(level.width * level.height);
+  const wallsByTile = WALL_EDGE_CACHE.get(level) ?? buildMinimapWallEdges(level);
+  WALL_EDGE_CACHE.set(level, wallsByTile);
+  for (const [tileKey, edges] of wallsByTile) {
+    const separator = tileKey.indexOf(",");
+    const x = Number(tileKey.slice(0, separator));
+    const y = Number(tileKey.slice(separator + 1));
+    let mask = 0;
+    for (const edge of edges) {
+      if (edge === "north") mask |= MINIMAP_WALL_NORTH;
+      else if (edge === "east") mask |= MINIMAP_WALL_EAST;
+      else if (edge === "south") mask |= MINIMAP_WALL_SOUTH;
+      else mask |= MINIMAP_WALL_WEST;
+    }
+    masks[y * level.width + x] = mask;
+  }
+  WALL_MASK_CACHE.set(level, masks);
+  return masks;
 }
 
 function buildMinimapWallEdges(level: LevelData): ReadonlyMap<string, ExitDirection[]> {

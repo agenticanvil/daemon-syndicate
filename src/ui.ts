@@ -1,7 +1,14 @@
 import { CircleHelp, LogOut, Play, Settings, createElement, type IconNode } from "lucide";
 import { DEFAULT_AUDIO_SETTINGS, type AudioSettings } from "./audio";
-import { key, type LevelData, type TileCoord } from "./level";
-import { minimapWallEdges, MINIMAP_VIEW_TILES } from "./minimap";
+import type { LevelData, TileCoord } from "./level";
+import {
+  minimapWallMasks,
+  MINIMAP_VIEW_TILES,
+  MINIMAP_WALL_EAST,
+  MINIMAP_WALL_NORTH,
+  MINIMAP_WALL_SOUTH,
+  MINIMAP_WALL_WEST,
+} from "./minimap";
 import type { PlayerResources } from "./resourceTypes";
 import type { CameraViewMode, GraphicsSettings } from "./scene";
 import type { UpgradeId, UpgradeOption } from "./upgrades";
@@ -319,6 +326,7 @@ export function createUi(app: HTMLDivElement): Ui {
   const novaAbility = document.querySelector<HTMLElement>("#novaAbility")!;
   const dashAbility = document.querySelector<HTMLElement>("#dashAbility")!;
   const minimap = document.querySelector<HTMLCanvasElement>("#minimap")!;
+  const minimapRenderer = createMinimapRenderer(minimap);
   const cameraSmoothFollow = document.querySelector<HTMLInputElement>("#cameraSmoothFollow")!;
   const cameraPointerLead = document.querySelector<HTMLInputElement>("#cameraPointerLead")!;
   const cameraAimFraming = document.querySelector<HTMLInputElement>("#cameraAimFraming")!;
@@ -359,7 +367,16 @@ export function createUi(app: HTMLDivElement): Ui {
   updateAudioVolumeLabels();
 
   function setMeter(el: HTMLElement, value: number, max: number): void {
-    el.style.width = `${Math.max(0, Math.min(value / max, 1)) * 100}%`;
+    const width = `${(Math.max(0, Math.min(value / max, 1)) * 100).toFixed(3)}%`;
+    if (el.style.width !== width) el.style.width = width;
+  }
+
+  function setText(el: HTMLElement, value: string): void {
+    if (el.textContent !== value) el.textContent = value;
+  }
+
+  function setClass(el: HTMLElement, className: string, enabled: boolean): void {
+    if (el.classList.contains(className) !== enabled) el.classList.toggle(className, enabled);
   }
 
   function showPauseView(view: "main" | "settings" | "help"): void {
@@ -565,6 +582,7 @@ export function createUi(app: HTMLDivElement): Ui {
     },
     setMinimapVisible(visible: boolean) {
       minimap.closest(".minimap-card")?.classList.toggle("hidden", !visible);
+      minimapRenderer.setVisible(visible);
     },
     setPaused(paused: boolean) {
       if (paused) showPauseView("main");
@@ -578,13 +596,13 @@ export function createUi(app: HTMLDivElement): Ui {
       fpsStat.classList.toggle("hidden", !visible);
     },
     updateFps(fps: number) {
-      fpsValue.textContent = Math.round(fps).toString();
+      setText(fpsValue, Math.round(fps).toString());
     },
     updateCameraDebug(angles: { pitchDegrees: number; yawDegrees: number }) {
       const pitch = angles.pitchDegrees.toFixed(1);
       const yaw = angles.yawDegrees.toFixed(1);
-      cameraPitchValue.textContent = `${pitch} deg`;
-      cameraYawValue.textContent = `${yaw} deg`;
+      setText(cameraPitchValue, `${pitch} deg`);
+      setText(cameraYawValue, `${yaw} deg`);
       cameraDebugCopyValue = `pitch=${pitch} yaw=${yaw}`;
     },
     onAudioSettingsChange(listener: (settings: AudioSettings) => void) {
@@ -605,21 +623,21 @@ export function createUi(app: HTMLDivElement): Ui {
     },
     updateHud(state: HudState) {
       const { resources, maxResources } = state;
-      healthValue.textContent = `${Math.ceil(resources.health)}/${maxResources.health}`;
-      ammoValue.textContent = `${Math.floor(resources.ammo)}/${maxResources.ammo}`;
-      energyValue.textContent = `${Math.floor(resources.energy)}/${maxResources.energy}`;
+      setText(healthValue, `${Math.ceil(resources.health)}/${maxResources.health}`);
+      setText(ammoValue, `${Math.floor(resources.ammo)}/${maxResources.ammo}`);
+      setText(energyValue, `${Math.floor(resources.energy)}/${maxResources.energy}`);
       setMeter(healthMeter, resources.health, maxResources.health);
       setMeter(ammoMeter, resources.ammo, maxResources.ammo);
       setMeter(energyMeter, resources.energy, maxResources.energy);
-      killsEl.textContent = state.kills.toString();
-      mapDepthEl.textContent = state.mapDepth.toString();
-      playerLevelEl.textContent = state.progression.level.toString();
-      playerXpEl.textContent = `${state.progression.xp}/${state.progression.xpToNextLevel}`;
-      primaryAbility.classList.toggle("disabled", !state.primaryReady);
-      novaAbility.classList.toggle("disabled", !state.novaReady);
-      dashAbility.classList.toggle("hidden", !state.dashUnlocked);
-      dashAbility.classList.toggle("disabled", !state.dashReady);
-      drawMinimap(minimap, state.minimap);
+      setText(killsEl, state.kills.toString());
+      setText(mapDepthEl, state.mapDepth.toString());
+      setText(playerLevelEl, state.progression.level.toString());
+      setText(playerXpEl, `${state.progression.xp}/${state.progression.xpToNextLevel}`);
+      setClass(primaryAbility, "disabled", !state.primaryReady);
+      setClass(novaAbility, "disabled", !state.novaReady);
+      setClass(dashAbility, "hidden", !state.dashUnlocked);
+      setClass(dashAbility, "disabled", !state.dashReady);
+      minimapRenderer.draw(state.minimap);
     },
     showUpgradeSelection(state, onSelect) {
       upgradeMenu.classList.remove("hidden");
@@ -651,90 +669,176 @@ export function createUi(app: HTMLDivElement): Ui {
 
 const AUDIO_SETTINGS_STORAGE_KEY = "daemon-syndicate.audio-settings";
 
-function drawMinimap(canvas: HTMLCanvasElement, state: HudState["minimap"]): void {
-  const context = canvas.getContext("2d");
-  if (!context) return;
+type MinimapRenderer = {
+  draw: (state: HudState["minimap"], force?: boolean) => void;
+  setVisible: (visible: boolean) => void;
+};
 
+function createMinimapRenderer(canvas: HTMLCanvasElement): MinimapRenderer {
+  const context = canvas.getContext("2d");
+  const background = document.createElement("canvas");
+  background.width = canvas.width;
+  background.height = canvas.height;
+  const backgroundContext = background.getContext("2d");
   const size = canvas.width;
   const tileSize = size / MINIMAP_VIEW_TILES;
   const halfView = Math.floor(MINIMAP_VIEW_TILES / 2);
+  const pixelEdges = new Int16Array(MINIMAP_VIEW_TILES + 1);
+  for (let i = 0; i <= MINIMAP_VIEW_TILES; i += 1) pixelEdges[i] = Math.round(i * tileSize);
+
+  let visible = true;
+  let lastState: HudState["minimap"] | undefined;
+  let level: LevelData | undefined;
+  let wallMasks: ReturnType<typeof minimapWallMasks> = new Uint8Array();
+  let exploredMask = new Uint8Array();
+  let exploredSize = -1;
+  let playerX = Number.NaN;
+  let playerY = Number.NaN;
+  let rotation = Number.NaN;
+
+  const draw = (state: HudState["minimap"], force = false): void => {
+    lastState = state;
+    if (!visible || !context || !backgroundContext) return;
+
+    const levelChanged = level !== state.level;
+    const exploredChanged = levelChanged || exploredSize !== state.explored.size;
+    const tileChanged = levelChanged || playerX !== state.playerTile.x || playerY !== state.playerTile.y;
+    const rotationChanged = !Number.isFinite(rotation) || angularDistance(rotation, state.playerRotation) >= 0.025;
+    if (!force && !exploredChanged && !tileChanged && !rotationChanged) return;
+
+    if (levelChanged) {
+      level = state.level;
+      wallMasks = minimapWallMasks(state.level);
+      exploredMask = new Uint8Array(state.level.width * state.level.height);
+    }
+    if (exploredChanged) {
+      exploredMask.fill(0);
+      for (const tileKey of state.explored) {
+        const separator = tileKey.indexOf(",");
+        const x = Number(tileKey.slice(0, separator));
+        const y = Number(tileKey.slice(separator + 1));
+        if (x >= 0 && x < state.level.width && y >= 0 && y < state.level.height) {
+          exploredMask[y * state.level.width + x] = 1;
+        }
+      }
+      exploredSize = state.explored.size;
+    }
+    if (exploredChanged || tileChanged || force) {
+      drawMinimapBackground(backgroundContext, state, exploredMask, wallMasks, pixelEdges, halfView, tileSize);
+    }
+
+    context.clearRect(0, 0, size, size);
+    context.drawImage(background, 0, 0);
+    drawMinimapPlayer(context, size / 2, size / 2, state.playerRotation);
+    playerX = state.playerTile.x;
+    playerY = state.playerTile.y;
+    rotation = state.playerRotation;
+  };
+
+  return {
+    draw,
+    setVisible(nextVisible) {
+      visible = nextVisible;
+      if (visible && lastState) draw(lastState, true);
+    },
+  };
+}
+
+function drawMinimapBackground(
+  context: CanvasRenderingContext2D,
+  state: HudState["minimap"],
+  exploredMask: Uint8Array,
+  wallMasks: Uint8Array,
+  pixelEdges: Int16Array,
+  halfView: number,
+  tileSize: number,
+): void {
+  const size = context.canvas.width;
   const startX = state.playerTile.x - halfView;
   const startY = state.playerTile.y - halfView;
   context.clearRect(0, 0, size, size);
   context.fillStyle = "#020608";
   context.fillRect(0, 0, size, size);
+  context.fillStyle = "#4ec4bb";
+  context.globalAlpha = 0.78;
 
   for (let localY = 0; localY < MINIMAP_VIEW_TILES; localY += 1) {
+    const tileY = startY + localY;
+    if (tileY < 0 || tileY >= state.level.height) continue;
     for (let localX = 0; localX < MINIMAP_VIEW_TILES; localX += 1) {
-      const tile = { x: startX + localX, y: startY + localY };
-      const tileKey = key(tile);
-      if (!state.explored.has(tileKey)) continue;
-
-      context.fillStyle = "#4ec4bb";
-      context.globalAlpha = 0.78;
-      const x = Math.round(localX * tileSize);
-      const y = Math.round(localY * tileSize);
-      const width = Math.round((localX + 1) * tileSize) - x;
-      const height = Math.round((localY + 1) * tileSize) - y;
-      context.fillRect(x, y, width, height);
+      const tileX = startX + localX;
+      if (tileX < 0 || tileX >= state.level.width) continue;
+      const index = tileY * state.level.width + tileX;
+      if (exploredMask[index] === 0) continue;
+      context.fillRect(
+        pixelEdges[localX],
+        pixelEdges[localY],
+        pixelEdges[localX + 1] - pixelEdges[localX],
+        pixelEdges[localY + 1] - pixelEdges[localY],
+      );
     }
   }
   context.globalAlpha = 1;
+  drawCachedMinimapWalls(context, state, exploredMask, wallMasks, pixelEdges, startX, startY);
 
-  drawMinimapWalls(context, state, startX, startY, tileSize);
-
-  if (state.explored.has(key(state.level.end))) {
+  const exitIndex = state.level.end.y * state.level.width + state.level.end.x;
+  if (exploredMask[exitIndex] !== 0) {
     drawMinimapExit(context, state.level.end.x - startX, state.level.end.y - startY, tileSize);
   }
-  drawMinimapPlayer(context, size / 2, size / 2, state.playerRotation);
 }
 
-function drawMinimapWalls(
+function drawCachedMinimapWalls(
   context: CanvasRenderingContext2D,
   state: HudState["minimap"],
+  exploredMask: Uint8Array,
+  wallMasks: Uint8Array,
+  pixelEdges: Int16Array,
   startX: number,
   startY: number,
-  tileSize: number,
 ): void {
   context.save();
   context.beginPath();
   context.strokeStyle = "#bafff6";
   context.globalAlpha = 0.92;
   context.lineWidth = 1;
-
   for (let localY = 0; localY < MINIMAP_VIEW_TILES; localY += 1) {
+    const tileY = startY + localY;
+    if (tileY < 0 || tileY >= state.level.height) continue;
     for (let localX = 0; localX < MINIMAP_VIEW_TILES; localX += 1) {
-      const tile = { x: startX + localX, y: startY + localY };
-      if (!state.explored.has(key(tile))) continue;
-
-      const left = Math.round(localX * tileSize) + 0.5;
-      const top = Math.round(localY * tileSize) + 0.5;
-      const right = Math.round((localX + 1) * tileSize) + 0.5;
-      const bottom = Math.round((localY + 1) * tileSize) + 0.5;
-      for (const edge of minimapWallEdges(state.level, tile)) {
-        switch (edge) {
-          case "north":
-            context.moveTo(left, top);
-            context.lineTo(right, top);
-            break;
-          case "east":
-            context.moveTo(right, top);
-            context.lineTo(right, bottom);
-            break;
-          case "south":
-            context.moveTo(left, bottom);
-            context.lineTo(right, bottom);
-            break;
-          case "west":
-            context.moveTo(left, top);
-            context.lineTo(left, bottom);
-            break;
-        }
+      const tileX = startX + localX;
+      if (tileX < 0 || tileX >= state.level.width) continue;
+      const index = tileY * state.level.width + tileX;
+      if (exploredMask[index] === 0) continue;
+      const mask = wallMasks[index];
+      if (mask === 0) continue;
+      const left = pixelEdges[localX] + 0.5;
+      const top = pixelEdges[localY] + 0.5;
+      const right = pixelEdges[localX + 1] + 0.5;
+      const bottom = pixelEdges[localY + 1] + 0.5;
+      if ((mask & MINIMAP_WALL_NORTH) !== 0) {
+        context.moveTo(left, top);
+        context.lineTo(right, top);
+      }
+      if ((mask & MINIMAP_WALL_EAST) !== 0) {
+        context.moveTo(right, top);
+        context.lineTo(right, bottom);
+      }
+      if ((mask & MINIMAP_WALL_SOUTH) !== 0) {
+        context.moveTo(left, bottom);
+        context.lineTo(right, bottom);
+      }
+      if ((mask & MINIMAP_WALL_WEST) !== 0) {
+        context.moveTo(left, top);
+        context.lineTo(left, bottom);
       }
     }
   }
   context.stroke();
   context.restore();
+}
+
+function angularDistance(a: number, b: number): number {
+  return Math.abs(Math.atan2(Math.sin(b - a), Math.cos(b - a)));
 }
 
 function drawMinimapExit(context: CanvasRenderingContext2D, x: number, y: number, tileSize: number): void {

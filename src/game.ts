@@ -27,6 +27,7 @@ type GameOptions = {
 
 const CAMERA_PITCH_KEY = "KeyI";
 const CAMERA_YAW_KEY = "KeyO";
+const HUD_UPDATE_INTERVAL_MS = 50;
 
 export type { DebugSpawnPosition };
 
@@ -47,6 +48,8 @@ export class Game {
   private fpsVisible = false;
   private minimapVisible = true;
   private nextFpsHudUpdateAt = 0;
+  private nextHudUpdateAt = 0;
+  private hudDirty = true;
   private selectingUpgrade = false;
   private animationFrameId: number | undefined;
 
@@ -121,7 +124,7 @@ export class Game {
     this.ui.hideUpgradeSelection();
     this.ui.setHudVisible(true);
     this.ui.setPaused(false);
-    this.hud.update(this.simulation);
+    this.refreshHud(performance.now(), true);
     this.audioFeedback.playStartRun();
   }
 
@@ -135,7 +138,8 @@ export class Game {
 
   grantResources(resources: Partial<PlayerResources>): void {
     this.simulation.grantResources(resources);
-    this.hud.update(this.simulation);
+    this.hudDirty = true;
+    this.refreshHud(performance.now(), true);
   }
 
   private readonly updatePointerWorld = (event: PointerEvent): void => {
@@ -263,7 +267,8 @@ export class Game {
   private readonly handleUpgradeSelected = (id: UpgradeId): void => {
     if (!this.selectingUpgrade) return;
     if (this.simulation.spendUpgrade(id)) {
-      this.hud.update(this.simulation);
+      this.hudDirty = true;
+      this.refreshHud(performance.now(), true);
       this.audioFeedback.playUpgradeSelected();
     }
     this.presentUpgradeSelection();
@@ -338,6 +343,18 @@ export class Game {
     const fps = elapsedSeconds > 0 ? (this.fpsFrameTimes.length - 1) / elapsedSeconds : 0;
     this.ui.updateFps(fps);
     this.ui.updateCameraDebug(this.camera.cameraAngles());
+  }
+
+  private refreshHud(now: number, force = false): void {
+    if (!this.hudDirty && !force) return;
+    if (!force && now < this.nextHudUpdateAt) return;
+    this.nextHudUpdateAt = now + HUD_UPDATE_INTERVAL_MS;
+    this.hudDirty = false;
+    if (this.perf.enabled) {
+      this.perf.span("hud/dom", () => this.hud.update(this.simulation));
+    } else {
+      this.hud.update(this.simulation);
+    }
   }
 
   private updateCameraOrbitFromInput(dt: number): void {
@@ -434,16 +451,18 @@ export class Game {
     this.syncView(dt, result.mapDepthChanged);
     this.audioFeedback.playStep(result);
     this.audioFeedback.updateEnemyMovement(this.simulation.playerPosition, this.simulation.entityState().enemies);
+    this.hudDirty = true;
     if (this.perf.enabled) {
       this.perf.span("camera", () =>
         this.camera.update(dt, this.simulation.playerPosition, this.input.pointerWorld, result.mapDepthChanged),
       );
       this.perf.span("pointer.world", () => this.updatePointerWorldFromCamera());
-      this.perf.span("hud/dom", () => this.hud.update(this.simulation));
     } else {
       this.camera.update(dt, this.simulation.playerPosition, this.input.pointerWorld, result.mapDepthChanged);
       this.updatePointerWorldFromCamera();
-      this.hud.update(this.simulation);
+    }
+    if (result.damageTaken > 0 || result.mapDepthChanged || result.gameOver) {
+      this.refreshHud(performance.now(), true);
     }
     if (this.simulation.isGameOver) {
       this.ui.showGameOver(this.simulation.killCount);
@@ -460,9 +479,13 @@ export class Game {
     const dt = this.clock.getDelta();
 
     if (this.perf.enabled) {
-      this.perf.frame(this.perfFrameArgs(dt), () => this.runInstrumentedFrame(dt));
+      this.perf.frame(this.perfFrameArgs(dt), () => {
+        this.runInstrumentedFrame(dt);
+        this.refreshHud(now);
+      });
     } else {
       this.runFrame(dt);
+      this.refreshHud(now);
     }
   };
 }
