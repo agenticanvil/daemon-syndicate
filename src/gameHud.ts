@@ -1,4 +1,5 @@
 import type { GameSimulation } from "./gameSimulation";
+import { worldToTile } from "./level";
 import type { Ui } from "./ui";
 
 export class HudPresenter {
@@ -15,6 +16,12 @@ export class HudPresenter {
       novaReady: simulation.novaReady,
       dashUnlocked: simulation.dashUnlocked,
       dashReady: simulation.dashReady,
+      minimap: {
+        level: simulation.level,
+        playerTile: worldToTile(simulation.playerPosition),
+        playerRotation: simulation.playerRotationY,
+        explored: simulation.exploredTiles,
+      },
     });
   }
 }

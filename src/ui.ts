@@ -1,5 +1,7 @@
 import { CircleHelp, LogOut, Play, Settings, createElement, type IconNode } from "lucide";
 import { DEFAULT_AUDIO_SETTINGS, type AudioSettings } from "./audio";
+import { key, type LevelData, type TileCoord } from "./level";
+import { minimapWallEdges, MINIMAP_VIEW_TILES } from "./minimap";
 import type { PlayerResources } from "./resourceTypes";
 import type { CameraViewMode, GraphicsSettings } from "./scene";
 import type { UpgradeId, UpgradeOption } from "./upgrades";
@@ -35,6 +37,12 @@ type HudState = {
   novaReady: boolean;
   dashUnlocked: boolean;
   dashReady: boolean;
+  minimap: {
+    level: LevelData;
+    playerTile: TileCoord;
+    playerRotation: number;
+    explored: ReadonlySet<string>;
+  };
 };
 
 export type Ui = {
@@ -135,6 +143,9 @@ export function createUi(app: HTMLDivElement): Ui {
         <div class="ability" id="novaAbility"><strong>RMB</strong><span>Nova</span><em>Energy</em></div>
         <div class="ability hidden" id="dashAbility"><strong>Shift</strong><span>Dash</span><em>Energy</em></div>
       </div>
+      <aside class="minimap-card" aria-label="Explored area minimap">
+        <canvas id="minimap" width="176" height="176"></canvas>
+      </aside>
     </div>
     <div class="pause-menu hidden" id="pauseMenu" role="dialog" aria-modal="true" aria-labelledby="pauseTitle">
       <div class="pause-panel" data-pause-view="main">
@@ -297,6 +308,7 @@ export function createUi(app: HTMLDivElement): Ui {
   const primaryAbility = document.querySelector<HTMLElement>("#primaryAbility")!;
   const novaAbility = document.querySelector<HTMLElement>("#novaAbility")!;
   const dashAbility = document.querySelector<HTMLElement>("#dashAbility")!;
+  const minimap = document.querySelector<HTMLCanvasElement>("#minimap")!;
   const cameraSmoothFollow = document.querySelector<HTMLInputElement>("#cameraSmoothFollow")!;
   const cameraPointerLead = document.querySelector<HTMLInputElement>("#cameraPointerLead")!;
   const cameraAimFraming = document.querySelector<HTMLInputElement>("#cameraAimFraming")!;
@@ -581,6 +593,7 @@ export function createUi(app: HTMLDivElement): Ui {
       novaAbility.classList.toggle("disabled", !state.novaReady);
       dashAbility.classList.toggle("hidden", !state.dashUnlocked);
       dashAbility.classList.toggle("disabled", !state.dashReady);
+      drawMinimap(minimap, state.minimap);
     },
     showUpgradeSelection(state, onSelect) {
       upgradeMenu.classList.remove("hidden");
@@ -611,6 +624,124 @@ export function createUi(app: HTMLDivElement): Ui {
 }
 
 const AUDIO_SETTINGS_STORAGE_KEY = "daemon-syndicate.audio-settings";
+
+function drawMinimap(canvas: HTMLCanvasElement, state: HudState["minimap"]): void {
+  const context = canvas.getContext("2d");
+  if (!context) return;
+
+  const size = canvas.width;
+  const tileSize = size / MINIMAP_VIEW_TILES;
+  const halfView = Math.floor(MINIMAP_VIEW_TILES / 2);
+  const startX = state.playerTile.x - halfView;
+  const startY = state.playerTile.y - halfView;
+  context.clearRect(0, 0, size, size);
+  context.fillStyle = "#020608";
+  context.fillRect(0, 0, size, size);
+
+  for (let localY = 0; localY < MINIMAP_VIEW_TILES; localY += 1) {
+    for (let localX = 0; localX < MINIMAP_VIEW_TILES; localX += 1) {
+      const tile = { x: startX + localX, y: startY + localY };
+      const tileKey = key(tile);
+      if (!state.explored.has(tileKey)) continue;
+
+      context.fillStyle = "#4ec4bb";
+      context.globalAlpha = 0.78;
+      const x = Math.round(localX * tileSize);
+      const y = Math.round(localY * tileSize);
+      const width = Math.round((localX + 1) * tileSize) - x;
+      const height = Math.round((localY + 1) * tileSize) - y;
+      context.fillRect(x, y, width, height);
+    }
+  }
+  context.globalAlpha = 1;
+
+  drawMinimapWalls(context, state, startX, startY, tileSize);
+
+  if (state.explored.has(key(state.level.end))) {
+    drawMinimapExit(context, state.level.end.x - startX, state.level.end.y - startY, tileSize);
+  }
+  drawMinimapPlayer(context, size / 2, size / 2, state.playerRotation);
+}
+
+function drawMinimapWalls(
+  context: CanvasRenderingContext2D,
+  state: HudState["minimap"],
+  startX: number,
+  startY: number,
+  tileSize: number,
+): void {
+  context.save();
+  context.beginPath();
+  context.strokeStyle = "#bafff6";
+  context.globalAlpha = 0.92;
+  context.lineWidth = 1;
+
+  for (let localY = 0; localY < MINIMAP_VIEW_TILES; localY += 1) {
+    for (let localX = 0; localX < MINIMAP_VIEW_TILES; localX += 1) {
+      const tile = { x: startX + localX, y: startY + localY };
+      if (!state.explored.has(key(tile))) continue;
+
+      const left = Math.round(localX * tileSize) + 0.5;
+      const top = Math.round(localY * tileSize) + 0.5;
+      const right = Math.round((localX + 1) * tileSize) + 0.5;
+      const bottom = Math.round((localY + 1) * tileSize) + 0.5;
+      for (const edge of minimapWallEdges(state.level, tile)) {
+        switch (edge) {
+          case "north":
+            context.moveTo(left, top);
+            context.lineTo(right, top);
+            break;
+          case "east":
+            context.moveTo(right, top);
+            context.lineTo(right, bottom);
+            break;
+          case "south":
+            context.moveTo(left, bottom);
+            context.lineTo(right, bottom);
+            break;
+          case "west":
+            context.moveTo(left, top);
+            context.lineTo(left, bottom);
+            break;
+        }
+      }
+    }
+  }
+  context.stroke();
+  context.restore();
+}
+
+function drawMinimapExit(context: CanvasRenderingContext2D, x: number, y: number, tileSize: number): void {
+  context.save();
+  context.fillStyle = "#ffd06a";
+  context.shadowColor = "#ffd06a";
+  context.shadowBlur = 5;
+  const markerSize = Math.max(3, tileSize);
+  context.fillRect(
+    (x + 0.5) * tileSize - markerSize / 2,
+    (y + 0.5) * tileSize - markerSize / 2,
+    markerSize,
+    markerSize,
+  );
+  context.restore();
+}
+
+function drawMinimapPlayer(context: CanvasRenderingContext2D, x: number, y: number, rotation: number): void {
+  context.save();
+  context.translate(x, y);
+  context.rotate(-rotation);
+  context.fillStyle = "#f5ffff";
+  context.shadowColor = "#7afff1";
+  context.shadowBlur = 7;
+  context.beginPath();
+  context.moveTo(0, -6);
+  context.lineTo(4.5, 5);
+  context.lineTo(0, 3.2);
+  context.lineTo(-4.5, 5);
+  context.closePath();
+  context.fill();
+  context.restore();
+}
 
 function loadAudioSettings(): AudioSettings {
   try {

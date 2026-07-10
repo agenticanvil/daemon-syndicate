@@ -8,7 +8,16 @@ import type { EntityViewState } from "./entityState";
 import { EventQueue, type GameEvent } from "./eventQueue";
 import type { FloorVariantId } from "./floorVariants";
 import type { GameEffect } from "./gameEffects";
-import { exitGateToWorld, generateLevel, tileToWorld, type ExitDirection, type LevelData, type TileCoord } from "./level";
+import {
+  exitGateToWorld,
+  generateLevel,
+  tileToWorld,
+  worldToTile,
+  type ExitDirection,
+  type LevelData,
+  type TileCoord,
+} from "./level";
+import { revealMinimapTiles } from "./minimap";
 import { PickupSystem, type PickupSystemSnapshot } from "./pickupSystem";
 import { PlayerSystem, type PlayerRenderState, type PlayerSystemSnapshot } from "./playerSystem";
 import { idlePlayerCommand } from "./playerCommand";
@@ -90,6 +99,7 @@ export class GameSimulation {
   private kills = 0;
   private mapDepth = 1;
   private currentLevel: LevelData;
+  private readonly exploredTilesValue = new Set<string>();
   private readonly rng: Rng;
   private readonly seed?: string;
   private readonly createLevel: (mapDepth: number, rng: Rng) => LevelData;
@@ -209,6 +219,10 @@ export class GameSimulation {
     return this.currentLevel;
   }
 
+  get exploredTiles(): ReadonlySet<string> {
+    return this.exploredTilesValue;
+  }
+
   playerRenderState(): PlayerRenderState {
     return this.player.renderState();
   }
@@ -247,6 +261,7 @@ export class GameSimulation {
         this.player.regenerate(dt);
         this.player.applyMovement(command, dt);
         result.mapDepthChanged = this.checkGateTransition();
+        this.revealPlayerSurroundings();
         if (!result.mapDepthChanged) {
           this.player.updateAim(command.aimWorld);
           if (command.firePrimary) {
@@ -407,6 +422,7 @@ export class GameSimulation {
     this.progression.reset();
     this.refreshDerivedStats();
     this.player.reset(tileToWorld(this.currentLevel.start), this.currentCollisionLayer());
+    this.resetExploration();
     this.enemies.spawnLevelEnemies();
     this.combat.resetTimers();
     this.gameOver = false;
@@ -419,6 +435,7 @@ export class GameSimulation {
     this.mapDepth += 1;
     this.currentLevel = this.createLevel(this.mapDepth, this.rng);
     this.player.moveTo(tileToWorld(this.currentLevel.start), this.currentCollisionLayer());
+    this.resetExploration();
     this.enemies.spawnLevelEnemies();
     this.combat.prepareNextLevel();
   }
@@ -428,6 +445,15 @@ export class GameSimulation {
     this.enemies.clear();
     this.combat.clear();
     this.pickups.clear();
+  }
+
+  private resetExploration(): void {
+    this.exploredTilesValue.clear();
+    this.revealPlayerSurroundings();
+  }
+
+  private revealPlayerSurroundings(): void {
+    revealMinimapTiles(this.currentLevel, worldToTile(this.player.position), this.exploredTilesValue);
   }
 
   private currentCollisionLayer(): CollisionLayer {

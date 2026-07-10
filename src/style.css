@@ -211,6 +211,31 @@ canvas {
   filter: grayscale(0.55);
 }
 
+.minimap-card {
+  position: absolute;
+  left: 16px;
+  bottom: 16px;
+  width: 196px;
+  border: 1px solid rgba(142, 255, 236, 0.24);
+  border-radius: 7px;
+  background:
+    linear-gradient(135deg, rgba(78, 196, 187, 0.08), transparent 48%),
+    rgba(3, 9, 11, 0.78);
+  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.28);
+  padding: 9px;
+  backdrop-filter: blur(10px);
+}
+
+.minimap-card canvas {
+  display: block;
+  width: 176px;
+  height: 176px;
+  border: 1px solid rgba(142, 255, 236, 0.14);
+  border-radius: 3px;
+  background: #020608;
+  image-rendering: pixelated;
+}
+
 .upgrade-menu {
   position: fixed;
   inset: 0;
@@ -1068,8 +1093,8 @@ canvas {
   }
 
   .ability-bar {
-    left: 16px;
-    right: auto;
+    left: auto;
+    right: 16px;
     bottom: 16px;
   }
 
@@ -1081,6 +1106,15 @@ canvas {
 
   .ability {
     width: 76px;
+  }
+
+  .minimap-card {
+    width: 148px;
+  }
+
+  .minimap-card canvas {
+    width: 128px;
+    height: 128px;
   }
 
   .pause-panel dl {
