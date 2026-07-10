@@ -263,7 +263,7 @@ export function createUi(app: HTMLDivElement): Ui {
           <h3>Help</h3>
           <dl>
             <div><dt>Move</dt><dd>WASD</dd></div>
-            <div><dt>Aim</dt><dd>Mouse cursor</dd></div>
+            <div><dt>Aim</dt><dd>Mouse crosshair</dd></div>
             <div><dt>Kinetic bolt</dt><dd>Left click, costs ammo</dd></div>
             <div><dt>Plasma nova</dt><dd>Right click or Space, costs energy</dd></div>
             <div><dt>Minimap</dt><dd>M to show or hide</dd></div>
@@ -283,6 +283,7 @@ export function createUi(app: HTMLDivElement): Ui {
         <div class="upgrade-options" id="upgradeOptions"></div>
       </div>
     </div>
+    <div class="mouse-crosshair" id="mouseCrosshair" aria-hidden="true"></div>
   `;
 
   const overlay = document.querySelector<HTMLDivElement>("#overlay")!;
@@ -291,6 +292,7 @@ export function createUi(app: HTMLDivElement): Ui {
   const upgradeMenu = document.querySelector<HTMLDivElement>("#upgradeMenu")!;
   const upgradePoints = document.querySelector<HTMLElement>("#upgradePoints")!;
   const upgradeOptions = document.querySelector<HTMLDivElement>("#upgradeOptions")!;
+  const mouseCrosshair = document.querySelector<HTMLDivElement>("#mouseCrosshair")!;
   const pausePanel = document.querySelector<HTMLDivElement>(".pause-panel")!;
   const startButton = document.querySelector<HTMLButtonElement>("#start")!;
   const startStatus = document.querySelector<HTMLDivElement>("#startStatus")!;
@@ -352,6 +354,13 @@ export function createUi(app: HTMLDivElement): Ui {
   const audioSettingsListeners: Array<(settings: AudioSettings) => void> = [];
   const debugInvulnerabilityListeners: Array<(enabled: boolean) => void> = [];
   let cameraDebugCopyValue = "pitch=0.0 yaw=0.0";
+
+  window.addEventListener("pointermove", (event) => {
+    if (event.pointerType !== "mouse") return;
+    mouseCrosshair.style.transform = `translate3d(${event.clientX}px, ${event.clientY}px, 0)`;
+    mouseCrosshair.classList.add("visible");
+  });
+  document.documentElement.addEventListener("mouseleave", () => mouseCrosshair.classList.remove("visible"));
 
   cameraSmoothFollow.checked = cameraSettings.smoothFollow;
   cameraPointerLead.checked = cameraSettings.pointerLead;

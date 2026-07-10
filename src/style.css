@@ -29,6 +29,57 @@ body {
     linear-gradient(135deg, #05080b 0%, #111611 52%, #050709 100%);
 }
 
+.mouse-crosshair {
+  position: fixed;
+  top: -7px;
+  left: -7px;
+  z-index: 100;
+  width: 14px;
+  height: 14px;
+  pointer-events: none;
+  border: 1px solid rgba(77, 247, 255, 0.95);
+  border-radius: 50%;
+  box-shadow:
+    0 0 5px rgba(77, 247, 255, 0.9),
+    inset 0 0 4px rgba(77, 247, 255, 0.45);
+  opacity: 0;
+  transition: opacity 80ms linear;
+}
+
+.mouse-crosshair::before,
+.mouse-crosshair::after {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  content: "";
+  background: #4df7ff;
+  box-shadow: 0 0 5px rgba(77, 247, 255, 0.95);
+  transform: translate(-50%, -50%);
+}
+
+.mouse-crosshair::before {
+  width: 30px;
+  height: 1px;
+  background: linear-gradient(to right, #4df7ff 0 7px, transparent 7px 23px, #4df7ff 23px 30px);
+}
+
+.mouse-crosshair::after {
+  width: 1px;
+  height: 30px;
+  background: linear-gradient(to bottom, #4df7ff 0 7px, transparent 7px 23px, #4df7ff 23px 30px);
+}
+
+@media (pointer: fine) {
+  #app,
+  #app * {
+    cursor: none !important;
+  }
+
+  .mouse-crosshair.visible {
+    opacity: 1;
+  }
+}
+
 canvas {
   display: block;
   image-rendering: auto;
