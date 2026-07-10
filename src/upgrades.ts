@@ -101,7 +101,7 @@ const UPGRADE_DEFINITIONS: Record<UpgradeId, UpgradeDefinition> = {
   novaCapacitor: {
     id: "novaCapacitor",
     label: "Nova Capacitor",
-    description: "+8 nova damage, +0.6 radius",
+    description: "+8 nova damage, +25% radius",
     maxRanks: 3,
     unlockLevel: 4,
   },
@@ -178,7 +178,7 @@ export function derivePlayerStats(ranks: UpgradeRanks): PlayerDerivedStats {
     dashDistance: 4.2,
     projectilePierce: ranks.boltPierce,
     novaDamage: WEAPON_BALANCE.nova.damage + ranks.novaCapacitor * 8,
-    novaRadius: WEAPON_BALANCE.nova.radius + ranks.novaCapacitor * 0.6,
+    novaRadius: WEAPON_BALANCE.nova.radius * (1 + ranks.novaCapacitor * 0.25),
     emergencyShieldUnlocked: ranks.emergencyShield > 0,
     ammoRefundChance: ranks.ammoConverter * 0.08,
   };

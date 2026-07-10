@@ -33,7 +33,7 @@ describe("upgrades", () => {
       dashDistance: 4.2,
       projectilePierce: 1,
       novaDamage: WEAPON_BALANCE.nova.damage + 16,
-      novaRadius: WEAPON_BALANCE.nova.radius + 1.2,
+      novaRadius: WEAPON_BALANCE.nova.radius * 1.5,
       emergencyShieldUnlocked: true,
       ammoRefundChance: 0.16,
     });

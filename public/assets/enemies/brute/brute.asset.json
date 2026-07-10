@@ -28,8 +28,8 @@
     }
   },
   "health": {
-    "base": 185,
-    "levelGrowth": 42
+    "base": 231.25,
+    "levelGrowth": 52.5
   },
   "movement": {
     "speed": 1.82,
