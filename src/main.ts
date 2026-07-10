@@ -79,6 +79,7 @@ async function startGame(app: HTMLDivElement): Promise<void> {
   const audio = createAudioSystem();
   const ui = createUi(app);
   let game: Game | undefined;
+  let candidateGame: Game | undefined;
   let world: GameScene | undefined;
   let deploying = false;
 
@@ -128,12 +129,16 @@ async function startGame(app: HTMLDivElement): Promise<void> {
         "Timed out loading effect textures.",
       );
 
-      game = new Game(world, ui, perf, {
+      candidateGame = new Game(world, ui, perf, {
         audio,
         effectAssets,
         rng: seed ? seededRandom(seed) : Math.random,
         seed: seed ?? undefined,
       });
+      ui.showLoading("Compiling combat shaders...");
+      await withTimeout(candidateGame.prepare(), 60_000, "Timed out compiling combat shaders.");
+      game = candidateGame;
+      candidateGame = undefined;
       game.bindEvents();
       game.startLoop();
       const activeGame = game;
@@ -147,6 +152,8 @@ async function startGame(app: HTMLDivElement): Promise<void> {
       audio.play("ui-click", { volume: 0.55 });
       game.startNewRun(mapDepth);
     } catch (error) {
+      candidateGame?.dispose();
+      candidateGame = undefined;
       ui.showStartError(error instanceof Error ? error.message : "Failed to prepare runtime assets.");
     } finally {
       deploying = false;

@@ -87,6 +87,13 @@ export class Game {
     this.eventDisposers.push(() => this.ui.mainMenuButton.removeEventListener("click", handleMainMenuClick));
   }
 
+  async prepare(): Promise<void> {
+    this.world.updatePlayerLocalAmbient(this.simulation.playerPosition);
+    this.world.updateGameplayLighting(this.simulation.playerPosition, 0);
+    this.world.updateWallOcclusion(this.simulation.playerPosition, this.world.camera, 0, true);
+    await this.view.warmUp();
+  }
+
   startLoop(): void {
     if (this.animationFrameId !== undefined) return;
     this.animate();

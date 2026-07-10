@@ -72,6 +72,7 @@ type DeathDecalState = {
 };
 
 export type GameplayView = {
+  warmUp: () => Promise<void>;
   syncPlayer: (state: PlayerRenderState, dt: number, instant?: boolean) => void;
   triggerPlayerFire: () => void;
   renderLevel: (level: LevelData, options?: RenderLevelOptions) => void;
@@ -144,6 +145,7 @@ const DEATH_SPLATTER_DEFAULT_COLOR = new THREE.Color(0x720814);
 const PREWARM_PLAYER_PROJECTILE_MESHES = 24;
 const PREWARM_ENEMY_PROJECTILE_MESHES = 24;
 const PREWARM_DAMAGE_TEXTS = 32;
+const RESOURCE_KINDS: readonly ResourceKind[] = ["health", "ammo", "energy"];
 
 export async function preloadGameplayEffectAssets(
   renderer: THREE.WebGLRenderer,
@@ -263,6 +265,7 @@ export function createThreeGameplayView(world: GameScene, effectAssets?: Gamepla
   const playerDamageVignette = document.createElement("div");
   let playerDamageVignetteLife = 0;
   let elapsed = 0;
+  let warmUpPromise: Promise<void> | undefined;
 
   novaPulseGeometry.setAttribute("effectData", novaPulseAttribute);
   impactPulseGeometry.setAttribute("effectData", impactPulseAttribute);
@@ -312,7 +315,6 @@ export function createThreeGameplayView(world: GameScene, effectAssets?: Gamepla
   document.body.appendChild(playerDamageVignette);
   prewarmProjectileMeshes();
   prewarmDamageTextElements();
-  warmEffectShaders();
 
   function acquireDamageTextElement(): HTMLDivElement {
     const el = damageTextPool.pop() ?? document.createElement("div");
@@ -365,15 +367,124 @@ export function createThreeGameplayView(world: GameScene, effectAssets?: Gamepla
     }
   }
 
-  function warmEffectShaders(): void {
-    const previousDecalVisibility = deathDecals.map((decal) => decal.mesh.visible);
-    for (const decal of deathDecals) {
-      decal.mesh.visible = true;
-      decal.mesh.scale.setScalar(0);
-    }
-    world.renderer.compile(world.scene, world.camera);
-    for (let i = 0; i < deathDecals.length; i += 1) {
-      deathDecals[i].mesh.visible = previousDecalVisibility[i];
+  function warmEffectShaders(): Promise<void> {
+    warmUpPromise ??= performEffectShaderWarmUp();
+    return warmUpPromise;
+  }
+
+  async function performEffectShaderWarmUp(): Promise<void> {
+    const warmPosition = world.player.position.clone();
+    warmPosition.y = 0.6;
+    const warmFloorPosition = warmPosition.clone();
+    warmFloorPosition.y = DEATH_DECAL_FLOOR_OFFSET;
+    const warmQuaternion = new THREE.Quaternion();
+    const warmScale = new THREE.Vector3(0.8, 0.8, 0.8);
+    const warmMatrix = new THREE.Matrix4().compose(warmPosition, warmQuaternion, warmScale);
+    const warmFloorMatrix = new THREE.Matrix4().compose(warmFloorPosition, IMPACT_GLOW_ROTATION, warmScale);
+    const instancedMeshes = [novaPulseMesh, impactGlowMesh, deathGlowMesh, impactSparkMesh, deathSplatterParticleMesh];
+    const previousMatrices = instancedMeshes.map((mesh) => {
+      const matrix = new THREE.Matrix4();
+      mesh.getMatrixAt(0, matrix);
+      return matrix;
+    });
+    const pulseSnapshots = [
+      novaPulseData.slice(0, 4),
+      impactPulseData.slice(0, 4),
+      deathPulseData.slice(0, 4),
+    ];
+    const decalSnapshots = deathDecals.map((decal) => ({
+      visible: decal.mesh.visible,
+      frustumCulled: decal.mesh.frustumCulled,
+      position: decal.mesh.position.clone(),
+      quaternion: decal.mesh.quaternion.clone(),
+      scale: decal.mesh.scale.clone(),
+    }));
+    const playerProjectile = projectileMeshPool.pop();
+    const enemyProjectile = enemyProjectileMeshPool.pop();
+    const pickupRepresentatives = RESOURCE_KINDS.map((kind) => ({
+      kind,
+      mesh: world.createPickupAsset(kind).root,
+    }));
+    try {
+      novaPulseMesh.setMatrixAt(0, warmMatrix);
+      impactGlowMesh.setMatrixAt(0, warmFloorMatrix);
+      deathGlowMesh.setMatrixAt(0, warmFloorMatrix);
+      impactSparkMesh.setMatrixAt(0, warmMatrix);
+      deathSplatterParticleMesh.setMatrixAt(0, warmMatrix);
+      for (const mesh of instancedMeshes) {
+        mesh.visible = true;
+        mesh.instanceMatrix.needsUpdate = true;
+        mesh.computeBoundingSphere();
+      }
+      novaPulseData.set([0.25, 1, 0.5, 0.75], 0);
+      impactPulseData.set([0.25, 1, 0.5, 0.35], 0);
+      deathPulseData.set([0.25, 1, 0.5, 0.58], 0);
+      novaPulseAttribute.needsUpdate = true;
+      impactPulseAttribute.needsUpdate = true;
+      deathPulseAttribute.needsUpdate = true;
+
+      for (let i = 0; i < deathDecals.length; i += 1) {
+        const decal = deathDecals[i].mesh;
+        decal.visible = true;
+        decal.frustumCulled = false;
+        decal.position.copy(warmFloorPosition);
+        decal.position.x += (i % deathDecalMaterials.length) * 0.04;
+        decal.quaternion.copy(IMPACT_GLOW_ROTATION);
+        decal.scale.setScalar(0.8);
+      }
+
+      for (const [index, projectile] of [playerProjectile, enemyProjectile].entries()) {
+        if (!projectile) continue;
+        projectile.position.copy(warmPosition);
+        projectile.position.x += index * 0.15;
+        projectile.visible = true;
+        world.scene.add(projectile);
+      }
+      for (let i = 0; i < pickupRepresentatives.length; i += 1) {
+        const pickup = pickupRepresentatives[i].mesh;
+        pickup.position.copy(warmPosition);
+        pickup.position.x += (i - 1) * 0.25;
+        pickup.position.y = 0.45;
+        pickup.visible = true;
+        world.scene.add(pickup);
+      }
+
+      await world.renderer.compileAsync(world.scene, world.camera);
+      // The production renderer uses EffectComposer render targets, which select
+      // different program variants than a direct canvas render. Run the actual
+      // pipeline once while the representative instances are present so those
+      // variants and their buffers/textures complete during deployment.
+      world.render();
+    } finally {
+      for (const projectile of [playerProjectile, enemyProjectile]) {
+        if (projectile) world.scene.remove(projectile);
+      }
+      if (playerProjectile) projectileMeshPool.push(playerProjectile);
+      if (enemyProjectile) enemyProjectileMeshPool.push(enemyProjectile);
+      for (const { kind, mesh } of pickupRepresentatives) {
+        world.scene.remove(mesh);
+        pickupMeshPools[kind].push(mesh);
+      }
+      for (let i = 0; i < instancedMeshes.length; i += 1) {
+        instancedMeshes[i].setMatrixAt(0, previousMatrices[i]);
+        instancedMeshes[i].instanceMatrix.needsUpdate = true;
+        instancedMeshes[i].computeBoundingSphere();
+      }
+      novaPulseData.set(pulseSnapshots[0], 0);
+      impactPulseData.set(pulseSnapshots[1], 0);
+      deathPulseData.set(pulseSnapshots[2], 0);
+      novaPulseAttribute.needsUpdate = true;
+      impactPulseAttribute.needsUpdate = true;
+      deathPulseAttribute.needsUpdate = true;
+      for (let i = 0; i < deathDecals.length; i += 1) {
+        const decal = deathDecals[i].mesh;
+        const snapshot = decalSnapshots[i];
+        decal.visible = snapshot.visible;
+        decal.frustumCulled = snapshot.frustumCulled;
+        decal.position.copy(snapshot.position);
+        decal.quaternion.copy(snapshot.quaternion);
+        decal.scale.copy(snapshot.scale);
+      }
     }
   }
 
@@ -485,8 +596,8 @@ export function createThreeGameplayView(world: GameScene, effectAssets?: Gamepla
   function updatePlayerDamageVignette(dt: number): void {
     playerDamageVignetteLife = Math.max(0, playerDamageVignetteLife - dt);
     if (playerDamageVignetteLife <= 0) {
-      playerDamageVignette.hidden = true;
-      playerDamageVignette.style.opacity = "0";
+      if (!playerDamageVignette.hidden) playerDamageVignette.hidden = true;
+      if (playerDamageVignette.style.opacity !== "0") playerDamageVignette.style.opacity = "0";
       return;
     }
 
@@ -641,6 +752,7 @@ export function createThreeGameplayView(world: GameScene, effectAssets?: Gamepla
   }
 
   return {
+    warmUp: warmEffectShaders,
     syncPlayer(state, dt) {
       world.player.position.copy(state.position);
       world.player.rotation.y = state.rotationY;
@@ -1023,6 +1135,11 @@ export function createThreeGameplayView(world: GameScene, effectAssets?: Gamepla
       disposeOwnedMeshMaterial(deathGlowMesh);
       deathDecalMaterials.forEach((material) => material.dispose());
       deathDecalMaskTexture.dispose();
+      for (const kind of RESOURCE_KINDS) {
+        for (const mesh of pickupMeshPools[kind].splice(0)) {
+          disposeObject3D(mesh, true);
+        }
+      }
       for (const texture of effectAssets?.deathSplatterTextures ?? []) {
         texture.dispose();
       }
@@ -1152,6 +1269,7 @@ function createDeathDecalMaterials(
       polygonOffsetUnits: -2,
       toneMapped: true,
     });
+    material.name = `DeathDecal-${index + 1}`;
     material.onBeforeCompile = (shader) => {
       shader.uniforms.uDeathDecalWalkableMask = { value: walkableMask };
       shader.uniforms.uDeathDecalMaskSize = { value: new THREE.Vector2(LEVEL_WIDTH, LEVEL_HEIGHT) };

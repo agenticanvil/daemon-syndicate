@@ -53,6 +53,11 @@ export async function startDevEffects(app: HTMLDivElement): Promise<void> {
   view.renderLevel(level, { includeExitPortal: false });
   world.player.position.copy(playerPosition);
   world.reticle.position.copy(playerPosition).add(new THREE.Vector3(0, RETICLE_FLOOR_OFFSET, -TILE_SIZE));
+  updateCamera(world, playerPosition);
+  world.updatePlayerLocalAmbient(playerPosition);
+  world.updateGameplayLighting(playerPosition, 0);
+  world.updateWallOcclusion(playerPosition, world.camera, 0, true);
+  await view.warmUp();
   hud.innerHTML = renderHud();
 
   const updatePointerWorld = (event: PointerEvent): void => {
