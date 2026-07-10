@@ -67,7 +67,7 @@ type SplatterParticleState = SparkState & {
 
 type DeathDecalState = {
   active: boolean;
-  mesh: THREE.Mesh<THREE.PlaneGeometry, THREE.ShaderMaterial>;
+  mesh: THREE.Mesh<THREE.PlaneGeometry, THREE.MeshStandardMaterial>;
   variant: number;
 };
 
@@ -1114,7 +1114,7 @@ function createDeathDecalMaterials(
   anisotropy: number,
   walkableMask: THREE.Texture,
   preloadedTextures?: THREE.Texture[],
-): THREE.ShaderMaterial[] {
+): THREE.MeshStandardMaterial[] {
   const loader = new THREE.TextureLoader();
   renderer.initTexture(walkableMask);
   return DEATH_SPLATTER_TEXTURE_URLS.map((url, index) => {
@@ -1124,59 +1124,85 @@ function createDeathDecalMaterials(
     });
     configureDeathSplatterTexture(texture, anisotropy);
 
-    return new THREE.ShaderMaterial({
-      uniforms: {
-        uMap: { value: texture },
-        uWalkableMask: { value: walkableMask },
-        uMaskSize: { value: new THREE.Vector2(LEVEL_WIDTH, LEVEL_HEIGHT) },
-        uWorldGridSize: { value: new THREE.Vector2(LEVEL_WIDTH, LEVEL_HEIGHT) },
-        uTileSize: { value: TILE_SIZE },
-        uOpacity: { value: 0.48 },
-      },
-      vertexShader: `
-        varying vec2 vUv;
-        varying vec3 vWorldPosition;
-
-        void main() {
-          vUv = uv;
-          vec4 worldPosition = modelMatrix * vec4(position, 1.0);
-          vWorldPosition = worldPosition.xyz;
-          gl_Position = projectionMatrix * viewMatrix * worldPosition;
-        }
-      `,
-      fragmentShader: `
-        uniform sampler2D uMap;
-        uniform sampler2D uWalkableMask;
-        uniform vec2 uMaskSize;
-        uniform vec2 uWorldGridSize;
-        uniform float uTileSize;
-        uniform float uOpacity;
-
-        varying vec2 vUv;
-        varying vec3 vWorldPosition;
-
-        void main() {
-          vec4 decal = texture2D(uMap, vUv);
-          if (decal.a < 0.01) discard;
-
-          vec2 tile = floor((vec2(vWorldPosition.x, vWorldPosition.z) / uTileSize) + ((uWorldGridSize - vec2(1.0)) * 0.5) + vec2(0.5));
-          if (tile.x < 0.0 || tile.y < 0.0 || tile.x >= uMaskSize.x || tile.y >= uMaskSize.y) discard;
-
-          float walkable = texture2D(uWalkableMask, (tile + vec2(0.5)) / uMaskSize).r;
-          if (walkable < 0.5) discard;
-
-          gl_FragColor = vec4(decal.rgb, decal.a * uOpacity);
-        }
-      `,
+    const material = new THREE.MeshStandardMaterial({
+      map: texture,
+      color: 0xff6b72,
+      roughness: 0.96,
+      metalness: 0,
+      emissive: 0x120002,
+      emissiveIntensity: 0.02,
       transparent: true,
+      opacity: 0.74,
+      alphaTest: 0.01,
       depthWrite: false,
       depthTest: true,
       side: THREE.DoubleSide,
       polygonOffset: true,
       polygonOffsetFactor: -2,
       polygonOffsetUnits: -2,
-      toneMapped: false,
+      toneMapped: true,
     });
+    material.onBeforeCompile = (shader) => {
+      shader.uniforms.uDeathDecalWalkableMask = { value: walkableMask };
+      shader.uniforms.uDeathDecalMaskSize = { value: new THREE.Vector2(LEVEL_WIDTH, LEVEL_HEIGHT) };
+      shader.uniforms.uDeathDecalWorldGridSize = { value: new THREE.Vector2(LEVEL_WIDTH, LEVEL_HEIGHT) };
+      shader.uniforms.uDeathDecalTileSize = { value: TILE_SIZE };
+      shader.vertexShader = shader.vertexShader
+        .replace(
+          "#include <common>",
+          `#include <common>
+          varying vec3 vDeathDecalWorldPosition;`,
+        )
+        .replace(
+          "#include <worldpos_vertex>",
+          `#include <worldpos_vertex>
+          vDeathDecalWorldPosition = (modelMatrix * vec4(transformed, 1.0)).xyz;`,
+        );
+      shader.fragmentShader = shader.fragmentShader
+        .replace(
+          "#include <common>",
+          `#include <common>
+          uniform sampler2D uDeathDecalWalkableMask;
+          uniform vec2 uDeathDecalMaskSize;
+          uniform vec2 uDeathDecalWorldGridSize;
+          uniform float uDeathDecalTileSize;
+          varying vec3 vDeathDecalWorldPosition;`,
+        )
+        .replace(
+          "#include <clipping_planes_fragment>",
+          `#include <clipping_planes_fragment>
+          vec2 deathDecalTile = floor(
+            (vec2(vDeathDecalWorldPosition.x, vDeathDecalWorldPosition.z) / uDeathDecalTileSize)
+            + ((uDeathDecalWorldGridSize - vec2(1.0)) * 0.5)
+            + vec2(0.5)
+          );
+          if (
+            deathDecalTile.x < 0.0 || deathDecalTile.y < 0.0
+            || deathDecalTile.x >= uDeathDecalMaskSize.x || deathDecalTile.y >= uDeathDecalMaskSize.y
+          ) discard;
+          float deathDecalWalkable = texture2D(
+            uDeathDecalWalkableMask,
+            (deathDecalTile + vec2(0.5)) / uDeathDecalMaskSize
+          ).r;
+          if (deathDecalWalkable < 0.5) discard;`,
+        )
+        .replace(
+          "#include <opaque_fragment>",
+          `float deathDecalAlbedoLevel = max(
+            max(diffuseColor.r, diffuseColor.g),
+            diffuseColor.b
+          );
+          float deathDecalLightLevel = clamp(
+            max(max(outgoingLight.r, outgoingLight.g), outgoingLight.b),
+            0.0,
+            0.68
+          );
+          outgoingLight = (diffuseColor.rgb / max(deathDecalAlbedoLevel, 0.0001)) * deathDecalLightLevel;
+          #include <opaque_fragment>`,
+        );
+    };
+    material.customProgramCacheKey = () => "daemon-death-decal-lit-v2";
+    return material;
   });
 }
 
@@ -1187,10 +1213,11 @@ function configureDeathSplatterTexture(texture: THREE.Texture, anisotropy: numbe
   texture.anisotropy = anisotropy;
 }
 
-function createDeathDecalStates(materials: THREE.ShaderMaterial[]): DeathDecalState[] {
+function createDeathDecalStates(materials: THREE.MeshStandardMaterial[]): DeathDecalState[] {
   return Array.from({ length: MAX_DEATH_DECALS }, (_, index) => {
     const material = materials[index % materials.length];
     const mesh = new THREE.Mesh(DEATH_DECAL_GEOMETRY, material);
+    mesh.receiveShadow = true;
     return {
       active: false,
       mesh,

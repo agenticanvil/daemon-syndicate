@@ -60,6 +60,30 @@ describe("renderLevel", () => {
     const plinths = root.getObjectByName("level-wall-plinths") as THREE.InstancedMesh;
     expect(plinths.count).toBe(6);
   });
+
+  it("extends wall plinths below the floor to prevent light seams", () => {
+    const root = new THREE.Group();
+
+    renderLevel(root, createTestLevel(), createMaterials());
+
+    const plinths = root.getObjectByName("level-wall-plinths") as THREE.InstancedMesh;
+    const bounds = new THREE.Box3().setFromObject(plinths);
+    expect(bounds.min.y).toBeLessThanOrEqual(-0.079);
+    expect(bounds.max.y).toBeCloseTo(0.64);
+  });
+
+  it("lets the floor occlude the flashlight and the platform sides receive its shadows", () => {
+    const root = new THREE.Group();
+
+    renderLevel(root, createTestLevel(), createMaterials());
+
+    const floorTiles = root.getObjectByName("level-floor-tiles") as THREE.Mesh;
+    const platformEdge = root.getObjectByName("level-platform-edges") as THREE.InstancedMesh;
+    expect(floorTiles.castShadow).toBe(true);
+    expect(floorTiles.receiveShadow).toBe(true);
+    expect(platformEdge.castShadow).toBe(true);
+    expect(platformEdge.receiveShadow).toBe(true);
+  });
 });
 
 function createMaterials(): LevelRenderMaterials {

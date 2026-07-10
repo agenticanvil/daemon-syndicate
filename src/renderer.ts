@@ -41,7 +41,7 @@ const POST_PROCESSING_FLAGS = {
 
 const DEFAULT_GRAPHICS_SETTINGS: GraphicsSettings = {
   preserveDrawingBuffer: false,
-  renderScale: 0.5,
+  renderScale: 1,
   cameraView: DEFAULT_CAMERA_VIEW,
 };
 

@@ -218,8 +218,8 @@ export function createUi(app: HTMLDivElement): Ui {
               </div>
               <div class="graphics-options" role="group" aria-label="Render scale">
                 <button class="graphics-render-scale-option" type="button" aria-pressed="false" data-render-scale="0.25">0.25x</button>
-                <button class="graphics-render-scale-option selected" type="button" aria-pressed="true" data-render-scale="0.5">0.5x</button>
-                <button class="graphics-render-scale-option" type="button" aria-pressed="false" data-render-scale="1">Native</button>
+                <button class="graphics-render-scale-option" type="button" aria-pressed="false" data-render-scale="0.5">0.5x</button>
+                <button class="graphics-render-scale-option selected" type="button" aria-pressed="true" data-render-scale="1">Native</button>
               </div>
             </div>
           </div>
@@ -324,7 +324,7 @@ export function createUi(app: HTMLDivElement): Ui {
   const sfxVolumeValue = document.querySelector<HTMLElement>("#sfxVolumeValue")!;
   let graphicsSettings: GraphicsSettings = {
     preserveDrawingBuffer: preserveDrawingBuffer.checked,
-    renderScale: 0.5,
+    renderScale: 1,
     cameraView: "depth",
   };
   let cameraSettings: CameraSettings = { ...DEFAULT_CAMERA_SETTINGS };

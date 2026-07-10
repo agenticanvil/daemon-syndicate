@@ -29,10 +29,10 @@ export function addGameplayLighting(scene: THREE.Scene, playerLightAnchor: THREE
   armorFlashlight.target.position.set(0, 0.8, -14);
   armorFlashlight.castShadow = true;
   armorFlashlight.shadow.mapSize.set(1024, 1024);
-  armorFlashlight.shadow.camera.near = 0.5;
+  armorFlashlight.shadow.camera.near = 0.12;
   armorFlashlight.shadow.camera.far = 38;
-  armorFlashlight.shadow.bias = -0.0002;
-  armorFlashlight.shadow.normalBias = 0.03;
+  armorFlashlight.shadow.bias = -0.00005;
+  armorFlashlight.shadow.normalBias = 0.001;
   playerLightAnchor.add(armorFlashlight);
   playerLightAnchor.add(armorFlashlight.target);
 

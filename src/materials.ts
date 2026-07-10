@@ -302,15 +302,14 @@ function createFloorMaterials(
   return Object.fromEntries(
     FLOOR_VARIANTS.map((variant) => {
       const map = preloadedFloorTextures[variant.id] ?? loadRepeatingTexture(loader, variant.mapUrl, anisotropy, true);
+      const material = new THREE.MeshStandardMaterial({
+        map,
+        roughness: variant.roughness,
+        metalness: variant.metalness,
+      });
+      material.shadowSide = THREE.DoubleSide;
 
-      return [
-        variant.id,
-        new THREE.MeshStandardMaterial({
-          map,
-          roughness: variant.roughness,
-          metalness: variant.metalness,
-        }),
-      ];
+      return [variant.id, material];
     }),
   ) as Record<FloorVariantId, THREE.MeshStandardMaterial>;
 }

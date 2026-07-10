@@ -25,6 +25,7 @@ const FLOOR_DECAL_MIN_COUNT = 3;
 const FLOOR_DECAL_TILES_PER_PLACEMENT = 5;
 const WALL_THICKNESS = 0.2;
 const WALL_PLINTH_HEIGHT = 0.64;
+const WALL_PLINTH_FLOOR_OVERLAP = 0.08;
 const WALL_UPPER_HEIGHT = 1.82;
 const WALL_TOTAL_HEIGHT = WALL_PLINTH_HEIGHT + WALL_UPPER_HEIGHT;
 const WALL_OCCLUDING_OPACITY = 0.055;
@@ -96,8 +97,10 @@ export function renderLevel(root: THREE.Group, level: LevelData, materials: Leve
     if (!tiles || tiles.length === 0) continue;
 
     const floorTiles = new THREE.Mesh(createFloorGeometry(tiles), materials.floors[variant.id]);
+    floorTiles.castShadow = true;
     floorTiles.receiveShadow = true;
     floorTiles.frustumCulled = false;
+    floorTiles.name = "level-floor-tiles";
     root.add(floorTiles);
     disposables.push(floorTiles);
   }
@@ -110,7 +113,11 @@ export function renderLevel(root: THREE.Group, level: LevelData, materials: Leve
 
   const edgeGeometry = new THREE.BoxGeometry(TILE_SIZE, 0.8, 0.22);
   const rimGeometry = new THREE.BoxGeometry(TILE_SIZE, 0.04, 0.08);
-  const wallPlinthGeometry = new THREE.BoxGeometry(TILE_SIZE, WALL_PLINTH_HEIGHT, WALL_THICKNESS);
+  const wallPlinthGeometry = new THREE.BoxGeometry(
+    TILE_SIZE,
+    WALL_PLINTH_HEIGHT + WALL_PLINTH_FLOOR_OVERLAP,
+    WALL_THICKNESS,
+  );
   const wallUpperGeometry = new THREE.BoxGeometry(TILE_SIZE, WALL_UPPER_HEIGHT, WALL_THICKNESS);
   const edgeTransforms: THREE.Matrix4[] = [];
   const rimTransforms: THREE.Matrix4[] = [];
@@ -125,7 +132,7 @@ export function renderLevel(root: THREE.Group, level: LevelData, materials: Leve
     const rimTransform = createBoundaryTransform(boundaryEdge, 0.06, 0.08, vertexOrientations);
     const wallPlinthTransform = createBoundaryTransform(
       boundaryEdge,
-      WALL_PLINTH_HEIGHT * 0.5,
+      (WALL_PLINTH_HEIGHT - WALL_PLINTH_FLOOR_OVERLAP) * 0.5,
       WALL_THICKNESS,
       vertexOrientations,
     );
@@ -164,12 +171,15 @@ export function renderLevel(root: THREE.Group, level: LevelData, materials: Leve
   rims.frustumCulled = false;
   wallPlinths.frustumCulled = false;
   upperWalls.frustumCulled = false;
+  edges.castShadow = true;
+  edges.receiveShadow = true;
   wallPlinths.castShadow = true;
   wallPlinths.receiveShadow = true;
   upperWalls.castShadow = true;
   upperWalls.receiveShadow = true;
   wallPlinths.name = "level-wall-plinths";
   upperWalls.name = "level-wall-uppers";
+  edges.name = "level-platform-edges";
   root.add(edges, wallPlinths, upperWalls, rims);
   disposables.push(edges, rims, wallPlinths, upperWalls);
 
