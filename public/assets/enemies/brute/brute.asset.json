@@ -28,7 +28,7 @@
     }
   },
   "health": {
-    "base": 231.25,
+    "base": 231,
     "levelGrowth": 52.5
   },
   "movement": {
