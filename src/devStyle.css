@@ -351,12 +351,18 @@
   line-height: 28px;
 }
 
-.dev-assets {
+#app.dev-assets {
   color: #e8f7ff;
   font-size: 0.9rem;
+  /* The game hides the native cursor for its custom crosshair. */
+  cursor: auto !important;
   background:
     radial-gradient(circle at 20% 12%, rgba(145, 255, 240, 0.1), transparent 25rem),
     linear-gradient(135deg, #05080a 0%, #101412 52%, #050709 100%);
+}
+
+#app.dev-assets * {
+  cursor: auto !important;
 }
 
 .dev-assets-shell {
