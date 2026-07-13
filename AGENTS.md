@@ -12,6 +12,20 @@ For effect or rendering work that is hard to trigger through normal play, prefer
 
 Use `tmp/` for temporary files, including verification screenshots and other disposable artifacts.
 
+## Verification
+
+Before handing off or committing a code change, run `npm run check`. It verifies linting, snapshot return types, typechecking, unused code, tests, and the production build.
+
+### Additional verification when relevant or requested
+
+The following checks are conditional; do not run all of them for every task.
+
+- For gameplay balance, progression, enemy behavior, or simulation changes, run `npm run sim` when the simulation covers the changed behavior.
+- For rendering-performance or hot-path changes, run `npm run perf` and compare the result with an appropriate baseline.
+- For UI, rendering, shader, effects, or asset-loading changes, inspect the affected behavior in the existing development server. Prefer a deterministic `/dev/...` route when available.
+- Store generated reports, screenshots, and other verification artifacts under `tmp/`; do not commit them.
+- If a relevant check cannot run because the existing server, browser, or environment is unavailable, report that explicitly rather than treating the change as fully verified.
+
 Runtime assets under `public/assets/` are tracked with Git LFS, while `public/assets/_staged/` remains local and ignored. Treat LFS assets differently from ordinary source changes: iterate on experimental or generated assets in `_staged`, and only promote final deployment candidates into live `public/assets/`.
 
 Before committing or pushing changes that touch LFS-tracked assets (`.glb`, images, audio), check `git lfs status`, `git lfs ls-files`, and `git diff --stat`. Local commits do not upload LFS objects, but pushing multiple commits containing different versions of the same binary will upload each version. Before any requested push that includes asset changes, remind the user to squash/rebase or `git reset --soft origin/main` when appropriate so only the intended final asset versions are pushed.
