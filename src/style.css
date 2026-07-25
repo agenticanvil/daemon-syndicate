@@ -70,12 +70,12 @@ body {
 }
 
 @media (pointer: fine) {
-  #app,
-  #app * {
+  #app.gameplay-cursor,
+  #app.gameplay-cursor * {
     cursor: none !important;
   }
 
-  .mouse-crosshair.visible {
+  #app.gameplay-cursor .mouse-crosshair.visible {
     opacity: 1;
   }
 }

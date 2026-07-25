@@ -355,6 +355,11 @@ export function createUi(app: HTMLDivElement): Ui {
   const debugInvulnerabilityListeners: Array<(enabled: boolean) => void> = [];
   let cameraDebugCopyValue = "pitch=0.0 yaw=0.0";
 
+  const syncCursorMode = (): void => {
+    const menuOpen = [overlay, pauseMenu, upgradeMenu].some((menu) => !menu.classList.contains("hidden"));
+    app.classList.toggle("gameplay-cursor", !menuOpen);
+  };
+
   window.addEventListener("pointermove", (event) => {
     if (event.pointerType !== "mouse") return;
     mouseCrosshair.style.transform = `translate3d(${event.clientX}px, ${event.clientY}px, 0)`;
@@ -520,6 +525,8 @@ export function createUi(app: HTMLDivElement): Ui {
     }
   });
 
+  syncCursorMode();
+
   return {
     startButton,
     resumeButton,
@@ -528,6 +535,7 @@ export function createUi(app: HTMLDivElement): Ui {
     pauseMenu,
     showLoading(message: string) {
       overlay.classList.remove("hidden");
+      syncCursorMode();
       overlay.classList.add("deploying");
       overlay.classList.remove("deployment-error");
       hud.classList.add("hidden");
@@ -542,6 +550,7 @@ export function createUi(app: HTMLDivElement): Ui {
     },
     showStartError(message: string) {
       overlay.classList.remove("hidden");
+      syncCursorMode();
       overlay.classList.add("deploying", "deployment-error");
       hud.classList.add("hidden");
       deployPanel.classList.remove("hidden");
@@ -557,6 +566,7 @@ export function createUi(app: HTMLDivElement): Ui {
     showGameOver(kills: number) {
       resetDeployPanel();
       overlay.classList.remove("hidden");
+      syncCursorMode();
       hud.classList.add("hidden");
       overlay.querySelector("h1")!.textContent = "Signal Lost";
       overlay.querySelector("p")!.textContent =
@@ -569,6 +579,7 @@ export function createUi(app: HTMLDivElement): Ui {
     showMainMenu() {
       resetDeployPanel();
       overlay.classList.remove("hidden");
+      syncCursorMode();
       hud.classList.add("hidden");
       overlay.querySelector("h1")!.textContent = "Daemon Syndicate";
       overlay.querySelector("p")!.textContent =
@@ -581,6 +592,7 @@ export function createUi(app: HTMLDivElement): Ui {
     hideOverlay() {
       resetDeployPanel();
       overlay.classList.add("hidden");
+      syncCursorMode();
       startStatus.textContent = "";
       startStatus.classList.remove("error");
       startButton.textContent = "Redeploy";
@@ -596,6 +608,7 @@ export function createUi(app: HTMLDivElement): Ui {
     setPaused(paused: boolean) {
       if (paused) showPauseView("main");
       pauseMenu.classList.toggle("hidden", !paused);
+      syncCursorMode();
     },
     getStartMapDepth() {
       const mapDepth = Number(startMapDepth?.value ?? 1);
@@ -650,6 +663,7 @@ export function createUi(app: HTMLDivElement): Ui {
     },
     showUpgradeSelection(state, onSelect) {
       upgradeMenu.classList.remove("hidden");
+      syncCursorMode();
       upgradePoints.textContent = `${state.points} ${state.points === 1 ? "point" : "points"}`;
       upgradeOptions.replaceChildren(
         ...state.options.map((option) => {
@@ -671,6 +685,7 @@ export function createUi(app: HTMLDivElement): Ui {
     },
     hideUpgradeSelection() {
       upgradeMenu.classList.add("hidden");
+      syncCursorMode();
       upgradeOptions.replaceChildren();
     },
   };
