@@ -23,7 +23,7 @@ const MOVEMENT_START = new THREE.Vector3();
 const MOVEMENT_DELTA = new THREE.Vector3();
 const MELEE_SEPARATION_RADIUS = 2.15;
 const MELEE_SEPARATION_WEIGHT = 0.9;
-const MELEE_DODGE_WEIGHT = 0.38;
+const MELEE_DODGE_WEIGHT = 0.3;
 const MELEE_DODGE_MIN_DISTANCE = 1.7;
 const MELEE_DODGE_MAX_DISTANCE = 11;
 const MELEE_MIN_PURSUIT_DOT = 0.64;
@@ -238,7 +238,7 @@ function getMeleeEnemyMovementDirection(context: {
 
   enemy.movementJukeTimer = (enemy.movementJukeTimer ?? 0) - dt;
   if (enemy.movementJukeTimer <= 0 || enemy.movementJukeSign === undefined) {
-    enemy.movementJukeTimer = 0.42 + rng() * 0.46;
+    enemy.movementJukeTimer = 0.72 + rng() * 0.56;
     enemy.movementJukeSign = rng() < 0.5 ? -1 : 1;
   }
 

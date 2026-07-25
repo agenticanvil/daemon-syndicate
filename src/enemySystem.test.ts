@@ -125,6 +125,20 @@ describe("EnemySystem spawning and activation", () => {
     expect(system.all[0].path).toBeUndefined();
   });
 
+  it("keeps a valid path stable between periodic navigation updates", () => {
+    const level = levelWithWalkable(squareTiles(20));
+    const playerPosition = tileToWorld({ x: 10, y: 10 });
+    const system = createEnemySystem(level, playerPosition, () => 0.5);
+    system.spawnEnemyAt("leanHunter", playerPosition.clone().add(new THREE.Vector3(8, 0, 0)));
+
+    system.update(0.01);
+    const initialPath = system.all[0].path;
+    system.update(0.3);
+
+    expect(initialPath).toBeDefined();
+    expect(system.all[0].path).toBe(initialPath);
+  });
+
   it("emits a dramatic death effect once when an enemy enters death animation", () => {
     const effects: GameEffect[] = [];
     const level = levelWithWalkable(squareTiles(12), 1);
