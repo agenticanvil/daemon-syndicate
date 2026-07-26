@@ -12,6 +12,7 @@ type RuntimeGltfAsset = {
   sidecar: AssetSidecar;
   template: THREE.Group;
   animations: THREE.AnimationClip[];
+  visualHeight: number;
 };
 
 export type GltfAssetLibrary = {
@@ -90,10 +91,12 @@ export async function loadGltfAssetLibrary(): Promise<GltfAssetLibrary> {
       const gltf = await loadGltf(loader, modelUrl);
       await applyBundledShaderMaterials(gltf.scene, sidecar, runtimeAssetBaseUrl(asset));
       applyModelConventions(gltf.scene, sidecar);
+      gltf.scene.updateWorldMatrix(true, true);
       const runtimeAsset = {
         sidecar,
         template: gltf.scene,
         animations: gltf.animations,
+        visualHeight: measureObjectHeight(gltf.scene),
       };
       if (asset.category === "player") {
         playerAsset = runtimeAsset;
@@ -202,6 +205,7 @@ function createGltfEnemyAsset(asset: RuntimeGltfAsset): EnemyAsset {
 
   return {
     root,
+    visualHeight: asset.visualHeight,
     applyBasePose: () => {
       mixer.stopAllAction();
       activeAction = null;
@@ -215,6 +219,11 @@ function createGltfEnemyAsset(asset: RuntimeGltfAsset): EnemyAsset {
       mixer.update(dt);
     },
   };
+}
+
+export function measureObjectHeight(root: THREE.Object3D): number {
+  const bounds = new THREE.Box3().setFromObject(root);
+  return bounds.isEmpty() ? 0 : bounds.max.y - bounds.min.y;
 }
 
 function createGltfStaticAsset(asset: RuntimeGltfAsset): { root: THREE.Object3D } {
