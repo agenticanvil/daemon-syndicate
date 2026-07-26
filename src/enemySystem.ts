@@ -30,6 +30,7 @@ export type EnemySystemSnapshot = Array<{
   facingYaw: number;
   collisionLayer: CollisionLayer;
   health: number;
+  maxHealth: number;
   speed: number;
   movementSound?: Enemy["movementSound"];
   xpReward: number;
@@ -182,6 +183,7 @@ export class EnemySystem {
       facingYaw: enemy.facingYaw,
       collisionLayer: enemy.collisionLayer,
       health: enemy.health,
+      maxHealth: enemy.maxHealth,
       speed: enemy.speed,
       movementSound: enemy.movementSound,
       xpReward: enemy.xpReward,
@@ -222,6 +224,7 @@ export class EnemySystem {
     const enemyLevel = enemyLevelForMapDepth(mapDepth, this.rng);
     const definition = providedDefinition ?? chooseEnemyDefinition(mapDepth, this.rng);
     const facingYaw = 0;
+    const maxHealth = definition.health(enemyLevel);
 
     this.addEnemy(
       {
@@ -230,7 +233,8 @@ export class EnemySystem {
         position: new THREE.Vector3(spawn.x, 0, spawn.z),
         facingYaw,
         collisionLayer: this.getCollisionLayer(),
-        health: definition.health(enemyLevel),
+        health: maxHealth,
+        maxHealth,
         speed: definition.speed(enemyLevel),
         movementSound: definition.movementSound,
         xpReward: definition.xpReward(enemyLevel),

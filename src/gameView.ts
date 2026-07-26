@@ -12,7 +12,13 @@ import type { PlayerRenderState } from "./playerSystem";
 
 export type EnemyViewHandle = {
   updateRig?: (animation: EnemyAnimation, dt: number) => void;
-  sync: (position: THREE.Vector3, facingYaw: number, dt: number) => void;
+  sync: (
+    position: THREE.Vector3,
+    facingYaw: number,
+    health: number,
+    maxHealth: number,
+    dt: number,
+  ) => void;
   flashHit: () => void;
   dispose: () => void;
 };
@@ -136,6 +142,9 @@ const NOVA_PULSE_GEOMETRY = new THREE.CylinderGeometry(1, 1, 1, 128, 3, true);
 const ENEMY_FLASH_DURATION = 0.16;
 const ENEMY_FLASH_COLOR_MIX = 0.92;
 const ENEMY_FLASH_EMISSIVE_BOOST = 1.55;
+const ENEMY_HEALTH_BAR_WIDTH = 1.05;
+const ENEMY_HEALTH_BAR_HEIGHT = 0.075;
+const ENEMY_HEALTH_BAR_CLEARANCE = 0.18;
 const PLAYER_DAMAGE_VIGNETTE_LIFE = 0.36;
 const HIDDEN_MATRIX = new THREE.Matrix4().makeScale(0, 0, 0);
 const FLASH_COLOR = new THREE.Color(0xffffff);
@@ -190,6 +199,17 @@ export function createThreeGameplayView(world: GameScene, effectAssets?: Gamepla
     color: 0x9dff38,
     transparent: true,
     opacity: 0.95,
+    toneMapped: false,
+  });
+  const enemyHealthBarGeometry = new THREE.PlaneGeometry(1, 1);
+  const enemyHealthBarBackgroundMaterial = new THREE.MeshBasicMaterial({
+    color: 0x21070a,
+    depthWrite: false,
+    toneMapped: false,
+  });
+  const enemyHealthBarFillMaterial = new THREE.MeshBasicMaterial({
+    color: 0x821521,
+    depthWrite: false,
     toneMapped: false,
   });
   const impactSparkMesh = new THREE.InstancedMesh(
@@ -773,11 +793,21 @@ export function createThreeGameplayView(world: GameScene, effectAssets?: Gamepla
     createEnemyView(id, kind, position, facingYaw) {
       const rig = world.createEnemyAsset(kind);
       const flashMaterials = collectFlashMaterials(rig.root);
+      const healthBar = new THREE.Group();
+      const healthBarBackground = new THREE.Mesh(enemyHealthBarGeometry, enemyHealthBarBackgroundMaterial);
+      const healthBarFill = new THREE.Mesh(enemyHealthBarGeometry, enemyHealthBarFillMaterial);
       let flashLife = 0;
+      healthBarBackground.scale.set(ENEMY_HEALTH_BAR_WIDTH, ENEMY_HEALTH_BAR_HEIGHT, 1);
+      healthBarBackground.renderOrder = 5;
+      healthBarFill.position.z = 0.002;
+      healthBarFill.renderOrder = 6;
+      healthBar.add(healthBarBackground, healthBarFill);
+      healthBar.visible = false;
       rig.root.position.set(position.x, 0, position.z);
       rig.root.rotation.y = facingYaw;
       rig.root.visible = true;
-      world.scene.add(rig.root);
+      healthBar.position.set(position.x, rig.visualHeight + ENEMY_HEALTH_BAR_CLEARANCE, position.z);
+      world.scene.add(rig.root, healthBar);
       const handle: EnemyViewHandle = {
         updateRig: (animation, dt) => {
           rig.update({ animation }, dt);
@@ -786,13 +816,24 @@ export function createThreeGameplayView(world: GameScene, effectAssets?: Gamepla
             applyEnemyFlash(flashMaterials, flashLife / ENEMY_FLASH_DURATION);
           }
         },
-        sync: (nextPosition, nextFacingYaw, dt) => {
+        sync: (nextPosition, nextFacingYaw, health, maxHealth, dt) => {
           rig.root.position.set(nextPosition.x, 0, nextPosition.z);
           rig.root.rotation.y = moveAngleTowards(
             rig.root.rotation.y,
             nextFacingYaw,
             ENEMY_MAX_TURN_SPEED * dt,
           );
+          healthBar.position.set(
+            nextPosition.x,
+            rig.visualHeight + ENEMY_HEALTH_BAR_CLEARANCE,
+            nextPosition.z,
+          );
+          healthBar.quaternion.copy(world.camera.quaternion);
+          const healthFraction = THREE.MathUtils.clamp(health / maxHealth, 0, 1);
+          healthBar.visible = health > 0 && healthFraction < 1;
+          const fillWidth = ENEMY_HEALTH_BAR_WIDTH * healthFraction;
+          healthBarFill.position.x = (fillWidth - ENEMY_HEALTH_BAR_WIDTH) * 0.5;
+          healthBarFill.scale.set(fillWidth, ENEMY_HEALTH_BAR_HEIGHT, 1);
         },
         flashHit: () => {
           flashLife = ENEMY_FLASH_DURATION;
@@ -800,7 +841,7 @@ export function createThreeGameplayView(world: GameScene, effectAssets?: Gamepla
         },
         dispose: () => {
           restoreEnemyFlash(flashMaterials);
-          world.scene.remove(rig.root);
+          world.scene.remove(rig.root, healthBar);
           disposeObject3D(rig.root, true);
           enemyViewsById.delete(id);
         },
@@ -1125,6 +1166,9 @@ export function createThreeGameplayView(world: GameScene, effectAssets?: Gamepla
       impactPulseGeometry.dispose();
       deathPulseGeometry.dispose();
       enemyProjectileMaterial.dispose();
+      enemyHealthBarGeometry.dispose();
+      enemyHealthBarBackgroundMaterial.dispose();
+      enemyHealthBarFillMaterial.dispose();
       disposeOwnedMeshMaterial(impactSparkMesh);
       disposeOwnedMeshMaterial(deathSplatterParticleMesh);
       disposeOwnedMeshMaterial(deathGlowMesh);

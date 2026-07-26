@@ -3,7 +3,7 @@ import { join } from "node:path";
 import * as THREE from "three";
 import { describe, expect, it } from "vitest";
 import { createAssetFactory } from "./assetFactory";
-import { attachWeaponToSocket, runtimeGltfAssetDescriptors } from "./gltfAssetFactory";
+import { attachWeaponToSocket, measureObjectHeight, runtimeGltfAssetDescriptors } from "./gltfAssetFactory";
 
 describe("runtime GLB asset library", () => {
   it("defines player, enemy, pickup, environment, and equipment assets as live GLB URLs", () => {
@@ -106,6 +106,7 @@ describe("runtime GLB asset library", () => {
       }),
       createEnemyAsset: () => ({
         root: enemyRoot,
+        visualHeight: 1,
         applyBasePose: () => undefined,
         update: () => undefined,
       }),
@@ -120,6 +121,18 @@ describe("runtime GLB asset library", () => {
     expect(factory.createPickupAsset("health").root).toBe(pickupRoot);
     expect(factory.createEnvironmentAsset("industrial-crate").root).toBe(environmentRoot);
     expect(factory.createExitPortalAsset().root).toBe(portalRoot);
+  });
+
+  it("measures loaded object height after nested transforms", () => {
+    const root = new THREE.Group();
+    const mesh = new THREE.Mesh(new THREE.BoxGeometry(1, 2, 1));
+    mesh.position.y = 2.5;
+    mesh.scale.y = 1.5;
+    root.scale.y = 2;
+    root.add(mesh);
+    root.updateWorldMatrix(true, true);
+
+    expect(measureObjectHeight(root)).toBeCloseTo(6);
   });
 
   it("pairs every runtime sidecar with a GLB that has no external image URIs", async () => {

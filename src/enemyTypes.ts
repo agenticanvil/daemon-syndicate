@@ -14,6 +14,7 @@ export type Enemy = {
   facingYaw: number;
   collisionLayer: CollisionLayer;
   health: number;
+  maxHealth: number;
   speed: number;
   movementSound?: SoundId;
   xpReward: number;

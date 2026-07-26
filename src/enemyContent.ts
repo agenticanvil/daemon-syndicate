@@ -5,6 +5,7 @@ export type EnemyAssetAnimation = "idle" | "walk" | "melee" | "death";
 
 export type EnemyAsset = {
   root: THREE.Group;
+  visualHeight: number;
   applyBasePose: () => void;
   update: (state: { animation: EnemyAssetAnimation }, dt: number) => void;
   skeleton?: THREE.Skeleton;

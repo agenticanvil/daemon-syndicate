@@ -4,7 +4,11 @@ import { ENEMY_BALANCE } from "./balance";
 import { PLAYER_SPEED } from "./constants";
 import { disposeObject3D } from "./entityLifecycle";
 import { DEFAULT_FLOOR_VARIANT_ID } from "./floorVariants";
-import { createThreeGameplayView, preloadGameplayEffectAssets } from "./gameView";
+import {
+  createThreeGameplayView,
+  preloadGameplayEffectAssets,
+  type EnemyViewHandle,
+} from "./gameView";
 import { CAMERA_VIEW_OFFSETS } from "./gameCamera";
 import { loadGltfAssetLibrary } from "./gltfAssetFactory";
 import { InputState } from "./inputState";
@@ -17,6 +21,7 @@ declare global {
     __daemonEffects?: {
       placeDeathEffect: (position: { x: number; z: number }) => void;
       killTestEnemy: (position: { x: number; z: number }) => void;
+      placeDamagedEnemy: (position: { x: number; z: number }) => void;
       clear: () => void;
       snapshotEffects: () => ReturnType<ReturnType<typeof createThreeGameplayView>["snapshotEffects"]>;
     };
@@ -27,6 +32,11 @@ type TestCorpse = {
   root: THREE.Object3D;
   update: (dt: number) => void;
   life: number;
+};
+
+type TestEnemy = {
+  handle: EnemyViewHandle;
+  position: THREE.Vector3;
 };
 
 const CAMERA_OFFSET = CAMERA_VIEW_OFFSETS.depth.clone();
@@ -46,6 +56,8 @@ export async function startDevEffects(app: HTMLDivElement): Promise<void> {
   const playerPosition = tileToWorld(level.start);
   const movement = new THREE.Vector3();
   const corpses: TestCorpse[] = [];
+  const testEnemies: TestEnemy[] = [];
+  let nextTestEnemyId = -1;
   let playerYaw = 0;
   let disposed = false;
 
@@ -74,13 +86,27 @@ export async function startDevEffects(app: HTMLDivElement): Promise<void> {
   const killTestEnemyAt = (position: { x: number; z: number }): void => {
     corpses.push(createTestCorpse(world, new THREE.Vector3(position.x, 0, position.z), placeEffectAt));
   };
+  const placeDamagedEnemyAt = (position: { x: number; z: number }): void => {
+    const enemyPosition = new THREE.Vector3(position.x, 0, position.z);
+    const handle = view.createEnemyView(nextTestEnemyId, "leanHunter", enemyPosition, Math.PI);
+    nextTestEnemyId -= 1;
+    testEnemies.push({ handle, position: enemyPosition });
+  };
+  const placeDamagedEnemy = (): void => {
+    placeDamagedEnemyAt(input.pointerWorld);
+  };
+  const killDamagedEnemies = (): void => {
+    clearTestEnemies(testEnemies);
+  };
   const clear = (): void => {
     view.clearEffects();
     clearCorpses(world, corpses);
+    clearTestEnemies(testEnemies);
   };
   window.__daemonEffects = {
     placeDeathEffect: placeEffectAt,
     killTestEnemy: killTestEnemyAt,
+    placeDamagedEnemy: placeDamagedEnemyAt,
     clear,
     snapshotEffects: view.snapshotEffects,
   };
@@ -92,6 +118,12 @@ export async function startDevEffects(app: HTMLDivElement): Promise<void> {
     input.addKey(event.code);
     if (event.code === "KeyK" && !event.repeat) {
       killTestEnemy();
+    }
+    if (event.code === "KeyH" && !event.repeat) {
+      placeDamagedEnemy();
+    }
+    if (event.code === "KeyJ" && !event.repeat) {
+      killDamagedEnemies();
     }
     if (event.code === "KeyC" && !event.repeat) {
       clear();
@@ -144,6 +176,7 @@ export async function startDevEffects(app: HTMLDivElement): Promise<void> {
     world.player.position.copy(playerPosition);
     world.player.rotation.y = playerYaw;
     world.playerRig.update({ moving, moveSpeed: PLAYER_SPEED, damaged: false, lowHealth: false }, dt);
+    updateTestEnemies(testEnemies, dt);
     updateCorpses(world, corpses, dt);
     view.updateEffects(dt);
     updateCamera(world, playerPosition);
@@ -238,6 +271,20 @@ function clearCorpses(world: GameScene, corpses: TestCorpse[]): void {
   }
 }
 
+function updateTestEnemies(enemies: TestEnemy[], dt: number): void {
+  for (const enemy of enemies) {
+    enemy.handle.updateRig?.("idle", dt);
+    enemy.handle.sync(enemy.position, Math.PI, 35, 100, dt);
+  }
+}
+
+function clearTestEnemies(enemies: TestEnemy[]): void {
+  for (const enemy of enemies.splice(0)) {
+    enemy.handle.sync(enemy.position, Math.PI, 0, 100, 0);
+    enemy.handle.dispose();
+  }
+}
+
 function updateCamera(world: GameScene, playerPosition: THREE.Vector3): void {
   world.camera.position.copy(playerPosition).add(CAMERA_OFFSET);
   world.camera.lookAt(playerPosition);
@@ -247,6 +294,8 @@ function renderHud(): string {
   return `
     <strong>Effect Test</strong>
     <span>Click: place death splatter</span>
+    <span>H: place damaged hunter at cursor</span>
+    <span>J: kill damaged hunters</span>
     <span>K: kill test hunter at cursor</span>
     <span>C: clear effects</span>
     <em>Use edge cutouts to verify decals clip to floor.</em>
